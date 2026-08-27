@@ -92,21 +92,29 @@ pasa a SDD.
 
 ## Las operaciones del tracker
 
-Lo que el adapter sabe hacer. Son once, y los comandos se arman con ellas. El
-término canónico es el que aparece en el código. Dos no escriben: `frontier:query`
-y `map:read`.
+Lo que el adapter sabe hacer. Son doce, y los comandos se arman con ellas. El
+término canónico es el que aparece en el código. Tres no escriben: `preflight`,
+`frontier:query` y `map:read`.
+
+El `preflight` corre **una vez por conductor**, y conductor es un contexto de
+modelo que emite operaciones: la sesión es uno, cada subagente es uno, un
+subcomando no. Su salida es un blob opaco que las otras once reciben como `--ctx`.
+Un subcomando invocado sin `--ctx` falla, porque ninguno sabe hacer un preflight:
+así la regla se cumple por construcción y no por disciplina. Nada persiste entre
+corridas; pasar ids adentro de una misma corrida sí está permitido, y es el
+mecanismo.
 
 | Canónico | En prosa | Qué es |
 | --- | --- | --- |
-| Preflight | El preflight | El chequeo que corre una vez por proceso que emite operaciones, antes de cualquiera de ellas. Un subagente corre el suyo. Resuelve lo que las operaciones necesitan y falla temprano y claro si algo no está. No guarda nada: la fuente de verdad es el tracker. |
+| `preflight` | El preflight | Solo lectura. Corre una vez por conductor, antes de cualquier otra operación, y resuelve lo que las demás necesitan. No guarda nada y no crea nada: la fuente de verdad es el tracker. Falla duro en cuatro casos y solo en esos cuatro: sin credencial, sin el team, sin algún estado de cerrado, y sin el label `map`. |
 | `map:create` | Crear el mapa | Adopta el Project si le pasan uno, lo crea si no, y le cuelga el Document del mapa. |
 | `map:read` | Leer el mapa | Solo lectura. Devuelve el contenido y una huella por cada encabezado. La usan `/map-status` y el paso que le muestra el estado a la persona. |
 | `map:write` | Escribir el mapa | Un read-modify-write entero adentro de una sola invocación. Recibe la edición como argumentos semánticos, nunca markdown: relee justo antes de escribir para que la ventana sean milisegundos y no la sesión. |
-| `ticket:create` | Crear un ticket | Un issue del Project cuyo cuerpo es la pregunta y nada más. El tipo, el modo, el bloqueo y la toma viven en campos nativos del tracker. |
+| `ticket:create` | Crear un ticket | Un issue del Project cuyo cuerpo es la pregunta y nada más. El tipo, el modo, el bloqueo y la toma viven en campos nativos del tracker. Es además quien crea los labels del plugin que falten, porque es su único consumidor. Nunca crea `Discovery`. |
 | `ticket:block` | Bloquear | La relación nativa de bloqueo. Se escribe en una segunda pasada, porque los tickets tienen que existir para poder referenciarse. |
 | `frontier:query` | Consultar la frontera | Los tickets abiertos, sin bloqueantes abiertos y sin assignee. |
 | `ticket:claim` | Tomar | El primer write de la sesión. No se libera sola. |
-| `ticket:resolve` | Resolver | Los tickets nuevos, su cableado, el comentario, el estado y el mapa, en ese orden. El mapa siempre último. |
+| `ticket:resolve` | Resolver | Los tickets nuevos, su cableado, el comentario, el estado y el mapa, en ese orden. El mapa siempre último. Las cinco escrituras van adentro de una sola invocación: el orden lo garantiza el adapter, nunca el modelo. |
 | `ticket:rule-out` | Sacar de alcance | La única operación destructiva: cierra un ticket sin resolverlo. Su línea va a Fuera de alcance, nunca a Decisiones. |
 | `milestone:create` | Crear un milestone | Un corte demoable del colapso. Nunca lleva fecha. |
 | `issue:create` | Crear una issue de ejecución | Todas las del colapso en una sola llamada atómica. No lleva label `map` y su cuerpo es un imperativo, no una pregunta. |

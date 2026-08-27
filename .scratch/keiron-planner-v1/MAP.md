@@ -46,6 +46,21 @@ tipo del ticket diga otra cosa.
 
 <!-- una línea por ticket cerrado, con enlace al ticket que guarda el detalle -->
 
+- [14: Si el preflight corre por invocación o por sesión](issues/14-preflight-por-invocacion.md):
+  una vez por conductor, y un `/map-work` típico son cinco invocaciones y un preflight.
+  La regla del 08 sobrevive entera y lo que estaba mal era una palabra: decía "por
+  proceso" y su razonamiento era todo sobre contexto de modelo. Para que sea mecánica,
+  el preflight pasa a ser la operación doce, imprime un blob opaco que todo consumidor
+  recibe como `--ctx`, y un consumidor sin `--ctx` falla: ninguno sabe hacer un
+  preflight, así que pagar dos es imposible por construcción. La premisa del ticket se
+  cayó dos veces: "falla ocho veces" es falso porque la primera invocación es la que
+  falla, y el techo por hora no es 10.000 sino 3.000.000, así que ocho preflights son
+  el 0,11%. Lo que decidió el ticket apareció midiendo y es peor: **el preflight
+  escribía**, y `/map-status` promete no escribir. Pasa a ser de solo lectura y la
+  creación de labels se muda a `ticket:create`. Las fallas duras quedan en cuatro, y la
+  cuarta rompe la simetría de los ocho labels a propósito: borrar un label lo saca de
+  las issues, así que sin `map` la frontera devuelve cero sin error y `/map-work` manda
+  a colapsar un mapa lleno de preguntas abiertas.
 - [13: Si una pestaña abierta puede pisar una escritura del plugin](issues/13-pestana-abierta-pisa-al-plugin.md):
   no puede, y el 09 queda completo sin cambiarle nada. El mecanismo es que
   `documentUpdate` mueve `contentState`, el estado Yjs, así que el servidor convierte
