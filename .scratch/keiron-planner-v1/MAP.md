@@ -46,6 +46,19 @@ tipo del ticket diga otra cosa.
 
 <!-- una línea por ticket cerrado, con enlace al ticket que guarda el detalle -->
 
+- [13: Si una pestaña abierta puede pisar una escritura del plugin](issues/13-pestana-abierta-pisa-al-plugin.md):
+  no puede, y el 09 queda completo sin cambiarle nada. El mecanismo es que
+  `documentUpdate` mueve `contentState`, el estado Yjs, así que el servidor convierte
+  el markdown en un update colaborativo de verdad en vez de escribir por detrás del
+  CRDT, y no deja ninguna rama con la que un cliente pueda ganar. Medido en tres
+  condiciones, incluida una que el ticket no pedía y es la más dura: un cliente
+  offline y divergente, que al reconectar fusionó las dos ramas en un solo evento
+  atómico. Una quinta fase corre al revés y cierra la lectura equivocada de que el
+  09 sobra: con markdown rancio el plugin **sí** borra una línea escrita en la UI,
+  porque una escritura suya no es una rama concurrente sino un reemplazo
+  autoritativo. No se agrega ninguna verificación posterior, y `contentState` queda
+  prohibido en el contrato pese a ser el detector de cambio perfecto que
+  `updatedAt` nunca fue: no dice qué sección cambió y cuesta 16 veces el payload.
 - [09: Cómo evita el plugin pisar una edición humana del mapa](issues/09-concurrencia-humano-plugin.md):
   la estrategia no detecta el conflicto, lo evita. El plugin no escribe sobre lo que
   leyó al empezar la sesión: relee justo antes de escribir y aplica su edición sobre

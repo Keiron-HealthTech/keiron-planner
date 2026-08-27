@@ -417,7 +417,139 @@ persona, y la única que se reescribe entera por diseño de la API.
 
 ---
 
-## 9. Verificado contra no verificado
+## 9. La falla inversa: si una pestaña abierta puede deshacer una escritura
+
+Este ticket cerró con dos afirmaciones sin verificar, las dos por la misma razón:
+necesitaban una persona escribiendo en un navegador. Las midió el
+[ticket 13](../issues/13-pestana-abierta-pisa-al-plugin.md) el 2026-08-27, con
+harness propio en
+[`research/13-scripts/tab_probe.py`](13-scripts/tab_probe.py). El ticket 13 daba
+por hecho que alcanzaba con `drift_probe.py`, y no alcanzaba: no sabe hacer
+relecturas cronometradas ni mirar `contentState`.
+
+**La respuesta es no. Una pestaña abierta no puede deshacer una escritura por
+API.**
+
+### El mecanismo, que es lo que hace que el resultado generalice
+
+`documentUpdate(content:)` **mueve `contentState`**, en 5 de 5 escrituras, con
+crecimiento monótono de unos 320 caracteres por escritura.
+
+`contentState` es el estado Yjs serializado en base64. Está en la salida del tipo
+`Document` pero **no** en `DocumentUpdateInput`, y en todo el schema hay cuatro
+mutations de document (`documentCreate`, `documentDelete`, `documentUnarchive`,
+`documentUpdate`) y ninguna lo toca. No es escribible por ninguna vía.
+
+Que se mueva significa que el servidor no escribe el markdown por detrás del
+CRDT: lo convierte en un update Yjs de verdad y lo emite por el canal de sync,
+donde cada cliente conectado lo recibe como cualquier otra edición colaborativa.
+No existe una rama divergente con la que un cliente pueda ganar, porque el
+servidor no dejó ninguna abierta.
+
+Por eso el resultado no es una muestra afortunada de un navegador un martes: es
+la consecuencia observable de dónde ocurre la reconciliación.
+
+### Las tres condiciones, medidas
+
+| Fase | Condición | Resultado |
+| --- | --- | --- |
+| A | Pestaña visible y activa | La escritura apareció sola en pantalla, sin refrescar. Sobrevivió t+5/15/30/60/120 s. Y una línea tipeada **después** por la persona se fusionó encima sin pisarla |
+| B | Pestaña abierta en segundo plano | 300 s de reposo no movieron `content`, `contentState` ni `updatedAt`. Una pestaña en segundo plano no empuja nada por su cuenta. La escritura sobrevivió 120 s |
+| C | Cliente **offline y divergente** | Las dos ramas fusionaron. Las siete marcas presentes y en orden |
+
+La fase C es la decisiva y la más dura: con el throttling de DevTools en
+`Offline`, la persona escribió una línea que quedó solo en su Yjs local,
+verificado por API que no había llegado al servidor. Con las dos ramas
+divergidas de verdad, cada una con una edición que la otra no había visto, el
+plugin escribió por API. Al volver a online sobrevivieron las dos.
+
+La fusión fue **un evento único y atómico**. Muestreando cada 5 s, `content`,
+`contentState` y `updatedAt` se movieron los tres a la vez, una sola vez, entre
+t+15 s y t+21 s. No hubo estado intermedio donde faltara alguna de las dos
+líneas, ni una segunda sacudida después: los 159 s siguientes quedaron quietos.
+Y el `contentState` resultante es un estado nuevo que contiene las dos ramas, no
+el de ninguno de los dos que se haya impuesto.
+
+### Y sin embargo, nada de esto vuelve innecesaria la estrategia
+
+Es la lectura equivocada más fácil de hacer, y por eso se midió también al revés.
+
+La fusión Yjs protege contra **ramas concurrentes**. Una escritura del plugin no
+es una rama: es un reemplazo autoritativo del documento entero, y el servidor lo
+aplica computando un diff contra el estado actual. Si el markdown que manda el
+plugin no tiene una línea que la persona escribió, ese diff dice "borrá esa
+línea", y el servidor lo obedece.
+
+Medido: con la línea de la persona ya en el servidor, el plugin escribió el
+markdown previo a ella más su propia edición. **La línea de la persona
+desapareció.** El CRDT no la salvó, porque desde su punto de vista no hubo
+conflicto: hubo un cliente autorizado pidiendo un borrado.
+
+Releer tarde y re-derivar, de la sección 2, es exactamente la defensa correcta y
+sigue siendo necesaria. Lo que cambia es que ahora está medida desde los dos
+lados: el plugin puede destruir trabajo de una persona, y una persona no puede
+destruir trabajo del plugin.
+
+### `updatedAt`, cinco mediciones más y ninguna regla
+
+En el camino aparecieron cinco puntos nuevos, y conviene anotarlos porque
+descartan una hipótesis tentadora.
+
+| Escritura | Origen | Gap con la anterior | ¿Movió `updatedAt`? |
+| --- | --- | --- | --- |
+| baseline | API | 26 min | sí |
+| línea A | UI | 7 min | sí |
+| fase A | API | 28 s | **no** |
+| línea B | UI | 3.4 min | sí |
+| fase B | API | 4.8 min | sí |
+
+**No hay asimetría entre UI y API**, que sería la hipótesis útil: si las
+ediciones humanas movieran el sello y las del plugin no, el sello sería una señal
+barata de "acá tocó una persona". No lo es. Y tampoco hay ventana fija: 204 s de
+gap lo movieron, pero la sección 1 midió 300 s de congelamiento tras una sola
+escritura.
+
+La regla no está caracterizada, y **se decidió no caracterizarla**. La conclusión
+de la sección 1 no depende de cuál sea la regla, solo de que no hay ninguna
+confiable, y con estos cinco puntos hay menos regla que antes.
+
+### Lo que no se hace con `contentState`
+
+Apareció un detector de cambio perfecto, y no entra al contrato.
+
+`contentState` se mueve en 5 de 5 escrituras, sin nada de la coalescencia que
+arruina a `updatedAt`. La tentación es reemplazar con él las seis huellas por
+sección de la sección 5. No se hace, por dos razones:
+
+1. **Dice que algo cambió, no qué cambió.** El reporte de deriva existe para
+   decirle a la persona qué sección tocó, y una huella global no puede.
+2. **Cuesta 16 veces el payload.** Medido: `content` solo son 616 bytes y
+   `content` más `contentState` son 9884, con 2 de complejidad en los dos casos.
+   El blob crece monótono con cada escritura, así que en un mapa real la relación
+   empeora.
+
+El contrato lo **prohíbe explícitamente** en las queries de `map:read` y
+`map:write`, por la misma razón por la que la sección 1 prohibió ramificar sobre
+`updatedAt`: es una idea que se ve tentadora y hay que dejar escrito por qué no.
+
+### Qué se agrega al camino de escritura
+
+**Nada.** `map:write` queda exactamente como lo dejó la sección 4.
+
+El ticket 13 preveía tres salidas si la pestaña podía pisar: verificar releyendo
+unos segundos después, avisarle a la persona que cierre la pestaña, o aceptar el
+riesgo y documentarlo. Ninguna hace falta. Se descartó también la versión tibia,
+un flag `--verify` apagado por defecto: apagado es código muerto que nadie
+prende, y prendido obliga a `map:write` a bloquear varios segundos para detectar
+algo cuyo mecanismo ya sabemos que no ocurre.
+
+El asunto se cierra plano, sin niebla nueva ni ticket nuevo. "Linear podría
+cambiar su editor" no es niebla: es cierto de cada hecho medido en todo este
+mapa, y anotarlo acá y no en los otros veinte sería arbitrario.
+
+---
+
+## 10. Verificado contra no verificado
 
 | Afirmación | Estado |
 | --- | --- |
@@ -436,8 +568,13 @@ persona, y la única que se reescribe entera por diseño de la API.
 | Las entradas de historial se coalescen en una que sigue creciendo | Verificado. `createdAt` 16:01:31, `snapshotAt` 16:07:00 |
 | La ventana read-aplicar-write es de 332 ms de mediana | Verificado. Ocho corridas |
 | La relectura previa cuesta 2 de complejidad | Verificado |
-| Si una edición humana en la UI mueve `updatedAt` o también viene coalescida | **No verificado.** Requiere una persona escribiendo en el navegador |
-| Si una pestaña abierta con estado Yjs viejo puede **pisar** una escritura del plugin al re-sincronizar | **No verificado.** Es la falla inversa, y la única que esta estrategia no cubre. Graduó al ticket 13 |
+| Una edición humana en la UI viene coalescida igual que una de API | Verificado por el 13. Cinco puntos, sin asimetría UI/API y sin ventana fija |
+| Una pestaña abierta **no** puede deshacer una escritura por API | Verificado por el 13. Tres condiciones: visible, en segundo plano, y offline divergente |
+| `documentUpdate` mueve `contentState`, el estado Yjs | Verificado por el 13. 5/5 escrituras, crecimiento monótono |
+| `contentState` no es escribible por ninguna mutation | Verificado por el 13. Ausente de `DocumentUpdateInput`, y solo hay cuatro mutations de document |
+| Un cliente offline y divergente fusiona al reconectar, en un solo evento atómico | Verificado por el 13. Muestreo cada 5 s: los tres campos se movieron juntos, una vez |
+| Una escritura del plugin con markdown rancio **sí** borra una línea escrita en la UI | Verificado por el 13. El CRDT no la salva: para el servidor es un borrado autorizado |
+| Pedir `contentState` cuesta 16 veces el payload y 0 de complejidad extra | Verificado por el 13. 9884 bytes contra 616 |
 
 ---
 
@@ -496,3 +633,9 @@ Siguen la numeración: 1 a 6 del 08, 7 a 13 del 06, 14 a 21 del 07.
     como argumento de línea de comandos.
 29. Ninguna ruta de `linear.py` compara `updatedAt` para decidir si escribir.
     `updatedAt` puede pedirse y loguearse, nunca ramificar.
+30. Ninguna query de `map:read` ni de `map:write` pide `contentState`. Grep de
+    `contentState` en `linear.py`: cero coincidencias. Es un detector de cambio
+    perfecto y aun así no entra, por payload y por no decir qué sección cambió.
+31. `map:write` no tiene ningún paso de verificación posterior a la escritura, ni
+    expuesto como flag ni interno. No existe `--verify` ni equivalente, y ninguna
+    ruta duerme entre el `documentUpdate` y el retorno.
