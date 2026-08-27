@@ -24,14 +24,14 @@ adapter. Los nombres de archivo siguen la regla general y van en inglés.
 
 | Canónico | En prosa | Qué es |
 | --- | --- | --- |
-| Map | Mapa | El DD vivo. Un Document de Linear titulado `DD: <proyecto>`, dentro del Project. Es un índice: lista las decisiones tomadas y apunta a los tickets que guardan el detalle, nunca lo repite. |
+| Map | Mapa | El DD vivo. Un Document de Linear titulado `DD: <proyecto>`, dentro del Project. Es un índice: **una línea por decisión**, con el enlace al ticket que guarda el detalle y un gist de **120 caracteres o menos**. Nunca repite el detalle. |
 | Destination | Destino | Qué significa llegar. Se fija antes que nada y fija el alcance. |
 | Decision ticket | Ticket de decisión | Issue del Project con label `map`. Su cuerpo es una pregunta, no una tarea, y su título es esa pregunta en prosa, sin prefijo numérico. |
 | Frontier | Frontera | Los tickets abiertos, sin bloqueantes abiertos y sin assignee. Lo tomable ahora. |
 | Fog of war | Niebla | La sección "Aún no especificado" del mapa. Lo que se ve venir pero todavía no se puede formular con precisión. El test es si podés enunciar la pregunta, no si podés responderla. |
 | Out of scope | Fuera de alcance | Trabajo que quedó más allá del destino. No es niebla y nunca gradúa. |
 | Claim | Toma | El assignee del ticket. Es el primer write de la sesión, antes de cualquier trabajo. |
-| Resolution | Resolución | Comentario con la respuesta en secciones fijas, estado Done, y una línea en Decisiones hasta ahora. Va como comentario y nunca en el cuerpo del ticket, para que la pregunta quede inmutable. |
+| Resolution | Resolución | Comentario con la respuesta en **seis secciones fijas**, estado Done, y una línea en Decisiones hasta ahora. La sexta es Lo que se cayó, donde vive la premisa que el ticket derribó al resolverse. Va como comentario y nunca en el cuerpo del ticket, para que la pregunta quede inmutable. |
 | Collapse | Colapso | El paso del mapa a milestones e issues de ejecución. Un milestone es una decisión ya tomada, así que nace acá y nunca durante el mapeo. Es un evento único: corre con la frontera vacía, y una segunda corrida se niega. |
 
 ## Tipos de ticket

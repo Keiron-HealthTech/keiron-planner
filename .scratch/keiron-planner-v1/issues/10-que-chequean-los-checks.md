@@ -1,16 +1,17 @@
 # 10: Qué chequean los checks estructurales
 
 **Tipo:** `map:grilling` · **Modo:** HITL (`hitl:dev`)
-**Bloqueado por:** nada. Tomable ahora. (El 06, el 07, el 09, el 13 y el 14 se
-resolvieron el 2026-08-27 y entre los cinco le dejaron **cuarenta y una**
-afirmaciones chequeables, numeradas de la 1 a la 41 y repartidas por los research:
+**Bloqueado por:** nada. Tomable ahora. (El 04, el 06, el 07, el 09, el 13 y el 14
+se resolvieron el 2026-08-27 y entre los seis le dejaron **cuarenta y seis**
+afirmaciones chequeables, numeradas de la 1 a la 46 y repartidas por los research:
 1 a 6 del [08](08-los-dos-modos-keironizados.md), 7 a 13 del
 [06](06-que-hace-map-collapse.md), 14 a 21 del
 [07](07-distribucion-e-instalacion.md), 22 a 31 del
 [09](09-concurrencia-humano-plugin.md) y del
-[13](13-pestana-abierta-pisa-al-plugin.md), y 32 a 41 del
-[14](14-preflight-por-invocacion.md). Dos están reemplazadas y no se cuentan dos
-veces: la 10 por la 22, y la 22 por la 32.)
+[13](13-pestana-abierta-pisa-al-plugin.md), 32 a 41 del
+[14](14-preflight-por-invocacion.md), y 42 a 46 del
+[04](04-prototipo-mapa-en-linear.md). Tres están reemplazadas y no se cuentan dos
+veces: la 10 por la 22, la 22 por la 32, y la 9 por la 43.)
 **Origen:** graduado desde la niebla al resolver el [08](08-los-dos-modos-keironizados.md).
 
 ## Pregunta
@@ -42,7 +43,9 @@ Seis afirmaciones chequeables, en
    que existe.
 3. `map-status.md` dice `ROUTE: read-only` y no existe `skills/map-status/`.
 4. `map-templates.md` tiene los cinco encabezados del DD y las cinco secciones
-   del comentario, con texto exacto.
+   del comentario, con texto exacto. (Reemplazada dos veces: el 06 la llevó a seis
+   encabezados y le sumó las tres secciones de la issue de ejecución, y el 04 llevó
+   el comentario a **seis** secciones. Ver la afirmación 43.)
 5. `scripts/linear.py` tiene un subcomando por cada una de las ocho operaciones
    nombradas en `LINEAR-OPERATIONS.md`, y ninguno de más. (Reemplazada dos veces:
    el 09 la llevó a once y el 14 a **doce**, con `preflight` adentro. Ver la
@@ -59,8 +62,8 @@ Seis afirmaciones chequeables, en
 - Si los checks corren en CI, en un hook, o a mano.
 - Qué agrega el 06 al árbol cuando escriba `/map-collapse`, y qué agrega el 07
   con la instalación. (Contestada: los dos se resolvieron el 2026-08-27, y también
-  el 09, el 13 y el 14. Lo que queda es ordenar sus cuarenta y una afirmaciones,
-  no descubrirlas.)
+  el 04, el 09, el 13 y el 14. Lo que queda es ordenar sus cuarenta y seis
+  afirmaciones, no descubrirlas.)
 - Si un check que falla rompe el build o solo avisa.
 
 ## Hecho cuando
