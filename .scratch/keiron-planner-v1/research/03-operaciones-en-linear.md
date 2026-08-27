@@ -25,6 +25,12 @@ en el flujo y no están en el doc, así que el agente las improvisa cada vez.
   Nombrar solo la mitad que escribe deja la que lee sin dueño, y el ticket 09
   necesita exactamente ese punto para colgar su captura de `updatedAt`.
 
+> **Enmienda del ticket 06.** Son **diez**. El colapso agregó `milestone:create` e
+> `issue:create`, que crean los cortes demoables y las issues de ejecución. No son
+> variantes de `ticket:create`: una issue de ejecución no lleva label `map`, su
+> cuerpo no es una pregunta y nace con `projectMilestoneId`. Ver
+> [`06-el-colapso.md`](06-el-colapso.md), "Las dos operaciones nuevas".
+
 ## El cliente
 
 **GraphQL crudo contra `https://api.linear.app/graphql`, para las ocho.** Header
@@ -68,6 +74,9 @@ Con eso resuelve:
   `Done` y `Canceled`.
 - **Los ocho ids de label**, y **crea los que falten**, idempotente: busca por
   nombre exacto y crea solo lo que no existe. Nunca renombra ni borra.
+- **`Team.defaultIssueState`**, agregado por el ticket 06, porque toda creación
+  tiene que pasar `stateId` explícito o el issue cae en Triage. Y el id del label
+  `Discovery` si existe en el workspace, que se busca y **no** se crea.
 
 Si algo no se resuelve, **falla fuerte y con mensaje accionable**. No hay
 fallbacks: ver "Por qué no hay fallbacks".
@@ -128,6 +137,8 @@ adapter. La prosa las llama por su nombre en español.
 | `ticket:claim` | Tomar | 1 |
 | `ticket:resolve` | Resolver | 5, ver la enmienda del 08 |
 | `ticket:rule-out` | Sacar de alcance | 5, ver la enmienda del 08 |
+| `milestone:create` | Crear un milestone | 1, ver la enmienda del 06 |
+| `issue:create` | Crear una issue de ejecución | 1 atómica para todas, ver la enmienda del 06 |
 
 
 ### 1. Crear el mapa · `map:create`
@@ -207,9 +218,26 @@ mutation($input: IssueCreateInput!) {
 }
 ```
 
-`input: { teamId, projectId, title, description, labelIds: [...] }`. Sin
-`stateId`: el issue cae en el estado por defecto del team, que en CRM es
-`Backlog`.
+`input: { teamId, projectId, title, description, labelIds: [...], stateId, estimate: 0 }`.
+
+> **Enmienda del ticket 06, y es una corrección de un hecho falso.** Este documento
+> decía: "Sin `stateId`: el issue cae en el estado por defecto del team, que en CRM
+> es `Backlog`". **Es falso, y está medido.** Con `triageEnabled: true`, que es como
+> está el team CRM, Linear cuenta a la Personal API key como integración y manda al
+> inbox de **Triage** todo lo que cree. `Team.defaultIssueState` dice `Backlog` y no
+> se aplica. Dos issues creadas en el mismo batch, una sin `stateId` y otra con él,
+> cayeron en `Triage` y en `Backlog` respectivamente. Nunca se había visto porque
+> ninguna issue del sandbox se creó por API: se hicieron a mano en la UI, y ni
+> `probe.py` ni `frontier.py` llaman a `issueCreate`. **Toda creación pasa `stateId`
+> explícito**, resuelto por el preflight.
+>
+> Y dos cosas más del 06. `estimate: 0` en todo ticket de decisión, porque con
+> `defaultIssueEstimate: 1` un ticket sin estimar infla el scope del Project en un
+> punto y mueve su barra de progreso: un ticket de decisión no es entrega y no puede
+> pesar en la vara con la que se mide la entrega. Y el label **`Discovery`** además
+> de `map`, cuando existe en el workspace, para que los tickets de decisión caigan
+> en el cajón que el equipo ya usa. Ver [`06-el-colapso.md`](06-el-colapso.md), "Lo
+> que el mapa le hace al sprint review".
 
 **El cuerpo del ticket es la pregunta y nada más.** El tipo es un label, el modo
 es un label, el bloqueo es una relación y la toma es el assignee. Todo eso vive

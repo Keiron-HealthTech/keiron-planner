@@ -32,7 +32,7 @@ adapter. Los nombres de archivo siguen la regla general y van en inglés.
 | Out of scope | Fuera de alcance | Trabajo que quedó más allá del destino. No es niebla y nunca gradúa. |
 | Claim | Toma | El assignee del ticket. Es el primer write de la sesión, antes de cualquier trabajo. |
 | Resolution | Resolución | Comentario con la respuesta en secciones fijas, estado Done, y una línea en Decisiones hasta ahora. Va como comentario y nunca en el cuerpo del ticket, para que la pregunta quede inmutable. |
-| Collapse | Colapso | El paso del mapa a milestones e issues de ejecución. Un milestone es una decisión ya tomada, así que nace acá y nunca durante el mapeo. |
+| Collapse | Colapso | El paso del mapa a milestones e issues de ejecución. Un milestone es una decisión ya tomada, así que nace acá y nunca durante el mapeo. Es un evento único: corre con la frontera vacía, y una segunda corrida se niega. |
 
 ## Tipos de ticket
 
@@ -56,7 +56,9 @@ Un ticket sin ninguno de esos labels es AFK, y esa ausencia es la señal.
 - **Discovery**: el label de issue que el equipo usa para marcar trabajo de
   discovery. **No** es lo que identifica al DD: un Document de Linear no acepta
   labels, así que al mapa lo identifica el Project y el Document se encuentra a
-  través de él. El plugin no lee ni escribe este label.
+  través de él. El plugin **lo escribe en todo ticket de decisión**, junto con
+  `map`, cuando el label existe en el workspace, y lo saltea en silencio cuando no.
+  Nunca lo crea. Las issues de ejecución no lo llevan: no son discovery.
 - **Milestone**: un corte demoable que agrupa tracer bullets, nunca un corte
   temporal. El primero es siempre el tracer bullet del proyecto.
 - **Tracer bullet**: una rebanada vertical que cruza todas las capas, demostrable
@@ -82,12 +84,14 @@ Un ticket sin ninguno de esos labels es AFK, y esa ausencia es la señal.
 | `/map-status` | Lee el mapa y la frontera. No escribe. |
 
 Cada comando cierra con un **next recommended**: un token de un conjunto cerrado
-que dice qué correr después. Es la costura entre comandos y lo único del flujo que
-se puede verificar mecánicamente.
+de seis que dice qué correr después. Es la costura entre comandos y lo único del
+flujo que se puede verificar mecánicamente. El sexto, `sdd-new`, es además la
+costura con el plugin hermano: se emite cuando el mapa está colapsado y el trabajo
+pasa a SDD.
 
 ## Las operaciones del tracker
 
-Lo que el adapter sabe hacer. Son ocho, y los comandos se arman con ellas. El
+Lo que el adapter sabe hacer. Son diez, y los comandos se arman con ellas. El
 término canónico es el que aparece en el código.
 
 | Canónico | En prosa | Qué es |
@@ -101,11 +105,17 @@ término canónico es el que aparece en el código.
 | `ticket:claim` | Tomar | El primer write de la sesión. No se libera sola. |
 | `ticket:resolve` | Resolver | Los tickets nuevos, su cableado, el comentario, el estado y el mapa, en ese orden. El mapa siempre último. |
 | `ticket:rule-out` | Sacar de alcance | La única operación destructiva: cierra un ticket sin resolverlo. Su línea va a Fuera de alcance, nunca a Decisiones. |
+| `milestone:create` | Crear un milestone | Un corte demoable del colapso. Nunca lleva fecha. |
+| `issue:create` | Crear una issue de ejecución | Todas las del colapso en una sola llamada atómica. No lleva label `map` y su cuerpo es un imperativo, no una pregunta. |
 
 ## Dependencias
 
 `keiron-planner` declara `spec-driven-dev` como peer dependency. La dirección es
 la misma de siempre: SDD construye, el planner planifica.
+
+**El traspaso ocurre en `/sdd-new`**, no más tarde. El colapso termina en issues de
+Linear y no escribe archivos en el árbol de artefactos de SDD; SDD lee la issue de
+Linear y corre su propio discovery loop desde ahí.
 
 La propiedad de las disciplinas compartidas sigue a la necesidad, no al orden en
 que se pensaron. Grilling, domain-modeling y prototype viven **en este plugin**,

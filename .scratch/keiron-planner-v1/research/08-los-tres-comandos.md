@@ -155,6 +155,15 @@ Projects todo el tiempo, buscar el mapa por cuenta propia elige mal en silencio.
 3. **El veredicto, antes de elegir nada.** Sin tickets abiertos, para y emite
    `map-collapse`. Con tickets abiertos y frontera vacía, para, reporta el mapa
    trabado y emite `break-cycle`. No toma nada en ninguno de los dos casos.
+
+   > **Enmienda del ticket 06.** Los veredictos son **cuatro**. "Sin tickets
+   > abiertos" se parte según haya milestones o no: sin milestones emite
+   > `map-collapse` como dice arriba, con al menos uno el mapa ya está
+   > **colapsado** y emite `sdd-new`. Sin esto, `/map-work` manda a colapsar un
+   > mapa ya colapsado para siempre, y `/map-collapse` lo rebota por ser la
+   > segunda corrida. Cuesta agregar `projectMilestones` a la query del paso 2,
+   > que sigue siendo un round-trip. Con al menos un ticket abierto, `/map-work`
+   > trabaja normal y no mira milestones.
 4. **Elegir el ticket.** El que nombró el argumento, o el primero de la frontera
    en `createdAt` ascendente.
 5. **El chequeo de rol, antes de tomar.** Si el label no es `hitl:dev`, el comando
@@ -266,7 +275,9 @@ contra el techo de 10.000 por query sigue siendo 61%.
 Seis bloques:
 
 1. **Destino**, la línea del mapa.
-2. **Veredicto**: trabado, listo para colapsar, o en curso con sus cuentas.
+2. **Veredicto**: trabado, listo para colapsar, colapsado, o en curso con sus
+   cuentas. El cuarto lo agregó el ticket 06 y se detecta con `projectMilestones`
+   en la misma query.
 3. **Frontera**, por nombre, en `createdAt` ascendente.
 4. **Tomados**, con su antigüedad. Una toma huérfana no se libera sola a
    propósito, así que esta es la única forma de que se vea.
@@ -295,11 +306,21 @@ cuando se cumple la precondición.
 **El casillero**: `commands/map-collapse.md` y `skills/map-collapse/SKILL.md`
 existen en el árbol. El contenido es del ticket 06.
 
+> **Enmienda del ticket 06, que cerró.** El casillero dejó de estar vacío: el
+> procedimiento está en [`06-el-colapso.md`](06-el-colapso.md). Dos cosas de esta
+> sección cambiaron. La precondición se afinó a **cero tickets abiertos y cero
+> milestones**, porque un mapa colapsado también tiene cero tickets abiertos. Y el
+> token que emite `/map-collapse` al terminar no estaba fijado acá: es `sdd-new`,
+> el sexto. El colapso además agregó dos operaciones al adapter,
+> `milestone:create` e `issue:create`, así que la tabla de reparto de arriba es de
+> ocho sobre cuatro comandos y la completa es de diez.
+
 ## El contrato compartido
 
 `skills/_shared/map-contract.md`, en inglés porque su único lector es el modelo.
 
-**Los cinco tokens** de `next_recommended`, conjunto cerrado:
+**Los tokens** de `next_recommended`, conjunto cerrado. Eran cinco; el ticket
+06 agregó el sexto:
 
 | Token | Cuándo |
 | --- | --- |
@@ -308,8 +329,9 @@ existen en el árbol. El contenido es del ticket 06.
 | `map-collapse` | Cero tickets abiertos. |
 | `release-claim` | Hay una toma vieja y la frontera está flaca. |
 | `break-cycle` | Hay tickets abiertos y la frontera está vacía. |
+| `sdd-new` | El mapa está colapsado. Agregado por el ticket 06. |
 
-Los cinco en inglés y no en español, aplicando la regla de idioma: el término
+Todos en inglés y no en español, aplicando la regla de idioma: el término
 canónico es el inglés y es el que aparece en slugs. En las rondas de grilling
 salieron como `desbloquear-toma` y `destrabar-ciclo`, antes de que la regla por
 archivo estuviera decidida.
@@ -326,7 +348,8 @@ pudre.
 
 ### El esqueleto del DD
 
-Cinco encabezados de nivel 2, con **texto exacto**, y son contrato:
+Seis encabezados de nivel 2, con **texto exacto**, y son contrato. Eran cinco; el
+sexto lo agregó el ticket 06:
 
 ```markdown
 ## Destino
@@ -334,7 +357,14 @@ Cinco encabezados de nivel 2, con **texto exacto**, y son contrato:
 ## Decisiones hasta ahora
 ## Aún no especificado
 ## Fuera de alcance
+## El colapso
 ```
+
+`## El colapso` lo crea **vacío `/map-new`**, así que ningún DD nace sin él y la
+falla fuerte de abajo sigue valiendo. Lo llena `/map-collapse` una sola vez, con
+los milestones creados por nombre y enlace. No va en Decisiones por el mismo
+argumento con el que `Fuera de alcance` quedó afuera: Decisiones registra la ruta
+caminada, y un colapso no es un paso de esa ruta.
 
 El plugin ancla por esos títulos, nunca por posición ni por índice de línea, y si
 falta alguno **falla fuerte** en vez de escribir en el lugar equivocado. La
@@ -493,6 +523,13 @@ Lo que este ticket deja listo para que el 10 no lo re-derive.
 5. `scripts/linear.py` tiene un subcomando por cada una de las ocho operaciones
    nombradas en `LINEAR-OPERATIONS.md`, y ninguno de más.
 6. Los archivos de la columna inglés no tienen prosa en español, y al revés.
+
+> **Enmienda del ticket 06.** Tres de estas seis quedaron desactualizadas y el 06
+> las corrige, con las suyas numeradas de la 7 a la 13 en
+> [`06-el-colapso.md`](06-el-colapso.md). La 1 pasa a **seis** tokens. La 2 pasa a
+> **cuatro** archivos que rutean a una skill, porque `map-collapse.md` dejó de ser
+> un casillero. La 4 pasa a **seis** encabezados del DD, y le suma las tres
+> secciones del cuerpo de la issue de ejecución. La 5 pasa a **diez** subcomandos.
 
 Y una que **no** es estructural sobre el repo, así que el 10 tiene que decidir qué
 hacer con ella: que ningún ticket de un mapa lleve dos labels `map:<tipo>`. Es lo

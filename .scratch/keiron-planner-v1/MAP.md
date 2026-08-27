@@ -34,7 +34,9 @@ tipo del ticket diga otra cosa.
   de SDD, porque acá se necesitan hoy y allá todavía no existen.
 - El adapter soporta Linear y nada más.
 - `/map-collapse` llega hasta issues de Linear con sus milestones. SDD entra
-  recién en `/sdd-apply`.
+  recién en `/sdd-new`. (Decía `/sdd-apply`. Lo corrigió el ticket 06: para entrar
+  en `/sdd-apply` tendrían que existir ya los artefactos de planificación de SDD, y
+  un colapso que solo escribe Linear no los escribe.)
 - El mapa asume un solo conductor, el dev leader. El claim se implementa igual
   porque cuesta una línea.
 - La verificación son checks estructurales sobre el repo, al estilo de los
@@ -44,6 +46,17 @@ tipo del ticket diga otra cosa.
 
 <!-- una línea por ticket cerrado, con enlace al ticket que guarda el detalle -->
 
+- [06: Qué hace exactamente `/map-collapse`](issues/06-que-hace-map-collapse.md):
+  el colapso es HITL y es un evento único. Una sesión con dos pasadas, primero los
+  cortes y después las issues adentro de cada uno, con el agente proponiendo y la
+  persona aprobando; el tracer bullet no se deriva del mapa, se grillea. Escribe N+2
+  veces, porque `issueBatchCreate` es atómico, y eso también decide la recuperación:
+  la única falla posible es milestones sin issues, y ahí ofrece retomar. Los
+  veredictos pasan de tres a cuatro para que un mapa colapsado no se mande a colapsar
+  para siempre, el adapter pasa de ocho operaciones a diez, y los tokens de cinco a
+  seis. Y midió lo que el mapa le hace al sprint review: los tickets de decisión van
+  con `estimate: 0` y entran al ciclo igual, a propósito. De paso encontró que todo
+  lo que el plugin cree por API cae en Triage.
 - [05: Cómo se adaptan grilling, domain-modeling y prototype al vivir acá](issues/05-adaptar-las-tres-disciplinas.md):
   el glosario del dominio vive en un repo central del CRM y el plugin no lo crea;
   el multi-rol sale de grilling como ticket HITL en vez de entrar como feature;
@@ -104,7 +117,10 @@ La niebla: se ve venir, pero todavía no se puede formular con precisión.
   team.** Hoy `keiron` tiene uno solo, CRM, así que el `teamId` es derivable y el
   problema no se ve. Cuando aparezca un segundo team deja de serlo, y un mapa que
   cruza dos no tiene dónde poner sus tickets sin que alguien elija. Salió al
-  resolver el 03, que lo dejó anotado como supuesto explícito.
+  resolver el 03, que lo dejó anotado como supuesto explícito. El 06 lo agrandó sin
+  poder formularlo mejor: ahora también las issues de ejecución del colapso
+  necesitan un `teamId`, y un milestone que cruza dos teams es más común que un
+  ticket de decisión que los cruce.
 
 ## Fuera de alcance
 
