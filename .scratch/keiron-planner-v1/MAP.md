@@ -72,15 +72,22 @@ tipo del ticket diga otra cosa.
   CRM tiene `Blocked` tipado `canceled` y en uso; es el par de ids que el plugin
   escribe. Y los labels van planos y workspace-level, lo que disuelve la niebla
   sobre cómo llega el label `map` a un team.
+- [08: Qué cambia de los dos modos de wayfinder al keironizarlos](issues/08-los-dos-modos-keironizados.md):
+  ocho cosas cambian. Tres son adaptaciones forzadas, y la más pesada es que no hay
+  rama descartable de research: con once repos obliga a elegir uno, así que los
+  hallazgos van a un Document hermano del DD. Dos son endurecimientos, y los dos
+  cierran fallas que el propio doc de wayfinder reporta: las Notas dejan de poder
+  anular el "plan, don't do", y en un ticket de prototipo el agente nunca elige.
+  Tres son nuestras: se saca el corte de "sin niebla no hace falta mapa", porque acá
+  el DD lo tiene todo proyecto igual; el multi-rol sale como ticket HITL creado al
+  resolver; y existe `/map-status`, que en wayfinder no existe. Las ocho operaciones
+  quedaron repartidas, el adapter es un script y no el modelo componiendo GraphQL, y
+  el árbol de archivos del plugin quedó fijado.
 
 ## Aún no especificado
 
 La niebla: se ve venir, pero todavía no se puede formular con precisión.
 
-- **La forma exacta de los checks estructurales.** Sabemos que van, no qué
-  chequean. Depende de que exista la estructura del plugin.
-- **Proyectos del CRM que ya arrancaron sin mapa.** Si se les puede poner uno
-  encima a mitad de camino, y qué pasa con lo ya decidido.
 - **La migración inversa hacia SDD**: cómo importa SDD las disciplinas una vez
   que este plugin las tenga estables.
 - **Cómo sabemos que el mapa planifica mejor que SDD.** Hoy no tenemos con qué
@@ -89,9 +96,10 @@ La niebla: se ve venir, pero todavía no se puede formular con precisión.
 - **Un espejo del glosario en Linear, para PM y Diseño.** El repo central los
   deja afuera, y son justamente quienes más pelean con la ambigüedad de los
   términos. Se ve el problema, no la forma.
-- **Qué pasa con un ticket HITL de un rol que no entra a Linear.** El multi-rol
-  ahora produce tickets para PM y Diseño; si esas personas no los miran, el mapa
-  se traba sin que nadie lo note.
+- **Cómo se le avisa a un rol que no entra a Linear.** El multi-rol produce
+  tickets para PM y Diseño. El 08 le sacó la mitad invisible: `/map-status` los
+  muestra en la frontera con su antigüedad, así que un mapa trabado por esto ya se
+  ve. Lo que sigue difuso es cómo llega el aviso a esa persona.
 - **De quién son los tickets de un mapa cuando el workspace tiene más de un
   team.** Hoy `keiron` tiene uno solo, CRM, así que el `teamId` es derivable y el
   problema no se ve. Cuando aparezca un segundo team deja de serlo, y un mapa que

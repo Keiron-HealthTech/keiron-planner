@@ -39,8 +39,8 @@ que el ticket 09 necesita poder tocar.
 
 ## El preflight
 
-Corre una vez por sesión, antes de cualquier operación. Resuelve todo lo que las
-operaciones necesitan y **no guarda nada**: la fuente de verdad es Linear, no un
+Corre una vez por **proceso que emite operaciones**, antes de cualquiera de ellas.
+Resuelve todo lo que las operaciones necesitan y **no guarda nada**: la fuente de verdad es Linear, no un
 archivo de config. Un caché acá compra milisegundos y paga con un modo de fallo
 que solo aparece cuando alguien tocó el workflow del team.
 
@@ -71,6 +71,13 @@ Con eso resuelve:
 
 Si algo no se resuelve, **falla fuerte y con mensaje accionable**. No hay
 fallbacks: ver "Por qué no hay fallbacks".
+
+> **Enmienda del ticket 08.** Este documento decía "una vez por sesión". Con los
+> subagentes de research corriendo en paralelo, sesión y proceso dejan de ser lo
+> mismo: **cada subagente corre su propio preflight**. Pasarle los ids resueltos
+> por parámetro es acoplamiento a cambio de nada, y contradice la razón por la que
+> acá se decidió no cachear. Cuesta 423 de complejidad por subagente contra un
+> presupuesto por hora que el 02 midió como irrelevante.
 
 ### Los ocho labels
 
@@ -119,8 +126,8 @@ adapter. La prosa las llama por su nombre en español.
 | `ticket:block` | Bloquear | 1 |
 | `frontier:query` | Consultar la frontera | 0 |
 | `ticket:claim` | Tomar | 1 |
-| `ticket:resolve` | Resolver | 3 |
-| `ticket:rule-out` | Sacar de alcance | 3 |
+| `ticket:resolve` | Resolver | 5, ver la enmienda del 08 |
+| `ticket:rule-out` | Sacar de alcance | 5, ver la enmienda del 08 |
 
 
 ### 1. Crear el mapa · `map:create`
@@ -147,6 +154,13 @@ marcados `[Internal]`.
 
 **Falla si el Project ya tiene un Document de mapa.** Es el chequeo previo que
 vuelve idempotente a la operación.
+
+> **Enmienda del ticket 08.** Esta operación tiene una **variante que usa solo su
+> segunda mitad**: el Document de research de un ticket `map:research`, que es el
+> mismo `documentCreate` con título `RESEARCH: <título del ticket>` colgado del
+> mismo `projectId`. No crea Project y no es una novena operación, porque no toca
+> el read-modify-write del mapa ni su semántica. Reemplaza a la rama descartable
+> `research/<nombre>` de wayfinder, que con once repos obliga a elegir uno.
 
 **El mapa no lleva ningún label marcador.** `DocumentCreateInput` no tiene
 `labelIds`: un Document de Linear no acepta labels. El label `Discovery` que
@@ -283,6 +297,20 @@ a ser una línea que se lee.
 
 ### 7. Resolver · `ticket:resolve`
 
+> **Enmienda del ticket 08.** Son **cinco** escrituras, no tres. Antes del
+> comentario van `ticket:create` y `ticket:block` de los tickets que la resolución
+> haya generado, porque la sección "Tickets nuevos" del comentario los enlaza por
+> nombre y tienen que existir para poder referenciarse. Un ticket creado y una
+> sesión que muere antes del comentario deja un ticket huérfano visible en la
+> frontera, que es un fallo barato; el orden inverso deja un comentario con
+> enlaces rotos. El orden completo es: tickets nuevos, cableado, comentario,
+> estado, mapa.
+>
+> Y cuando la resolución la conduce un subagente de research, esta operación es la
+> **única que se parte entre procesos**: el subagente escribe el comentario y el
+> estado, y el mapa lo escribe el padre, una vez, con las líneas de todos los
+> subagentes juntas.
+
 Tres escrituras, **en este orden**: comentario, estado, mapa.
 
 ```graphql
@@ -307,9 +335,10 @@ ticket en Done sin respuesta, que es un agujero que nadie ve.
 La única operación destructiva: cierra un ticket **sin** resolverlo, porque
 resultó estar más allá del destino.
 
-Mismas tres escrituras que resolver, mismo orden, dos diferencias: el `stateId`
-es el `canceled` que fijó el preflight, y la línea va a la sección **Fuera de
-alcance** del mapa, nunca a Decisiones. Decisiones registra el camino que se
+Mismas escrituras que resolver, mismo orden, dos diferencias: el `stateId` es el
+`canceled` que fijó el preflight, y la línea va a la sección **Fuera de alcance**
+del mapa, nunca a Decisiones. Sus dos primeras escrituras, los tickets nuevos y su
+cableado, casi siempre están vacías. Decisiones registra el camino que se
 caminó, y un límite de alcance no es un paso de ese camino.
 
 ## El predicado de frontera, completo
@@ -445,7 +474,9 @@ nadie se entere.
 - **Cómo se hace segura la escritura del mapa** frente a una edición humana
   concurrente. Es el ticket 09. Acá queda nombrado el punto de enganche.
 - **Dónde vive el script del adapter y cómo llega la key.** Es el ticket 07.
-- **Qué comando invoca cada operación y en qué orden.** Es el ticket 08.
+- ~~**Qué comando invoca cada operación y en qué orden.** Es el ticket 08.~~
+  Resuelto: el reparto está en
+  [`08-los-tres-comandos.md`](08-los-tres-comandos.md).
 
 ## Cómo se verificó
 

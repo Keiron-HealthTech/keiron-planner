@@ -13,18 +13,25 @@ backfill, kill-switch.
 
 Sin guiones largos en la prosa. Si una frase los pide, se reescribe.
 
+Dentro del plugin la regla es **por lector, no por tipo de archivo**. Lo que solo
+lee el modelo va en inglés: los comandos, las skills y los contratos compartidos.
+Lo que lee una persona en Linear va en español: el mapa, los tickets, los
+comentarios de resolución y las plantillas que los generan. El reference de las
+operaciones del tracker va en español, porque su lector es quien mantiene el
+adapter. Los nombres de archivo siguen la regla general y van en inglés.
+
 ## El mapa
 
 | Canónico | En prosa | Qué es |
 | --- | --- | --- |
 | Map | Mapa | El DD vivo. Un Document de Linear titulado `DD: <proyecto>`, dentro del Project. Es un índice: lista las decisiones tomadas y apunta a los tickets que guardan el detalle, nunca lo repite. |
 | Destination | Destino | Qué significa llegar. Se fija antes que nada y fija el alcance. |
-| Decision ticket | Ticket de decisión | Issue del Project con label `map`. Su cuerpo es una pregunta, no una tarea. |
+| Decision ticket | Ticket de decisión | Issue del Project con label `map`. Su cuerpo es una pregunta, no una tarea, y su título es esa pregunta en prosa, sin prefijo numérico. |
 | Frontier | Frontera | Los tickets abiertos, sin bloqueantes abiertos y sin assignee. Lo tomable ahora. |
 | Fog of war | Niebla | La sección "Aún no especificado" del mapa. Lo que se ve venir pero todavía no se puede formular con precisión. El test es si podés enunciar la pregunta, no si podés responderla. |
 | Out of scope | Fuera de alcance | Trabajo que quedó más allá del destino. No es niebla y nunca gradúa. |
 | Claim | Toma | El assignee del ticket. Es el primer write de la sesión, antes de cualquier trabajo. |
-| Resolution | Resolución | Comentario con la respuesta, estado Done, y una línea en Decisiones hasta ahora. |
+| Resolution | Resolución | Comentario con la respuesta en secciones fijas, estado Done, y una línea en Decisiones hasta ahora. Va como comentario y nunca en el cuerpo del ticket, para que la pregunta quede inmutable. |
 | Collapse | Colapso | El paso del mapa a milestones e issues de ejecución. Un milestone es una decisión ya tomada, así que nace acá y nunca durante el mapeo. |
 
 ## Tipos de ticket
@@ -46,7 +53,10 @@ Un ticket sin ninguno de esos labels es AFK, y esa ausencia es la señal.
 ## Terminos de Keiron que se conservan
 
 - **DD**: el documento de discovery de un proyecto. El mapa es su versión viva.
-- **Discovery**: el label que marca el DD de un proyecto. Sigue significando eso.
+- **Discovery**: el label de issue que el equipo usa para marcar trabajo de
+  discovery. **No** es lo que identifica al DD: un Document de Linear no acepta
+  labels, así que al mapa lo identifica el Project y el Document se encuentra a
+  través de él. El plugin no lee ni escribe este label.
 - **Milestone**: un corte demoable que agrupa tracer bullets, nunca un corte
   temporal. El primero es siempre el tracer bullet del proyecto.
 - **Tracer bullet**: una rebanada vertical que cruza todas las capas, demostrable
@@ -71,6 +81,10 @@ Un ticket sin ninguno de esos labels es AFK, y esa ausencia es la señal.
 | `/map-collapse` | Colapsa el mapa en milestones e issues de ejecucion. |
 | `/map-status` | Lee el mapa y la frontera. No escribe. |
 
+Cada comando cierra con un **next recommended**: un token de un conjunto cerrado
+que dice qué correr después. Es la costura entre comandos y lo único del flujo que
+se puede verificar mecánicamente.
+
 ## Las operaciones del tracker
 
 Lo que el adapter sabe hacer. Son ocho, y los comandos se arman con ellas. El
@@ -78,14 +92,14 @@ término canónico es el que aparece en el código.
 
 | Canónico | En prosa | Qué es |
 | --- | --- | --- |
-| Preflight | El preflight | El chequeo que corre una vez por sesión, antes de cualquier operación. Resuelve lo que las operaciones necesitan y falla temprano y claro si algo no está. No guarda nada: la fuente de verdad es el tracker. |
+| Preflight | El preflight | El chequeo que corre una vez por proceso que emite operaciones, antes de cualquiera de ellas. Un subagente corre el suyo. Resuelve lo que las operaciones necesitan y falla temprano y claro si algo no está. No guarda nada: la fuente de verdad es el tracker. |
 | `map:create` | Crear el mapa | Adopta el Project si le pasan uno, lo crea si no, y le cuelga el Document del mapa. |
 | `map:read-write` | Leer y actualizar el mapa | Las dos mitades de un read-modify-write, nombradas juntas porque son la misma operación. |
 | `ticket:create` | Crear un ticket | Un issue del Project cuyo cuerpo es la pregunta y nada más. El tipo, el modo, el bloqueo y la toma viven en campos nativos del tracker. |
 | `ticket:block` | Bloquear | La relación nativa de bloqueo. Se escribe en una segunda pasada, porque los tickets tienen que existir para poder referenciarse. |
 | `frontier:query` | Consultar la frontera | La única operación que no escribe. |
 | `ticket:claim` | Tomar | El primer write de la sesión. No se libera sola. |
-| `ticket:resolve` | Resolver | Comentario, estado, mapa, en ese orden. |
+| `ticket:resolve` | Resolver | Los tickets nuevos, su cableado, el comentario, el estado y el mapa, en ese orden. El mapa siempre último. |
 | `ticket:rule-out` | Sacar de alcance | La única operación destructiva: cierra un ticket sin resolverlo. Su línea va a Fuera de alcance, nunca a Decisiones. |
 
 ## Dependencias
