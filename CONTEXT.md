@@ -92,17 +92,19 @@ pasa a SDD.
 
 ## Las operaciones del tracker
 
-Lo que el adapter sabe hacer. Son diez, y los comandos se arman con ellas. El
-término canónico es el que aparece en el código.
+Lo que el adapter sabe hacer. Son once, y los comandos se arman con ellas. El
+término canónico es el que aparece en el código. Dos no escriben: `frontier:query`
+y `map:read`.
 
 | Canónico | En prosa | Qué es |
 | --- | --- | --- |
 | Preflight | El preflight | El chequeo que corre una vez por proceso que emite operaciones, antes de cualquiera de ellas. Un subagente corre el suyo. Resuelve lo que las operaciones necesitan y falla temprano y claro si algo no está. No guarda nada: la fuente de verdad es el tracker. |
 | `map:create` | Crear el mapa | Adopta el Project si le pasan uno, lo crea si no, y le cuelga el Document del mapa. |
-| `map:read-write` | Leer y actualizar el mapa | Las dos mitades de un read-modify-write, nombradas juntas porque son la misma operación. |
+| `map:read` | Leer el mapa | Solo lectura. Devuelve el contenido y una huella por cada encabezado. La usan `/map-status` y el paso que le muestra el estado a la persona. |
+| `map:write` | Escribir el mapa | Un read-modify-write entero adentro de una sola invocación. Recibe la edición como argumentos semánticos, nunca markdown: relee justo antes de escribir para que la ventana sean milisegundos y no la sesión. |
 | `ticket:create` | Crear un ticket | Un issue del Project cuyo cuerpo es la pregunta y nada más. El tipo, el modo, el bloqueo y la toma viven en campos nativos del tracker. |
 | `ticket:block` | Bloquear | La relación nativa de bloqueo. Se escribe en una segunda pasada, porque los tickets tienen que existir para poder referenciarse. |
-| `frontier:query` | Consultar la frontera | La única operación que no escribe. |
+| `frontier:query` | Consultar la frontera | Los tickets abiertos, sin bloqueantes abiertos y sin assignee. |
 | `ticket:claim` | Tomar | El primer write de la sesión. No se libera sola. |
 | `ticket:resolve` | Resolver | Los tickets nuevos, su cableado, el comentario, el estado y el mapa, en ese orden. El mapa siempre último. |
 | `ticket:rule-out` | Sacar de alcance | La única operación destructiva: cierra un ticket sin resolverlo. Su línea va a Fuera de alcance, nunca a Decisiones. |

@@ -46,6 +46,20 @@ tipo del ticket diga otra cosa.
 
 <!-- una línea por ticket cerrado, con enlace al ticket que guarda el detalle -->
 
+- [09: Cómo evita el plugin pisar una edición humana del mapa](issues/09-concurrencia-humano-plugin.md):
+  la estrategia no detecta el conflicto, lo evita. El plugin no escribe sobre lo que
+  leyó al empezar la sesión: relee justo antes de escribir y aplica su edición sobre
+  ese contenido fresco, así que la edición de la persona sobrevive por estar en la
+  base. La ventana pasa de una sesión entera a 332 ms medidos. La premisa del ticket
+  se cayó: `updatedAt` está coalescido y quedó quieto 300 segundos con contenido nuevo
+  ya persistido, así que es inservible; la señal es `content`. Para que los 332 ms
+  existan, `map:read-write` se parte en `map:read` y `map:write`, y el segundo hace el
+  read-modify-write entero adentro de una sola invocación, con la edición como
+  argumentos semánticos. El modelo nunca compone el markdown del mapa. Tres primitivas,
+  seis anclas que son los encabezados, idempotencia asimétrica (sacar dos veces
+  converge, agregar dos veces diverge) y un reintento donde esa regla se invierte. De
+  paso midió que el historial de versiones se coalesce, así que no es la red de
+  seguridad que el 02 creyó.
 - [07: Distribución e instalación](issues/07-distribucion-e-instalacion.md): el
   plugin entra al marketplace de `spec-driven-dev` en vez de tener uno propio, porque
   el peer dependency dejó de ser una convención y pasó a ser un campo real de
@@ -119,7 +133,9 @@ La niebla: se ve venir, pero todavía no se puede formular con precisión.
   de callback y refresh de 24 horas. Lo que no se puede formular todavía es el
   disparador. El día que el mapa lo mantenga una cuenta de bot, `actor: app` le saca
   a la persona la autoría del comentario de resolución, y no está claro qué se pone
-  en su lugar.
+  en su lugar. El 09 le encontró el primer beneficio concreto y medible:
+  `Document.updatedBy` existe, y con Personal API key no distingue al plugin de la
+  persona porque son el mismo usuario.
 - **La migración inversa hacia SDD**: cómo importa SDD las disciplinas una vez
   que este plugin las tenga estables.
 - **Cómo sabemos que el mapa planifica mejor que SDD.** Hoy no tenemos con qué
