@@ -453,6 +453,15 @@ keiron-planner/
 
 `/map-status` no tiene skill: lee `map-contract.md` directo y llama al adapter.
 
+> **Enmienda del ticket 07, que cerró.** El árbol gana cuatro archivos:
+> `.claude-plugin/plugin.json` (que declara `dependencies: ["spec-driven-dev"]`),
+> `commands/planner-setup.md`, `README.md` y `LICENSE`. Así que `commands/` tiene
+> **seis** archivos, no cinco, y `planner-setup.md` tampoco tiene skill, por la misma
+> razón que `map-status.md`: no hay disciplina que conducir, hay un script que
+> correr. `scripts/install.sh` sigue donde este documento lo puso, y su chequeo del
+> intérprete cambia. El detalle está en [`07-distribucion.md`](07-distribucion.md).
+
+
 ### El adapter es un script, no el modelo
 
 Las ocho operaciones las emite `scripts/linear.py`, stdlib pelado, un subcomando
@@ -530,6 +539,13 @@ Lo que este ticket deja listo para que el 10 no lo re-derive.
 > **cuatro** archivos que rutean a una skill, porque `map-collapse.md` dejó de ser
 > un casillero. La 4 pasa a **seis** encabezados del DD, y le suma las tres
 > secciones del cuerpo de la issue de ejecución. La 5 pasa a **diez** subcomandos.
+
+> **Enmienda del ticket 07, que cerró.** La 2 pasa a **seis** archivos en
+> `commands/`, con cuatro que rutean a una skill y dos que no: `map-status.md` y
+> `planner-setup.md`. El 07 agrega ocho afirmaciones propias, numeradas de la 14 a la
+> 21, en [`07-distribucion.md`](07-distribucion.md). Y encontró que
+> `claude plugin details` mete los comandos en la fila "Skills" de su inventario, así
+> que el 10 no lo puede usar para contar comandos: tiene que contar archivos.
 
 Y una que **no** es estructural sobre el repo, así que el 10 tiene que decidir qué
 hacer con ella: que ningún ticket de un mapa lleve dos labels `map:<tipo>`. Es lo

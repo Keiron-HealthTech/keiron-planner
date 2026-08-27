@@ -82,6 +82,7 @@ Un ticket sin ninguno de esos labels es AFK, y esa ausencia es la señal.
 | `/map-work` | Resuelve un ticket. Nunca más de uno por sesión, salvo research. |
 | `/map-collapse` | Colapsa el mapa en milestones e issues de ejecucion. |
 | `/map-status` | Lee el mapa y la frontera. No escribe. |
+| `/planner-setup` | Pide la API key de Linear, la valida contra la API y la guarda. Por máquina, una vez. No es una operación del mapa. |
 
 Cada comando cierra con un **next recommended**: un token de un conjunto cerrado
 de seis que dice qué correr después. Es la costura entre comandos y lo único del
@@ -110,8 +111,15 @@ término canónico es el que aparece en el código.
 
 ## Dependencias
 
-`keiron-planner` declara `spec-driven-dev` como peer dependency. La dirección es
-la misma de siempre: SDD construye, el planner planifica.
+`keiron-planner` declara `spec-driven-dev` en el campo `dependencies` de su
+`plugin.json`, sin constraint de versión. Es un mecanismo real y no una convención:
+Claude Code auto-instala y auto-habilita la dependencia, y se niega a deshabilitarla
+mientras el planner esté habilitado. La dirección es la misma de siempre: SDD
+construye, el planner planifica.
+
+Los dos plugins viven en el **mismo marketplace**, el de
+`Keiron-HealthTech/spec-driven-dev`, que hospeda a los dos. Por eso la dependencia
+resuelve intra-marketplace y quien instala agrega un solo marketplace.
 
 **El traspaso ocurre en `/sdd-new`**, no más tarde. El colapso termina en issues de
 Linear y no escribe archivos en el árbol de artefactos de SDD; SDD lee la issue de

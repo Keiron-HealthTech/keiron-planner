@@ -1,7 +1,9 @@
 # 10: Qué chequean los checks estructurales
 
 **Tipo:** `map:grilling` · **Modo:** HITL (`hitl:dev`)
-**Bloqueado por:** [06](06-que-hace-map-collapse.md) y [07](07-distribucion-e-instalacion.md).
+**Bloqueado por:** nada. Tomable ahora. (El [06](06-que-hace-map-collapse.md) y el
+[07](07-distribucion-e-instalacion.md) se resolvieron el 2026-08-27, y entre los dos
+le dejaron quince afirmaciones chequeables, numeradas de la 7 a la 21.)
 **Origen:** graduado desde la niebla al resolver el [08](08-los-dos-modos-keironizados.md).
 
 ## Pregunta

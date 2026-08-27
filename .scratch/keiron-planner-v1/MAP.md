@@ -46,6 +46,19 @@ tipo del ticket diga otra cosa.
 
 <!-- una línea por ticket cerrado, con enlace al ticket que guarda el detalle -->
 
+- [07: Distribución e instalación](issues/07-distribucion-e-instalacion.md): el
+  plugin entra al marketplace de `spec-driven-dev` en vez de tener uno propio, porque
+  el peer dependency dejó de ser una convención y pasó a ser un campo real de
+  `plugin.json`, y una dependencia cross-marketplace queda bloqueada por defecto. Se
+  declara de verdad y sin constraint, porque los tags de SDD están fuera de la
+  convención que Claude Code necesita. La credencial es Personal API key: Linear no
+  tiene device flow, y medido, la key tiene más presupuesto de complejidad que OAuth,
+  no menos. El setup por repo no existe, y el título del ticket lo decía: el 03 y el
+  08 se lo vaciaron entero, así que queda un comando nuevo, `/planner-setup`, con la
+  key como única responsabilidad. El repo sin Linear también se disuelve. Y midió dos
+  cosas de la máquina de quien instala: el intérprete es el 3.9 que trae macOS, y en
+  un Mac sin Command Line Tools el chequeo del prototipo del 01 pasaría para fallar
+  después.
 - [06: Qué hace exactamente `/map-collapse`](issues/06-que-hace-map-collapse.md):
   el colapso es HITL y es un evento único. Una sesión con dos pasadas, primero los
   cortes y después las issues adentro de cada uno, con el agente proponiendo y la
@@ -101,6 +114,12 @@ tipo del ticket diga otra cosa.
 
 La niebla: se ve venir, pero todavía no se puede formular con precisión.
 
+- **Cuándo el plugin escribe como app y no como persona.** El 07 cerró Personal
+  API key para la v1 y midió lo que cuesta OAuth: sin device flow pide un servidor
+  de callback y refresh de 24 horas. Lo que no se puede formular todavía es el
+  disparador. El día que el mapa lo mantenga una cuenta de bot, `actor: app` le saca
+  a la persona la autoría del comentario de resolución, y no está claro qué se pone
+  en su lugar.
 - **La migración inversa hacia SDD**: cómo importa SDD las disciplinas una vez
   que este plugin las tenga estables.
 - **Cómo sabemos que el mapa planifica mejor que SDD.** Hoy no tenemos con qué
