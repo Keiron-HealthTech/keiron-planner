@@ -1,0 +1,21 @@
+# Sistema operativo
+.DS_Store
+
+# Los harnesses del mapa son Python
+__pycache__/
+*.py[cod]
+
+# Credenciales. La API key de Linear vive fuera de todo repo, en
+# ${XDG_CONFIG_HOME:-~/.config}/keiron-planner/linear.key, y eso lo decidió el
+# ticket 01 justamente para que ningún commit la pueda filtrar. Esto es la red
+# de abajo, para una copia distraída.
+*.key
+.env
+.env.*
+
+# Estado local del harness, que es por máquina y no por repo
+.claude/settings.local.json
+
+# Por si algún día el plugin necesita el SDK de Linear, que el ticket 01 dejó
+# como plan B
+node_modules/
