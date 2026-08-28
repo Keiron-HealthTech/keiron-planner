@@ -18,7 +18,15 @@ lee el modelo va en inglés: los comandos, las skills y los contratos compartido
 Lo que lee una persona en Linear va en español: el mapa, los tickets, los
 comentarios de resolución y las plantillas que los generan. El reference de las
 operaciones del tracker va en español, porque su lector es quien mantiene el
-adapter. Los nombres de archivo siguen la regla general y van en inglés.
+adapter. `README.md`, `CONTEXT.md` y `CLAUDE.md` van en español: su lector es una
+persona del equipo, y el repo es internal. Los nombres de archivo siguen la regla
+general y van en inglés.
+
+**La columna la declara cada archivo, no una lista central.** Todo `.md` del árbol
+del plugin lleva `lang: en` o `lang: es` en su frontmatter, y un archivo que nace
+sin el campo falla un check. La prosa de arriba dice por qué cada uno cae donde
+cae; el frontmatter es lo que se puede verificar. `vendor/` y `.scratch/` quedan
+fuera del alcance.
 
 ## El mapa
 
@@ -98,11 +106,13 @@ término canónico es el que aparece en el código. Tres no escriben: `preflight
 
 El `preflight` corre **una vez por conductor**, y conductor es un contexto de
 modelo que emite operaciones: la sesión es uno, cada subagente es uno, un
-subcomando no. Su salida es un blob opaco que las otras once reciben como `--ctx`.
-Un subcomando invocado sin `--ctx` falla, porque ninguno sabe hacer un preflight:
-así la regla se cumple por construcción y no por disciplina. Nada persiste entre
-corridas; pasar ids adentro de una misma corrida sí está permitido, y es el
-mecanismo.
+subcomando no. Su salida es un blob opaco que reciben como `--ctx` las **siete**
+operaciones que lo consumen: `map:create`, `ticket:create`, `frontier:query`,
+`ticket:claim`, `ticket:resolve`, `ticket:rule-out` e `issue:create`. Las otras
+cuatro no lo necesitan. Un subcomando consumidor invocado sin `--ctx` falla, porque
+ninguno sabe hacer un preflight: así la regla se cumple por construcción y no por
+disciplina. Nada persiste entre corridas; pasar ids adentro de una misma corrida sí
+está permitido, y es el mecanismo.
 
 | Canónico | En prosa | Qué es |
 | --- | --- | --- |

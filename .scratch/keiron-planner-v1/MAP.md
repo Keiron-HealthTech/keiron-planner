@@ -48,6 +48,7 @@ tipo del ticket diga otra cosa.
      caracteres o menos. El detalle vive en el comentario de resolución del
      ticket y el mapa nunca lo repite. Lo decidió el ticket 04, mirando. -->
 
+- [10: Qué chequean los checks estructurales](issues/10-que-chequean-los-checks.md): Seis scripts y un job; 44 afirmaciones vivas de 50, y el adapter se chequea con un AST y no con grep.
 - [04: Un mapa de juguete en Linear, para ver si el Document aguanta](issues/04-prototipo-mapa-en-linear.md): Aguanta. El índice es una línea por decisión, con el detalle solo en el ticket y tope de 120 caracteres.
 - [14: Si el preflight corre por invocación o por sesión](issues/14-preflight-por-invocacion.md): Una vez por conductor, con la salida como blob opaco que todo consumidor recibe en `--ctx`.
 - [13: Si una pestaña abierta puede pisar una escritura del plugin](issues/13-pestana-abierta-pisa-al-plugin.md): No puede: `documentUpdate` mueve el estado Yjs, así que no deja rama que un cliente pueda ganar.
@@ -72,6 +73,11 @@ La niebla: se ve venir, pero todavía no se puede formular con precisión.
   en su lugar. El 09 le encontró el primer beneficio concreto y medible:
   `Document.updatedBy` existe, y con Personal API key no distingue al plugin de la
   persona porque son el mismo usuario.
+- **Cómo se prueba que el adapter hace lo que dice, y no solo que está escrito
+  como dice.** La decisión de encuadre ruled out verificar comportamiento
+  conversacional, y el del adapter nunca se conversó. El 10 lo volvió contable: seis
+  de sus cuarenta y cuatro afirmaciones tienen una brecha que solo cierra un test de
+  verdad, y la más cara es la 18, porque su modo de falla es una credencial en un log.
 - **La migración inversa hacia SDD**: cómo importa SDD las disciplinas una vez
   que este plugin las tenga estables.
 - **Cómo sabemos que el mapa planifica mejor que SDD.** Hoy no tenemos con qué
