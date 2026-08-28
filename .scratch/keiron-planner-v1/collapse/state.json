@@ -1,0 +1,125 @@
+{
+  "viewerId": "27b3d9f8-7b03-473c-ba7b-06d045fd9361",
+  "viewer": "ljana",
+  "teamId": "267840b8-2c3e-4209-8a86-5c95f29ded19",
+  "stateId": "75ee5ea2-36a3-4e84-82dd-5ce537519fcb",
+  "stateName": "Backlog",
+  "projectStatusId": "b4bbd51d-742e-4cd4-bbc4-c75fd8246752",
+  "projectStatusName": "Backlog",
+  "projectId": "f65cd39b-cd4c-46d0-ba57-906f9bce9eeb",
+  "projectUrl": "https://linear.app/keiron/project/plugin-keiron-planner-29ba6f33194f",
+  "milestones": {
+    "m1": "dd3c880a-d402-4806-8434-e8b4a6946708",
+    "m2": "0010b7e2-3de2-4f8a-9cf0-a49e86f00c34",
+    "m3": "c9cbb963-00f3-4586-8059-4be3093c6599",
+    "m4": "b2f6a7b8-ed41-4f46-b53d-425eedf58b8d",
+    "m5": "96e3a3d1-9d10-46c4-9d70-46eaba0464e1"
+  },
+  "issues": [
+    {
+      "identifier": "CRM-3391",
+      "url": "https://linear.app/keiron/issue/CRM-3391/crear-el-esqueleto-del-plugin-su-manifiesto-y-el-andamio-de-checks",
+      "title": "Crear el esqueleto del plugin, su manifiesto y el andamio de checks"
+    },
+    {
+      "identifier": "CRM-3392",
+      "url": "https://linear.app/keiron/issue/CRM-3392/escribir-el-instalador-de-la-key-y-planner-setup",
+      "title": "Escribir el instalador de la key y `/planner-setup`"
+    },
+    {
+      "identifier": "CRM-3393",
+      "url": "https://linear.app/keiron/issue/CRM-3393/escribir-el-preflight-del-adapter",
+      "title": "Escribir el preflight del adapter"
+    },
+    {
+      "identifier": "CRM-3394",
+      "url": "https://linear.app/keiron/issue/CRM-3394/escribir-frontierquery-y-mapread-con-el-predicado-de-frontera",
+      "title": "Escribir `frontier:query` y `map:read` con el predicado de frontera"
+    },
+    {
+      "identifier": "CRM-3395",
+      "url": "https://linear.app/keiron/issue/CRM-3395/escribir-map-status-y-el-contrato-compartido",
+      "title": "Escribir `/map-status` y el contrato compartido"
+    },
+    {
+      "identifier": "CRM-3396",
+      "url": "https://linear.app/keiron/issue/CRM-3396/escribir-mapcreate-y-mapwrite",
+      "title": "Escribir `map:create` y `map:write`"
+    },
+    {
+      "identifier": "CRM-3397",
+      "url": "https://linear.app/keiron/issue/CRM-3397/escribir-las-plantillas-del-mapa",
+      "title": "Escribir las plantillas del mapa"
+    },
+    {
+      "identifier": "CRM-3398",
+      "url": "https://linear.app/keiron/issue/CRM-3398/escribir-ticketcreate-y-ticketblock",
+      "title": "Escribir `ticket:create` y `ticket:block`"
+    },
+    {
+      "identifier": "CRM-3399",
+      "url": "https://linear.app/keiron/issue/CRM-3399/keironizar-grilling-domain-modeling-y-prototype-y-abrir-grill",
+      "title": "Keironizar grilling, domain-modeling y prototype, y abrir `/grill`"
+    },
+    {
+      "identifier": "CRM-3400",
+      "url": "https://linear.app/keiron/issue/CRM-3400/escribir-map-new-de-punta-a-punta",
+      "title": "Escribir `/map-new` de punta a punta"
+    },
+    {
+      "identifier": "CRM-3401",
+      "url": "https://linear.app/keiron/issue/CRM-3401/escribir-ticketclaim-ticketresolve-y-ticketrule-out",
+      "title": "Escribir `ticket:claim`, `ticket:resolve` y `ticket:rule-out`"
+    },
+    {
+      "identifier": "CRM-3402",
+      "url": "https://linear.app/keiron/issue/CRM-3402/escribir-map-work-hasta-el-paso-8",
+      "title": "Escribir `/map-work` hasta el paso 8"
+    },
+    {
+      "identifier": "CRM-3403",
+      "url": "https://linear.app/keiron/issue/CRM-3403/cerrar-research-el-subagente-su-document-y-el-reparto-de-escrituras",
+      "title": "Cerrar research: el subagente, su Document y el reparto de escrituras"
+    },
+    {
+      "identifier": "CRM-3404",
+      "url": "https://linear.app/keiron/issue/CRM-3404/escribir-milestonecreate-y-workwrite",
+      "title": "Escribir `milestone:create` y `work:write`"
+    },
+    {
+      "identifier": "CRM-3405",
+      "url": "https://linear.app/keiron/issue/CRM-3405/escribir-map-collapse-con-sus-dos-pasadas",
+      "title": "Escribir `/map-collapse` con sus dos pasadas"
+    },
+    {
+      "identifier": "CRM-3406",
+      "url": "https://linear.app/keiron/issue/CRM-3406/agregar-el-aterrizaje-a-map-work-y-el-septimo-bloque-a-map-status",
+      "title": "Agregar el aterrizaje a `/map-work` y el séptimo bloque a `/map-status`"
+    },
+    {
+      "identifier": "CRM-3407",
+      "url": "https://linear.app/keiron/issue/CRM-3407/probar-la-costura-con-sdd-new",
+      "title": "Probar la costura con `/sdd-new`"
+    },
+    {
+      "identifier": "CRM-3408",
+      "url": "https://linear.app/keiron/issue/CRM-3408/cerrar-las-cuarenta-y-cuatro-afirmaciones-vivas",
+      "title": "Cerrar las cuarenta y cuatro afirmaciones vivas"
+    },
+    {
+      "identifier": "CRM-3409",
+      "url": "https://linear.app/keiron/issue/CRM-3409/escribir-el-readme-y-publicar-la-version-010",
+      "title": "Escribir el README y publicar la versión 0.1.0"
+    },
+    {
+      "identifier": "CRM-3410",
+      "url": "https://linear.app/keiron/issue/CRM-3410/abrir-la-pr-al-marketplace-de-spec-driven-dev",
+      "title": "Abrir la PR al marketplace de `spec-driven-dev`"
+    },
+    {
+      "identifier": "CRM-3411",
+      "url": "https://linear.app/keiron/issue/CRM-3411/correr-el-plugin-sobre-el-primer-proyecto-real-del-crm",
+      "title": "Correr el plugin sobre el primer proyecto real del CRM"
+    }
+  ]
+}

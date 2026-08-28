@@ -1,25 +1,9 @@
-# Mapa: keiron-planner v1
-
-Tracker local en markdown. Los tickets viven en `issues/`, uno por archivo.
-Este mapa es un índice: gista cada decisión y apunta al ticket que la guarda.
-Nunca la repite.
-
-> **Colapsado el 2026-08-28.** Desde el colapso, el mapa vivo es el overview del
-> Project [Plugin keiron-planner](https://linear.app/keiron/project/plugin-keiron-planner-29ba6f33194f),
-> con sus cinco cortes y sus veintiuna issues de ejecución. Este archivo queda como
-> el registro de cómo se trazó, y sus catorce tickets siguen siendo la fuente del
-> detalle: el mapa en Linear los enlaza acá.
-
 ## Destino
 
 Una spec lista para que SDD la construya: todas las decisiones de diseño del
 plugin resueltas, colapsadas en milestones e issues de ejecución de Linear,
 listas para que `/sdd-new` las tome, con el colapso mismo probado como costura
 entre los dos plugins.
-
-(Decía "colapsadas en spec y tasks de SDD". Lo corrigió el colapso, aplicando al
-Destino la corrección que el ticket 06 ya había hecho en las decisiones de
-encuadre: el colapso termina en Linear y SDD entra en `/sdd-new`.)
 
 ## Notas
 
@@ -53,26 +37,30 @@ tipo del ticket diga otra cosa.
 - La verificación son checks estructurales sobre el repo, al estilo de los
   `scripts/check-*.sh` de SDD. Nada de verificar comportamiento conversacional.
 
+
+**Dónde viven los tickets**: el mapa v1 se trazó con un tracker local en
+markdown, porque el plugin que lo haría todavía no existía. Los catorce tickets
+de decisión y sus documentos de research viven en el repo
+[Keiron-HealthTech/keiron-planner](https://github.com/Keiron-HealthTech/keiron-planner/tree/main/.scratch/keiron-planner-v1),
+y el índice de abajo enlaza ahí. Este overview es la casa del mapa desde el
+colapso.
+
 ## Decisiones hasta ahora
 
-<!-- Una línea por ticket cerrado: enlace al ticket, y el gist en 120
-     caracteres o menos. El detalle vive en el comentario de resolución del
-     ticket y el mapa nunca lo repite. Lo decidió el ticket 04, mirando. -->
-
-- [12: Qué hace el plugin cuando aparece una decisión nueva sobre un mapa ya colapsado](issues/12-decision-nueva-sobre-mapa-colapsado.md): No hay colapso incremental: `/map-work` gana el aterrizaje, con tres desenlaces y un ancla `related` dada vuelta.
-- [11: Qué hace `/map-new` sobre un Project que ya arrancó](issues/11-map-new-sobre-project-vivo.md): El mapa se muda al overview del Project. Nunca reescribe prosa ajena, nunca se niega, y el destino lo nombra la persona.
-- [10: Qué chequean los checks estructurales](issues/10-que-chequean-los-checks.md): Seis scripts y un job; 44 afirmaciones vivas de 50, y el adapter se chequea con un AST y no con grep.
-- [04: Un mapa de juguete en Linear, para ver si el Document aguanta](issues/04-prototipo-mapa-en-linear.md): Aguanta. El índice es una línea por decisión, con el detalle solo en el ticket y tope de 120 caracteres.
-- [14: Si el preflight corre por invocación o por sesión](issues/14-preflight-por-invocacion.md): Una vez por conductor, con la salida como blob opaco que todo consumidor recibe en `--ctx`.
-- [13: Si una pestaña abierta puede pisar una escritura del plugin](issues/13-pestana-abierta-pisa-al-plugin.md): No puede: la escritura mueve el estado Yjs, así que no deja rama que un cliente pueda ganar.
-- [09: Cómo evita el plugin pisar una edición humana del mapa](issues/09-concurrencia-humano-plugin.md): No detecta el conflicto, lo evita: relee justo antes de escribir y la ventana baja a 332 ms.
-- [07: Distribución e instalación](issues/07-distribucion-e-instalacion.md): Entra al marketplace de `spec-driven-dev` y declara la dependencia de verdad, sin constraint.
-- [06: Qué hace exactamente `/map-collapse`](issues/06-que-hace-map-collapse.md): Es HITL y es un evento único: dos pasadas, cortes y después issues, y escribe N+2 veces.
-- [05: Cómo se adaptan grilling, domain-modeling y prototype al vivir acá](issues/05-adaptar-las-tres-disciplinas.md): Model-invoked con `/grill` como única puerta, en inglés y con el frontmatter de SDD.
-- [02: Qué permite y limita la API de Documents de Linear](issues/02-api-documents-linear.md): No hay blocker: el tamaño y el rate limit son irrelevantes. (El mapa ya no vive en un Document. Lo mudó el 11.)
-- [01: Cómo lee el agente el grafo de dependencias de Linear](issues/01-grafo-dependencias-linear.md): Con GraphQL crudo en un round-trip; el SDK gasta 15 requests donde eso gasta 1.
-- [03: Las operaciones de wayfinding, expresadas en Linear](issues/03-seis-operaciones-en-linear.md): Son ocho y no seis, todas por GraphQL crudo y sin fallbacks.
-- [08: Qué cambia de los dos modos de wayfinder al keironizarlos](issues/08-los-dos-modos-keironizados.md): Ocho cosas: tres adaptaciones forzadas, dos endurecimientos y tres nuestras.
+- [12: Qué hace el plugin cuando aparece una decisión nueva sobre un mapa ya colapsado](https://github.com/Keiron-HealthTech/keiron-planner/blob/main/.scratch/keiron-planner-v1/issues/12-decision-nueva-sobre-mapa-colapsado.md): No hay colapso incremental: `/map-work` gana el aterrizaje, con tres desenlaces y un ancla `related` dada vuelta.
+- [11: Qué hace `/map-new` sobre un Project que ya arrancó](https://github.com/Keiron-HealthTech/keiron-planner/blob/main/.scratch/keiron-planner-v1/issues/11-map-new-sobre-project-vivo.md): El mapa se muda al overview del Project. Nunca reescribe prosa ajena, nunca se niega, y el destino lo nombra la persona.
+- [10: Qué chequean los checks estructurales](https://github.com/Keiron-HealthTech/keiron-planner/blob/main/.scratch/keiron-planner-v1/issues/10-que-chequean-los-checks.md): Seis scripts y un job; 44 afirmaciones vivas de 50, y el adapter se chequea con un AST y no con grep.
+- [04: Un mapa de juguete en Linear, para ver si el Document aguanta](https://github.com/Keiron-HealthTech/keiron-planner/blob/main/.scratch/keiron-planner-v1/issues/04-prototipo-mapa-en-linear.md): Aguanta. El índice es una línea por decisión, con el detalle solo en el ticket y tope de 120 caracteres.
+- [14: Si el preflight corre por invocación o por sesión](https://github.com/Keiron-HealthTech/keiron-planner/blob/main/.scratch/keiron-planner-v1/issues/14-preflight-por-invocacion.md): Una vez por conductor, con la salida como blob opaco que todo consumidor recibe en `--ctx`.
+- [13: Si una pestaña abierta puede pisar una escritura del plugin](https://github.com/Keiron-HealthTech/keiron-planner/blob/main/.scratch/keiron-planner-v1/issues/13-pestana-abierta-pisa-al-plugin.md): No puede: la escritura mueve el estado Yjs, así que no deja rama que un cliente pueda ganar.
+- [09: Cómo evita el plugin pisar una edición humana del mapa](https://github.com/Keiron-HealthTech/keiron-planner/blob/main/.scratch/keiron-planner-v1/issues/09-concurrencia-humano-plugin.md): No detecta el conflicto, lo evita: relee justo antes de escribir y la ventana baja a 332 ms.
+- [07: Distribución e instalación](https://github.com/Keiron-HealthTech/keiron-planner/blob/main/.scratch/keiron-planner-v1/issues/07-distribucion-e-instalacion.md): Entra al marketplace de `spec-driven-dev` y declara la dependencia de verdad, sin constraint.
+- [06: Qué hace exactamente `/map-collapse`](https://github.com/Keiron-HealthTech/keiron-planner/blob/main/.scratch/keiron-planner-v1/issues/06-que-hace-map-collapse.md): Es HITL y es un evento único: dos pasadas, cortes y después issues, y escribe N+2 veces.
+- [05: Cómo se adaptan grilling, domain-modeling y prototype al vivir acá](https://github.com/Keiron-HealthTech/keiron-planner/blob/main/.scratch/keiron-planner-v1/issues/05-adaptar-las-tres-disciplinas.md): Model-invoked con `/grill` como única puerta, en inglés y con el frontmatter de SDD.
+- [02: Qué permite y limita la API de Documents de Linear](https://github.com/Keiron-HealthTech/keiron-planner/blob/main/.scratch/keiron-planner-v1/issues/02-api-documents-linear.md): No hay blocker: el tamaño y el rate limit son irrelevantes. (El mapa ya no vive en un Document. Lo mudó el 11.)
+- [01: Cómo lee el agente el grafo de dependencias de Linear](https://github.com/Keiron-HealthTech/keiron-planner/blob/main/.scratch/keiron-planner-v1/issues/01-grafo-dependencias-linear.md): Con GraphQL crudo en un round-trip; el SDK gasta 15 requests donde eso gasta 1.
+- [03: Las operaciones de wayfinding, expresadas en Linear](https://github.com/Keiron-HealthTech/keiron-planner/blob/main/.scratch/keiron-planner-v1/issues/03-seis-operaciones-en-linear.md): Son ocho y no seis, todas por GraphQL crudo y sin fallbacks.
+- [08: Qué cambia de los dos modos de wayfinder al keironizarlos](https://github.com/Keiron-HealthTech/keiron-planner/blob/main/.scratch/keiron-planner-v1/issues/08-los-dos-modos-keironizados.md): Ocho cosas: tres adaptaciones forzadas, dos endurecimientos y tres nuestras.
 
 ## Aún no especificado
 
@@ -134,14 +122,3 @@ Ruled out del destino. No gradúa nunca. Si lo querés, es un mapa nuevo.
   porque el plugin todavía no existe, no porque el plugin vaya a soportarlo.
 
 ## El colapso
-
-Corrió el 2026-08-28 con la frontera vacía y los catorce tickets resueltos. Cinco
-cortes demoables, ninguno con fecha, y veintiuna issues de ejecución adentro,
-creadas en una sola llamada atómica. La bitácora está en
-[`collapse/COLAPSO.md`](collapse/COLAPSO.md).
-
-- **El plugin se instala y lee un Project**, el tracer bullet: 5 issues.
-- **El mapa se traza sobre un Project**: 5 issues.
-- **Una decisión se resuelve en el mapa**: 3 issues.
-- **El mapa colapsa y las decisiones tardías aterrizan**: 4 issues.
-- **El equipo instala el plugin desde el marketplace**: 4 issues.
