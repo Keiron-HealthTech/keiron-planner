@@ -41,7 +41,8 @@ fuera del alcance.
 | Out of scope | Fuera de alcance | Trabajo que quedó más allá del destino. No es niebla y nunca gradúa. |
 | Claim | Toma | El assignee del ticket. Es el primer write de la sesión, antes de cualquier trabajo. |
 | Resolution | Resolución | Comentario con la respuesta en **seis secciones fijas**, estado Done, y una línea en Decisiones hasta ahora. La tercera es Lo que se cayó, donde vive la premisa que el ticket derribó al resolverse. Va como comentario y nunca en el cuerpo del ticket, para que la pregunta quede inmutable. |
-| Collapse | Colapso | El paso del mapa a milestones e issues de ejecución. Un milestone es una decisión ya tomada, así que nace acá y nunca durante el mapeo. Es un evento único: corre con la frontera vacía, y una segunda corrida se niega. |
+| Collapse | Colapso | El paso del mapa a milestones e issues de ejecución. Un milestone es una decisión ya tomada, así que nace acá y nunca durante el mapeo. Es un evento único: corre con la frontera vacía, y una segunda corrida se niega. No se deshace: no hay descolapso. |
+| Landing | Aterrizaje | El paso donde una decisión tomada **después** del colapso consigue su trabajo de ejecución. No es un colapso incremental: es un paso de `/map-work`, corre solo en sesiones HITL de `map:grilling` o `map:prototype`, y tiene tres desenlaces. Issues nuevas, ligar a una issue de ejecución que ya existe, o nada, y el tercero se marca con el label `map:no-landing`. Nunca aterriza en un corte terminado. Lo decidió el ticket 12. |
 
 ## Tipos de ticket
 
@@ -92,7 +93,7 @@ Un ticket sin ninguno de esos labels es AFK, y esa ausencia es la señal.
 | Comando | Que hace |
 | --- | --- |
 | `/map-new` | Traza el mapa: nombra el destino, mapea la frontera, adopta o crea el Project, escribe el mapa en su overview y crea los primeros tickets. Sobre un Project que ya arrancó nunca se niega: muestra lo que encontró y pide confirmación una vez. |
-| `/map-work` | Resuelve un ticket. Nunca más de uno por sesión, salvo research. |
+| `/map-work` | Resuelve un ticket. Nunca más de uno por sesión, salvo research. Sobre un Project que ya tiene milestones agrega el aterrizaje, después de resolver. |
 | `/map-collapse` | Colapsa el mapa en milestones e issues de ejecucion. |
 | `/map-status` | Lee el mapa y la frontera. No escribe. |
 | `/planner-setup` | Pide la API key de Linear, la valida contra la API y la guarda. Por máquina, una vez. No es una operación del mapa. |
@@ -113,7 +114,7 @@ El `preflight` corre **una vez por conductor**, y conductor es un contexto de
 modelo que emite operaciones: la sesión es uno, cada subagente es uno, un
 subcomando no. Su salida es un blob opaco que reciben como `--ctx` las **siete**
 operaciones que lo consumen: `map:create`, `ticket:create`, `frontier:query`,
-`ticket:claim`, `ticket:resolve`, `ticket:rule-out` e `issue:create`. Las otras
+`ticket:claim`, `ticket:resolve`, `ticket:rule-out` y `work:write`. Las otras
 cuatro no lo necesitan. Un subcomando consumidor invocado sin `--ctx` falla, porque
 ninguno sabe hacer un preflight: así la regla se cumple por construcción y no por
 disciplina. Nada persiste entre corridas; pasar ids adentro de una misma corrida sí
@@ -125,14 +126,14 @@ está permitido, y es el mecanismo.
 | `map:create` | Crear el mapa | Adopta el Project si le pasan uno, lo crea si no, y escribe el mapa en su overview. Las secciones del mapa van arriba; lo que ya estaba se preserva verbatim debajo, bajo Antes del mapa. No borra ni reescribe nunca prosa que escribió una persona. |
 | `map:read` | Leer el mapa | Solo lectura. Devuelve el contenido y una huella por cada encabezado. La usan `/map-status` y el paso que le muestra el estado a la persona. |
 | `map:write` | Escribir el mapa | Un read-modify-write entero adentro de una sola invocación. Recibe la edición como argumentos semánticos, nunca markdown: relee justo antes de escribir para que la ventana sean milisegundos y no la sesión. |
-| `ticket:create` | Crear un ticket | Un issue del Project cuyo cuerpo es la pregunta y nada más. El tipo, el modo, el bloqueo y la toma viven en campos nativos del tracker. Es además quien crea los labels del plugin que falten, porque es su único consumidor. Nunca crea `Discovery`. |
+| `ticket:create` | Crear un ticket | Un issue del Project cuyo cuerpo es la pregunta y nada más. El tipo, el modo, el bloqueo y la toma viven en campos nativos del tracker. Es además el **único** que crea los labels del plugin que falten, los nueve, aunque no los use todos. Nunca crea `Discovery`. |
 | `ticket:block` | Bloquear | La relación nativa de bloqueo. Se escribe en una segunda pasada, porque los tickets tienen que existir para poder referenciarse. |
 | `frontier:query` | Consultar la frontera | Los tickets abiertos, sin bloqueantes abiertos y sin assignee. |
 | `ticket:claim` | Tomar | El primer write de la sesión. No se libera sola. |
 | `ticket:resolve` | Resolver | Los tickets nuevos, su cableado, el comentario, el estado y el mapa, en ese orden. El mapa siempre último. Las cinco escrituras van adentro de una sola invocación: el orden lo garantiza el adapter, nunca el modelo. |
 | `ticket:rule-out` | Sacar de alcance | La única operación destructiva: cierra un ticket sin resolverlo. Su línea va a Fuera de alcance, nunca a Decisiones. |
 | `milestone:create` | Crear un milestone | Un corte demoable del colapso. Nunca lleva fecha. |
-| `issue:create` | Crear una issue de ejecución | Todas las del colapso en una sola llamada atómica. No lleva label `map` y su cuerpo es un imperativo, no una pregunta. |
+| `work:write` | Escribir el trabajo | Lo que produce un colapso o un aterrizaje, en una sola invocación: las issues de ejecución en una llamada atómica, las relaciones `related` hacia su ticket de decisión, y el label `map:no-landing` cuando no hubo trabajo. La lista de issues puede venir vacía. Ninguna issue lleva label `map` y su cuerpo es un imperativo, no una pregunta. |
 
 ## Dependencias
 

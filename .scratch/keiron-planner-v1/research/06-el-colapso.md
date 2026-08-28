@@ -27,6 +27,20 @@ un archivo destino.
 Va en español con los términos canónicos en inglés, por la razón de siempre: su
 lector es el dev leader que va a mantener esto.
 
+> **Enmienda del 12.** Donde este documento diga `issue:create`, léase
+> **`work:write`**: el 12 la renombró porque en dos de sus tres desenlaces no crea
+> ninguna issue. Sigue siendo una de las doce operaciones. Detalle en
+> [`12-el-aterrizaje.md`](12-el-aterrizaje.md).
+
+> **Y la explicación del `sortOrder` está al revés.** Linear no recalcula lo que se
+> pide: recalcula solo el `0.0`, porque lo trata como campo ausente, y lo manda al
+> **final**. Cualquier valor distinto de cero se respeta literal, así que insertar un
+> corte entre dos que ya existen es determinístico. Medido en el 12.
+
+> **`/map-work` gana dos operaciones que este documento le da solo a `/map-collapse`**,
+> `milestone:create` y `work:write`, por el aterrizaje. La tabla de reparto cambia en
+> esa columna.
+
 ## Qué es el colapso
 
 El paso donde el mapa deja de producir decisiones y empieza a producir trabajo.

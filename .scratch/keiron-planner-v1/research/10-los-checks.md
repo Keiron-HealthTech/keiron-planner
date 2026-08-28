@@ -9,6 +9,15 @@ comportamiento conversacional. Este documento la vuelve concreta: **cincuenta
 afirmaciones acuñadas, cuarenta y cuatro vivas, seis retiradas**, repartidas en seis
 scripts que corren en un solo job de CI.
 
+> **Enmienda del 12.** Donde este documento diga `issue:create`, léase
+> **`work:write`**: el 12 la renombró porque en dos de sus tres desenlaces no crea
+> ninguna issue. Sigue siendo una de las doce operaciones. Detalle en
+> [`12-el-aterrizaje.md`](12-el-aterrizaje.md).
+
+> Las afirmaciones **12** y **48** nombran `issue:create` y hay que leerlas con el
+> nombre nuevo. El 12 suma además cinco, de la **51** a la **55**, así que las acuñadas
+> pasan de cincuenta a cincuenta y cinco.
+
 ## El resumen, en un párrafo
 
 Los seis tickets que cerraron el 2026-08-27 dejaron cuarenta y seis afirmaciones

@@ -17,6 +17,11 @@ que mantiene el adapter.
 
 ---
 
+> **Enmienda del 12.** Donde este documento diga `issue:create`, léase
+> **`work:write`**: el 12 la renombró porque en dos de sus tres desenlaces no crea
+> ninguna issue. Sigue siendo una de las doce operaciones. Detalle en
+> [`12-el-aterrizaje.md`](12-el-aterrizaje.md).
+
 ## El resumen, en un párrafo
 
 El 08 escribió *un preflight por proceso que emite operaciones*, y razonó entero

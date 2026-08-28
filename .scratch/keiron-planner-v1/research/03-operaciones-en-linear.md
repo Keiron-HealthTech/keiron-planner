@@ -20,6 +20,16 @@ Van en español con los términos canónicos en inglés, que es la regla general
 para que SDD pudiera importar el archivo copiándolo, y eso acá no puede pasar:
 SDD nunca va a importar el adapter de Linear de un plugin de planificación.
 
+> **Enmienda del 12.** Donde este documento diga `issue:create`, léase
+> **`work:write`**: el 12 la renombró porque en dos de sus tres desenlaces no crea
+> ninguna issue. Sigue siendo una de las doce operaciones. Detalle en
+> [`12-el-aterrizaje.md`](12-el-aterrizaje.md).
+
+> **Y el predicado de frontera gana una regla.** `inverseRelations` es solo de bloqueos:
+> las relaciones `related` que escribe el aterrizaje van con el ticket de decisión del
+> lado `issueId`, así que caen en `relations` y nunca compiten con los bloqueantes por
+> el tope de paginación. El 12 midió que subir ese tope no es una opción.
+
 ## Son ocho, no seis
 
 Matt lista seis. Nos faltaban dos, y las dos faltaban por la misma razón: existen

@@ -10,6 +10,11 @@ de escritura contra el Project descartable del 04.
 
 Harness: `11-scripts/live_project_probe.py`.
 
+> **Enmienda del 12.** Donde este documento diga `issue:create`, léase
+> **`work:write`**: el 12 la renombró porque en dos de sus tres desenlaces no crea
+> ninguna issue. Sigue siendo una de las doce operaciones. Detalle en
+> [`12-el-aterrizaje.md`](12-el-aterrizaje.md).
+
 ## 1. La distribución de "ya arrancó"
 
 El team CRM tiene **32 Projects**, ocho en estado `started`. El avance de esos

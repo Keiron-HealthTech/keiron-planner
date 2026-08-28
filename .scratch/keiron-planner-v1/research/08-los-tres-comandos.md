@@ -22,6 +22,15 @@ contrato en `skills/_shared/map-contract.md` y las plantillas en
 Va en español con los términos canónicos en inglés, igual que el reference del
 03 y por la misma razón: su lector es el dev leader que va a mantener esto.
 
+> **Enmienda del 12.** Donde este documento diga `issue:create`, léase
+> **`work:write`**: el 12 la renombró porque en dos de sus tres desenlaces no crea
+> ninguna issue. Sigue siendo una de las doce operaciones. Detalle en
+> [`12-el-aterrizaje.md`](12-el-aterrizaje.md).
+
+> **El reporte de `/map-status` pasa de seis bloques a siete.** El séptimo lista las
+> decisiones sin aterrizar. No hay veredicto nuevo ni token nuevo: siguen siendo cuatro
+> y seis.
+
 ## Qué cambia de wayfinder
 
 Ocho cosas. Las tres primeras son adaptaciones forzadas por Linear y por el

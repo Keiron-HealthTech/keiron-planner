@@ -48,6 +48,7 @@ tipo del ticket diga otra cosa.
      caracteres o menos. El detalle vive en el comentario de resolución del
      ticket y el mapa nunca lo repite. Lo decidió el ticket 04, mirando. -->
 
+- [12: Qué hace el plugin cuando aparece una decisión nueva sobre un mapa ya colapsado](issues/12-decision-nueva-sobre-mapa-colapsado.md): No hay colapso incremental: `/map-work` gana el aterrizaje, con tres desenlaces y un ancla `related` dada vuelta.
 - [11: Qué hace `/map-new` sobre un Project que ya arrancó](issues/11-map-new-sobre-project-vivo.md): El mapa se muda al overview del Project. Nunca reescribe prosa ajena, nunca se niega, y el destino lo nombra la persona.
 - [10: Qué chequean los checks estructurales](issues/10-que-chequean-los-checks.md): Seis scripts y un job; 44 afirmaciones vivas de 50, y el adapter se chequea con un AST y no con grep.
 - [04: Un mapa de juguete en Linear, para ver si el Document aguanta](issues/04-prototipo-mapa-en-linear.md): Aguanta. El índice es una línea por decisión, con el detalle solo en el ticket y tope de 120 caracteres.
@@ -108,6 +109,10 @@ La niebla: se ve venir, pero todavía no se puede formular con precisión.
 
 Ruled out del destino. No gradúa nunca. Si lo querés, es un mapa nuevo.
 
+- **Cambiar el trabajo de ejecución que una decisión posterior al colapso deja
+  mal.** El colapso entrega el trabajo, y a partir de ahí el tracker es del equipo:
+  corregir una issue que ya se empezó a mover es lo que el equipo hace todos los días.
+  Salió al resolver el 12, que se quedó solo con la decisión que agrega trabajo.
 - **El intake del workshop.** Es un ritual de equipo antes que una herramienta,
   y merece su propio mapa con el product team en la sala.
 - **El Tier B completo**: triage, to-questionnaire, handoff y research como
