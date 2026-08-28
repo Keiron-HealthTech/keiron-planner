@@ -2,6 +2,12 @@
 
 Resolución del ticket 14. Fecha: 2026-08-27.
 
+> **Enmienda del 11.** Donde este documento diga que el mapa es un Document colgado
+> del Project, léase el **overview del Project**, `Project.content`: el 11 lo mudó, y
+> `map:create` ya no crea Document. El mapa no tiene título propio, así que el
+> `DD: <proyecto>` desaparece. Detalle y mediciones en
+> [`11-el-project-vivo.md`](11-el-project-vivo.md).
+
 Este documento **se reparte**, como el del 09: el contrato del preflight y de
 `--ctx` va a `LINEAR-OPERATIONS.md` al lado del adapter, y la regla del conductor
 a `skills/_shared/map-contract.md`. Es una fuente, no un archivo destino.

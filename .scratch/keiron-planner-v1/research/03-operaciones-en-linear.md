@@ -4,6 +4,12 @@ Resolución del ticket [03](../issues/03-seis-operaciones-en-linear.md), tipo
 `map:grilling`. Tres rondas de grilling con el dev leader, sesión del
 2026-08-26/27, más lecturas medidas contra el workspace `keiron`.
 
+> **Enmienda del 11.** Donde este documento diga que el mapa es un Document colgado
+> del Project, léase el **overview del Project**, `Project.content`: el 11 lo mudó, y
+> `map:create` ya no crea Document. El mapa no tiene título propio, así que el
+> `DD: <proyecto>` desaparece. Detalle y mediciones en
+> [`11-el-project-vivo.md`](11-el-project-vivo.md).
+
 Este es el equivalente nuestro de la sección "Wayfinding operations" de los docs
 de tracker de Matt. Cuando el plugin exista, vive como reference markdown al
 lado del script del adapter, no como skill: es un contrato, no una disciplina

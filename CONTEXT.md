@@ -32,14 +32,15 @@ fuera del alcance.
 
 | Canónico | En prosa | Qué es |
 | --- | --- | --- |
-| Map | Mapa | El DD vivo. Un Document de Linear titulado `DD: <proyecto>`, dentro del Project. Es un índice: **una línea por decisión**, con el enlace al ticket que guarda el detalle y un gist de **120 caracteres o menos**. Nunca repite el detalle. |
-| Destination | Destino | Qué significa llegar. Se fija antes que nada y fija el alcance. |
+| Map | Mapa | El DD vivo. **Es el overview del Project**, o sea `Project.content`, y no un Document aparte. Es un índice: **una línea por decisión**, con el enlace al ticket que guarda el detalle y un gist de **120 caracteres o menos**. Nunca repite el detalle. Lo decidió el ticket 11, midiendo que el overview es donde el DD del CRM se mantiene vivo y el Document es donde se muere. |
+| Destination | Destino | Qué significa llegar. Se fija antes que nada y fija el alcance. Lo nombra la persona, siempre, y el plugin nunca lo propone. |
+| Before the map | Antes del mapa | La sección donde `/map-new` preserva **verbatim** el overview que ya existía. Nunca se reescribe ni se reordena. Ahí viven las decisiones heredadas, sin enlace y sin gist, porque no tienen ticket detrás. Para meter una en el índice se abre un ticket de decisión y se resuelve, que es el camino normal. |
 | Decision ticket | Ticket de decisión | Issue del Project con label `map`. Su cuerpo es una pregunta, no una tarea, y su título es esa pregunta en prosa, sin prefijo numérico. |
 | Frontier | Frontera | Los tickets abiertos, sin bloqueantes abiertos y sin assignee. Lo tomable ahora. |
 | Fog of war | Niebla | La sección "Aún no especificado" del mapa. Lo que se ve venir pero todavía no se puede formular con precisión. El test es si podés enunciar la pregunta, no si podés responderla. |
 | Out of scope | Fuera de alcance | Trabajo que quedó más allá del destino. No es niebla y nunca gradúa. |
 | Claim | Toma | El assignee del ticket. Es el primer write de la sesión, antes de cualquier trabajo. |
-| Resolution | Resolución | Comentario con la respuesta en **seis secciones fijas**, estado Done, y una línea en Decisiones hasta ahora. La sexta es Lo que se cayó, donde vive la premisa que el ticket derribó al resolverse. Va como comentario y nunca en el cuerpo del ticket, para que la pregunta quede inmutable. |
+| Resolution | Resolución | Comentario con la respuesta en **seis secciones fijas**, estado Done, y una línea en Decisiones hasta ahora. La tercera es Lo que se cayó, donde vive la premisa que el ticket derribó al resolverse. Va como comentario y nunca en el cuerpo del ticket, para que la pregunta quede inmutable. |
 | Collapse | Colapso | El paso del mapa a milestones e issues de ejecución. Un milestone es una decisión ya tomada, así que nace acá y nunca durante el mapeo. Es un evento único: corre con la frontera vacía, y una segunda corrida se niega. |
 
 ## Tipos de ticket
@@ -61,10 +62,14 @@ Un ticket sin ninguno de esos labels es AFK, y esa ausencia es la señal.
 ## Terminos de Keiron que se conservan
 
 - **DD**: el documento de discovery de un proyecto. El mapa es su versión viva.
+  El equipo ya usa `DD: <proyecto>` como **título de issue**, con label `Discovery`
+  y por fuera de todo Project. El plugin no toca esas issues ni reusa el prefijo:
+  el mapa no tiene título propio porque el nombre del Project es su nombre.
 - **Discovery**: el label de issue que el equipo usa para marcar trabajo de
-  discovery. **No** es lo que identifica al DD: un Document de Linear no acepta
-  labels, así que al mapa lo identifica el Project y el Document se encuentra a
-  través de él. El plugin **lo escribe en todo ticket de decisión**, junto con
+  discovery. **No** es lo que identifica al DD: al mapa lo identifica el Project,
+  porque el mapa *es* el overview del Project. Que un Project ya tenga mapa lo dice
+  la presencia de las secciones del mapa, que es la huella por encabezado que
+  `map:read` ya devuelve, y no un marcador ni un label. El plugin **lo escribe en todo ticket de decisión**, junto con
   `map`, cuando el label existe en el workspace, y lo saltea en silencio cuando no.
   Nunca lo crea. Las issues de ejecución no lo llevan: no son discovery.
 - **Milestone**: un corte demoable que agrupa tracer bullets, nunca un corte
@@ -86,7 +91,7 @@ Un ticket sin ninguno de esos labels es AFK, y esa ausencia es la señal.
 
 | Comando | Que hace |
 | --- | --- |
-| `/map-new` | Traza el mapa: nombra el destino, mapea la frontera, crea el Project, el DD y los primeros tickets. |
+| `/map-new` | Traza el mapa: nombra el destino, mapea la frontera, adopta o crea el Project, escribe el mapa en su overview y crea los primeros tickets. Sobre un Project que ya arrancó nunca se niega: muestra lo que encontró y pide confirmación una vez. |
 | `/map-work` | Resuelve un ticket. Nunca más de uno por sesión, salvo research. |
 | `/map-collapse` | Colapsa el mapa en milestones e issues de ejecucion. |
 | `/map-status` | Lee el mapa y la frontera. No escribe. |
@@ -117,7 +122,7 @@ está permitido, y es el mecanismo.
 | Canónico | En prosa | Qué es |
 | --- | --- | --- |
 | `preflight` | El preflight | Solo lectura. Corre una vez por conductor, antes de cualquier otra operación, y resuelve lo que las demás necesitan. No guarda nada y no crea nada: la fuente de verdad es el tracker. Falla duro en cuatro casos y solo en esos cuatro: sin credencial, sin el team, sin algún estado de cerrado, y sin el label `map`. |
-| `map:create` | Crear el mapa | Adopta el Project si le pasan uno, lo crea si no, y le cuelga el Document del mapa. |
+| `map:create` | Crear el mapa | Adopta el Project si le pasan uno, lo crea si no, y escribe el mapa en su overview. Las secciones del mapa van arriba; lo que ya estaba se preserva verbatim debajo, bajo Antes del mapa. No borra ni reescribe nunca prosa que escribió una persona. |
 | `map:read` | Leer el mapa | Solo lectura. Devuelve el contenido y una huella por cada encabezado. La usan `/map-status` y el paso que le muestra el estado a la persona. |
 | `map:write` | Escribir el mapa | Un read-modify-write entero adentro de una sola invocación. Recibe la edición como argumentos semánticos, nunca markdown: relee justo antes de escribir para que la ventana sean milisegundos y no la sesión. |
 | `ticket:create` | Crear un ticket | Un issue del Project cuyo cuerpo es la pregunta y nada más. El tipo, el modo, el bloqueo y la toma viven en campos nativos del tracker. Es además quien crea los labels del plugin que falten, porque es su único consumidor. Nunca crea `Discovery`. |

@@ -5,6 +5,15 @@ Resolución del ticket [06](../issues/06-que-hace-map-collapse.md), tipo
 preguntas, sesión del 2026-08-27, más cuatro mediciones contra el workspace
 `keiron` real y un colapso de juguete corrido de punta a punta contra el sandbox.
 
+> **Enmienda del 11.** Donde este documento diga que el mapa es un Document colgado
+> del Project, léase el **overview del Project**, `Project.content`: el 11 lo mudó, y
+> `map:create` ya no crea Document. El mapa no tiene título propio, así que el
+> `DD: <proyecto>` desaparece. Detalle y mediciones en
+> [`11-el-project-vivo.md`](11-el-project-vivo.md).
+
+> El colapso no cambia: escribe milestones e issues en el Project, y eso no lo toca
+> la casa del mapa.
+
 `/map-collapse` es el cuarto comando y el último. El [08](08-los-tres-comandos.md)
 escribió los otros tres y dejó acá la precondición, el token y el casillero. Este
 documento escribe el procedimiento.

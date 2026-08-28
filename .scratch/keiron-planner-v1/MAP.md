@@ -48,15 +48,16 @@ tipo del ticket diga otra cosa.
      caracteres o menos. El detalle vive en el comentario de resolución del
      ticket y el mapa nunca lo repite. Lo decidió el ticket 04, mirando. -->
 
+- [11: Qué hace `/map-new` sobre un Project que ya arrancó](issues/11-map-new-sobre-project-vivo.md): El mapa se muda al overview del Project. Nunca reescribe prosa ajena, nunca se niega, y el destino lo nombra la persona.
 - [10: Qué chequean los checks estructurales](issues/10-que-chequean-los-checks.md): Seis scripts y un job; 44 afirmaciones vivas de 50, y el adapter se chequea con un AST y no con grep.
 - [04: Un mapa de juguete en Linear, para ver si el Document aguanta](issues/04-prototipo-mapa-en-linear.md): Aguanta. El índice es una línea por decisión, con el detalle solo en el ticket y tope de 120 caracteres.
 - [14: Si el preflight corre por invocación o por sesión](issues/14-preflight-por-invocacion.md): Una vez por conductor, con la salida como blob opaco que todo consumidor recibe en `--ctx`.
-- [13: Si una pestaña abierta puede pisar una escritura del plugin](issues/13-pestana-abierta-pisa-al-plugin.md): No puede: `documentUpdate` mueve el estado Yjs, así que no deja rama que un cliente pueda ganar.
+- [13: Si una pestaña abierta puede pisar una escritura del plugin](issues/13-pestana-abierta-pisa-al-plugin.md): No puede: la escritura mueve el estado Yjs, así que no deja rama que un cliente pueda ganar.
 - [09: Cómo evita el plugin pisar una edición humana del mapa](issues/09-concurrencia-humano-plugin.md): No detecta el conflicto, lo evita: relee justo antes de escribir y la ventana baja a 332 ms.
 - [07: Distribución e instalación](issues/07-distribucion-e-instalacion.md): Entra al marketplace de `spec-driven-dev` y declara la dependencia de verdad, sin constraint.
 - [06: Qué hace exactamente `/map-collapse`](issues/06-que-hace-map-collapse.md): Es HITL y es un evento único: dos pasadas, cortes y después issues, y escribe N+2 veces.
 - [05: Cómo se adaptan grilling, domain-modeling y prototype al vivir acá](issues/05-adaptar-las-tres-disciplinas.md): Model-invoked con `/grill` como única puerta, en inglés y con el frontmatter de SDD.
-- [02: Qué permite y limita la API de Documents de Linear](issues/02-api-documents-linear.md): Sirve como casa del mapa y no hay blocker: el tamaño y el rate limit son irrelevantes.
+- [02: Qué permite y limita la API de Documents de Linear](issues/02-api-documents-linear.md): No hay blocker: el tamaño y el rate limit son irrelevantes. (El mapa ya no vive en un Document. Lo mudó el 11.)
 - [01: Cómo lee el agente el grafo de dependencias de Linear](issues/01-grafo-dependencias-linear.md): Con GraphQL crudo en un round-trip; el SDK gasta 15 requests donde eso gasta 1.
 - [03: Las operaciones de wayfinding, expresadas en Linear](issues/03-seis-operaciones-en-linear.md): Son ocho y no seis, todas por GraphQL crudo y sin fallbacks.
 - [08: Qué cambia de los dos modos de wayfinder al keironizarlos](issues/08-los-dos-modos-keironizados.md): Ocho cosas: tres adaptaciones forzadas, dos endurecimientos y tres nuestras.
@@ -70,9 +71,11 @@ La niebla: se ve venir, pero todavía no se puede formular con precisión.
   de callback y refresh de 24 horas. Lo que no se puede formular todavía es el
   disparador. El día que el mapa lo mantenga una cuenta de bot, `actor: app` le saca
   a la persona la autoría del comentario de resolución, y no está claro qué se pone
-  en su lugar. El 09 le encontró el primer beneficio concreto y medible:
-  `Document.updatedBy` existe, y con Personal API key no distingue al plugin de la
-  persona porque son el mismo usuario.
+  en su lugar. El 09 le había encontrado un
+  beneficio concreto y medible, que `Document.updatedBy` existe y con Personal API key
+  no distingue al plugin de la persona. El 11 se lo sacó al mudar el mapa al overview:
+  **`Project` no tiene `updatedBy`**, así que ya no hay campo que distinguir y la
+  niebla vuelve a ser solo la pregunta por el disparador.
 - **Cómo se prueba que el adapter hace lo que dice, y no solo que está escrito
   como dice.** La decisión de encuadre ruled out verificar comportamiento
   conversacional, y el del adapter nunca se conversó. El 10 lo volvió contable: seis
@@ -85,7 +88,9 @@ La niebla: se ve venir, pero todavía no se puede formular con precisión.
   parecidos.
 - **Un espejo del glosario en Linear, para PM y Diseño.** El repo central los
   deja afuera, y son justamente quienes más pelean con la ambigüedad de los
-  términos. Se ve el problema, no la forma.
+  términos. Se ve el problema, no la forma. El 11 le sacó la mitad que era de
+  visibilidad: con el mapa en la portada del Project, PM y Diseño lo ven sin que
+  nadie les avise. Lo que queda es el glosario, que no es el mapa.
 - **Cómo se le avisa a un rol que no entra a Linear.** El multi-rol produce
   tickets para PM y Diseño. El 08 le sacó la mitad invisible: `/map-status` los
   muestra en la frontera con su antigüedad, así que un mapa trabado por esto ya se

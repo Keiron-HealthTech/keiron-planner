@@ -2,6 +2,15 @@
 
 Resolución del ticket 04. Fecha: 2026-08-27.
 
+> **Enmienda del 11.** Donde este documento diga que el mapa es un Document colgado
+> del Project, léase el **overview del Project**, `Project.content`: el 11 lo mudó, y
+> `map:create` ya no crea Document. El mapa no tiene título propio, así que el
+> `DD: <proyecto>` desaparece. Detalle y mediciones en
+> [`11-el-project-vivo.md`](11-el-project-vivo.md).
+
+> Lo que este documento midió sobre el markdown **se transfiere entero**: el overview
+> es del mismo tipo `DocumentContent`, con las mismas cuatro transformaciones.
+
 `map:prototype`, `hitl:dev`. La rama no es ninguna de las dos de Matt: el
 artefacto no es lógica ni es UI, es un documento en una herramienta de terceros.
 Se construyó a mano en el Project descartable del ticket 01 y se miró.

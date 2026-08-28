@@ -3,6 +3,14 @@
 Investigación de solo lectura. No se creó ni modificó ningún Document, Project ni issue.
 Fecha: 2026-08-26.
 
+> **Enmienda del 11.** El mapa ya no vive en un Document: vive en el overview del
+> Project, `Project.content`. Todo lo que este documento mide sobre Documents sigue
+> siendo cierto sobre Documents, y lo que se transfiere está medido en
+> [`11-el-project-vivo.md`](11-el-project-vivo.md): el round-trip de markdown es
+> idéntico, porque `Project.documentContent` es del mismo tipo `DocumentContent`, y
+> el tamaño sigue sin ser blocker, con techo entre 200.000 y 500.000 caracteres. Lo
+> que **no** se transfiere son las llamadas concretas, que son de `document`.
+
 ## Fuentes usadas
 
 1. **Introspection del schema GraphQL de Linear**, sin autenticar, contra `https://api.linear.app/graphql`.

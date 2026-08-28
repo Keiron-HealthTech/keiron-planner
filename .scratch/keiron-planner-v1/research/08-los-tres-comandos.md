@@ -4,6 +4,12 @@ Resolución del ticket [08](../issues/08-los-dos-modos-keironizados.md), tipo
 `map:grilling`. Seis rondas de grilling con el dev leader, veinticinco preguntas,
 sesión del 2026-08-27, más una medición contra el workspace `keiron`.
 
+> **Enmienda del 11.** Donde este documento diga que el mapa es un Document colgado
+> del Project, léase el **overview del Project**, `Project.content`: el 11 lo mudó, y
+> `map:create` ya no crea Document. El mapa no tiene título propio, así que el
+> `DD: <proyecto>` desaparece. Detalle y mediciones en
+> [`11-el-project-vivo.md`](11-el-project-vivo.md).
+
 Wayfinder tiene dos modos. Nosotros tenemos cuatro comandos, y este documento
 escribe tres. El procedimiento de `/map-collapse` es del ticket
 [06](../issues/06-que-hace-map-collapse.md); acá queda nombrada solo la costura.

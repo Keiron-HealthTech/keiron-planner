@@ -2,6 +2,15 @@
 
 Resolución del ticket 09. Fecha: 2026-08-27.
 
+> **Enmienda del 11.** El mapa se mudó al overview del Project. La estrategia de este
+> documento no cambia en nada, incluida la quinta fase del 13 que corre al revés:
+> releer tarde y re-derivar sigue siendo necesario porque el plugin puede destruir
+> trabajo de una persona. Lo que cambia son las llamadas, `document(id:)` por
+> `project(id:)` y `documentUpdate` por `projectUpdate`, y la ventana de 332 ms hay
+> que volver a medirla. **Se retira la nota sobre `Document.updatedBy`**: `Project` no
+> tiene `updatedBy`, sino `creator`, `lead` y `members`, y ninguno dice quién tocó el
+> contenido. Detalle en [`11-el-project-vivo.md`](11-el-project-vivo.md).
+
 Este documento **se reparte**, como el del 08 y a diferencia del reference del
 03: el contrato de las dos operaciones va a `LINEAR-OPERATIONS.md` al lado del
 adapter, y la regla de las anclas a `skills/_shared/map-contract.md`. Es una
