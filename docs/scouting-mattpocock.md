@@ -1,3 +1,7 @@
+---
+lang: es
+---
+
 # Scouting: skills de mattpocock/skills para el flujo de planificación del equipo CRM
 
 Fuente: https://github.com/mattpocock/skills (clonado y leído completo, 2026-08-26).

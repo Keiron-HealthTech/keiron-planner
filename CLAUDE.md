@@ -1,3 +1,7 @@
+---
+lang: es
+---
+
 # keiron-planner
 
 Plugin de Claude Code para planificar proyectos grandes del equipo CRM sobre

@@ -1,3 +1,7 @@
+---
+lang: es
+---
+
 # CONTEXT
 
 Glosario del plugin `keiron-planner`. Es un glosario y nada más: no lleva
