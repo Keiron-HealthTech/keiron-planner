@@ -70,26 +70,38 @@ fi
 # 1 a este script en silencio.
 hechos="$(KP_MANIFEST="$MANIFEST" python3 - <<'PY' || true
 import json, os, sys
+
+
+# El protocolo es una línea por hecho, y bash lo lee con un grep anclado que se
+# queda con la primera coincidencia. Un valor del manifiesto con un salto de línea
+# adentro inyectaría hechos que ganan por llegar antes, y una aserción saldría
+# verde contra un dato fabricado en vez de leído. El salto se neutraliza acá, en el
+# único lugar que escribe el protocolo, y no en cada aserción: cualquier hecho que
+# se agregue después queda cubierto sin acordarse de nada.
+def hecho(clave, valor):
+    print("%s=%s" % (clave, str(valor).replace("\r", " ").replace("\n", " ")))
+
+
 try:
     m = json.load(open(os.environ["KP_MANIFEST"], encoding="utf-8"))
 except Exception as e:
-    print("parse_error=%s" % e)
+    hecho("parse_error", e)
     sys.exit(0)
 a = m.get("author")
 if isinstance(a, dict):
-    print("author_name=%s" % (a.get("name") or ""))
+    hecho("author_name", a.get("name") or "")
 elif isinstance(a, str):
-    print("author_name=%s" % a)
+    hecho("author_name", a)
 else:
-    print("author_name=")
+    hecho("author_name", "")
 d = m.get("dependencies")
 if isinstance(d, list):
-    print("deps_len=%d" % len(d))
+    hecho("deps_len", len(d))
     for i, x in enumerate(d):
-        print("deps_%d_type=%s" % (i, type(x).__name__))
-        print("deps_%d_value=%s" % (i, x if isinstance(x, str) else ""))
+        hecho("deps_%d_type" % i, type(x).__name__)
+        hecho("deps_%d_value" % i, x if isinstance(x, str) else "")
 else:
-    print("deps_len=-1")
+    hecho("deps_len", -1)
 PY
 )"
 require_nonempty "$hechos" "[14] la lectura de $MANIFEST con python3 no devolvió ningún hecho; el lector se rompió"
