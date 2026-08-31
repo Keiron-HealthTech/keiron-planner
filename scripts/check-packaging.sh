@@ -5,8 +5,7 @@ cd "$(dirname "$0")/.."
 
 . scripts/_common.sh
 
-# Afirmaciones 14, 15 y 21. Las 17, 18 y 20 no nacen acá: hablan de install.sh y de
-# README.md, que no existen. Nacen con ellos.
+# Afirmaciones 14, 15 y 21.
 
 # --- tercer tier: sin fuente y sin herramientas no hay nada que chequear ---
 
@@ -29,15 +28,10 @@ fi
 # --- afirmación 14: el manifiesto pasa el CLI y declara author ---
 
 # El validador camina la raíz del plugin entera, y CLAUDE.md ahí adentro le arranca un
-# warning que bajo --strict es un error: el runtime no carga ese archivo como contexto
-# del plugin. Medido: el warning no depende del argumento, no hay flag que lo silencie,
-# y lo dispara solo CLAUDE.md. Así que la validación corre sobre una copia aislada del
-# manifiesto, que es exactamente el sujeto de esta afirmación, y conserva --strict.
-# Medido: la copia aislada sale 0 y sigue distinguiendo, un campo desconocido la
-# devuelve en 1.
-#
-# Lo que esta forma deja de mirar es el plugin tal como se despacha. El día que exista
-# skills/, validarlo es de otra afirmación y de otro check.
+# warning que bajo --strict es un error. Medido: no depende del argumento, no hay flag
+# que lo silencie, y lo dispara solo CLAUDE.md. Por eso la validación corre sobre una
+# copia aislada del manifiesto: conserva --strict y sigue distinguiendo un campo
+# desconocido. Lo que deja de mirar es el plugin tal como se despacha.
 aislado=""
 limpiar_aislado() {
   if [ -n "$aislado" ]; then
@@ -52,32 +46,25 @@ fi
 mkdir -p "$aislado/.claude-plugin"
 cp "$MANIFEST" "$aislado/.claude-plugin/"
 
-# Medido: la salida va entera por stdout y stderr queda vacío, en el caso OK y en el
-# FAIL. Así que se captura con 2>&1 y se decide por el código de salida, nunca por el
-# texto. Medido también que sale 0 con HOME vacío y sin credencial, que es lo que hace
-# que esta aserción corra igual en CI.
+# Medido: toda la salida va por stdout y stderr queda vacío, en el caso OK y en el FAIL.
+# Por eso se captura con 2>&1 y se decide por el código de salida, nunca por el texto.
 if ! validacion="$(claude plugin validate --strict "$aislado" 2>&1)"; then
   fail "[14] claude plugin validate --strict no salió 0: $(printf '%s\n' "$validacion" | tail -1)"
 fi
 
-# Un solo arranque de intérprete que imprime hechos normalizados. Los [N] se quedan en
-# bash, donde la afirmación 50 los puede leer.
-#
-# La ruta entra por el entorno y no como argumento posicional. Indexar argv dejaría un
-# corchete con el dígito uno adentro, y la afirmación 50 extrae los [N] con una
-# expresión que no distingue un índice de Python de un número de afirmación. La
-# afirmación 1 existe, así que eso no fallaría por contabilidad: mapearía la afirmación
-# 1 a este script en silencio.
+# Un solo arranque de intérprete, que imprime hechos normalizados. Los [N] se quedan en
+# bash, donde la extracción estática los puede leer. Y la ruta entra por el entorno y no
+# por argv: indexar argv dejaría en el archivo un corchete con un dígito adentro, que esa
+# extracción no distingue de un número de afirmación.
 hechos="$(KP_MANIFEST="$MANIFEST" python3 - <<'PY' || true
 import json, os, sys
 
 
 # El protocolo es una línea por hecho, y bash lo lee con un grep anclado que se
-# queda con la primera coincidencia. Un valor del manifiesto con un salto de línea
-# adentro inyectaría hechos que ganan por llegar antes, y una aserción saldría
-# verde contra un dato fabricado en vez de leído. El salto se neutraliza acá, en el
-# único lugar que escribe el protocolo, y no en cada aserción: cualquier hecho que
-# se agregue después queda cubierto sin acordarse de nada.
+# queda con la primera coincidencia. Un valor con un salto de línea adentro
+# inyectaría hechos que ganan por llegar antes, y una aserción saldría verde contra
+# un dato fabricado. Se neutraliza acá, en el único lugar que escribe el protocolo,
+# así que un hecho nuevo queda cubierto sin acordarse de nada.
 def hecho(clave, valor):
     print("%s=%s" % (clave, str(valor).replace("\r", " ").replace("\n", " ")))
 
@@ -119,8 +106,6 @@ if [ -z "$(dato author_name)" ]; then
 fi
 
 # --- afirmación 15: dependencies con exactamente un elemento, string pelado ---
-# El uno y el literal spec-driven-dev se hardcodean sin culpa: es la única copia, y la
-# primera vive en código y no en una tabla.
 
 if [ "$(dato deps_len)" != "1" ]; then
   fail "[15] $MANIFEST declara dependencies con largo $(dato deps_len); tiene que ser exactamente uno"
