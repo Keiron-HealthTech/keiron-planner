@@ -10,7 +10,7 @@ existe, y ningún otro archivo del repo vuelve a contarlas. Los research donde
 nacieron quedan como registro de su momento, y pueden decir números que ya no
 valen.
 
-**56 acuñadas, 50 no retiradas, 6 retiradas.**
+**57 acuñadas, 51 no retiradas, 6 retiradas.**
 
 La columna Estado es lo que la afirmación 50 va a leer, y toma tres valores. Una
 afirmación acuñada que todavía no tiene script arranca en `pendiente`. Cambia de
@@ -88,6 +88,7 @@ una segunda copia.
 | 20 | El `README.md` tiene el snippet con `keiron-planner@spec-driven-dev` y nombra `/planner-setup` | dos greps | ninguna | pendiente | 07 |
 | 21 | Ningún archivo trackeado matchea `*.key`, y `.gitignore` lo cubre | `git ls-files` sobre **todo lo trackeado**, `vendor/` y `.scratch/` incluidos, más `git check-ignore` sobre una ruta de prueba | ninguna | viva | 07 |
 | 56 | `install.sh` corre bajo `dash` sin errores de portabilidad: el archivo parsea entero, y cada modo no interactivo sale con el código que declara y sin diagnóstico del intérprete | `dash -n` sobre el archivo, más tres ejecuciones con `HOME` y `XDG_CONFIG_HOME` seteadas a un temporal, una por modo no interactivo y una con un argumento inválido, exigiendo el código **exacto** de cada modo y la ausencia de una línea de diagnóstico de `dash` en stderr | tres puntos ciegos medidos. Uno, `$'...'` degrada a los bytes literales del dólar, la barra y la ene: sale con el código esperado, no escribe diagnóstico y pasa `dash -n`, o sea corrupción muda. Dos, `cmd_install` y `validate` no se ejecutan nunca, porque piden TTY y red, así que un bashismo de runtime ahí adentro no lo ve ninguna de las tres partes. Tres, las ramas que necesitan una key guardada tampoco se ejecutan, y ejercitar la de `cmd_verify` haría una llamada de red, que es lo que la aislación existe para evitar | viva | CRM-3392 |
+| 57 | `install.sh` distingue los tres desenlaces de su validación, y el mensaje que lee la persona corresponde al desenlace: un fallo del que el script no pudo decidir nunca se reporta como credencial inválida | tres ejecuciones de `--verify` con una key plantada y un `curl` falso al frente del `PATH`, una por desenlace, exigiendo el código exacto y una marca de texto propia de cada mensaje. El falso responde por caso y la única bandera que mira es `-f`, porque con `-f` la rama de rechazo pasa a ser un desenlace 2 y el mensaje se invierte | tres límites. Uno, el `curl` es falso, así que lo verificado es cómo despacha el script sobre tres formas de respuesta y no que la API de Linear produzca esas formas. Dos, solo ejercita el sitio de llamada de `cmd_verify`; los otros dos, el de `cmd_install` y el del chequeo de reemplazo, piden TTY y no se ejecutan. Tres, del desenlace 2 cubre la rama en que `curl` falla y no la de una respuesta que no parsea como JSON, y tampoco cubre una herramienta ausente adentro de `validate`, que no produce ninguno de los tres desenlaces | viva | CRM-3392 |
 
 ### `check-language.sh`
 | Nº | Afirmación | Cómo | Brecha | Estado | Origen |

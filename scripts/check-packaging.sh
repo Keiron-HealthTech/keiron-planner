@@ -42,9 +42,11 @@ fi
 # para que un directorio que sobreviva nombre qué fugó.
 aislado=""
 hogar=""
+tricotomia=""
 limpiar() {
   if [ -n "$aislado" ]; then rm -rf "$aislado"; fi
   if [ -n "$hogar" ]; then rm -rf "$hogar"; fi
+  if [ -n "$tricotomia" ]; then rm -rf "$tricotomia"; fi
 }
 trap limpiar EXIT
 
@@ -225,6 +227,57 @@ for caso in "--verify:1" "--nope:1" "--remove:0"; do
   fi
 done
 
+# --- afirmación 57: validate distingue sus tres desenlaces ---
+
+# Los tres modos de la afirmación 56 no llegan nunca a validate, así que el contrato que
+# decide qué mensaje lee la persona no lo ejercita nada. Se cierra con un curl falso al
+# frente del PATH y una key plantada: las asignaciones de prefijo suman al entorno en vez
+# de reemplazarlo, e install.sh invoca curl sin cualificar y sin hash, así que el
+# subproceso levanta el falso. Queda offline y determinista.
+#
+# El precio es este stub, que es superficie que alguien mantiene. Por eso vive acá y no en
+# un archivo aparte, y responde por caso en vez de imitar a curl: lo único que tiene que ser
+# fiel es la forma de lo que curl deja en stdout y su código. La única bandera que mira es
+# -f, y por eso: con -f, curl sale 22 sobre el 401 y descarta el body, así que la rama de
+# rechazo se convierte en un desenlace 2 y quien tiene una key mala lee que el problema no
+# es su credencial. Esa inversión es la regresión más probable del archivo y hasta ahora no
+# la miraba ninguna afirmación.
+if ! tricotomia="$(mktemp -d "${TMPDIR:-/tmp}/kp-tri.XXXXXX")"; then
+  bail "[57] no se pudo crear el directorio temporal donde ejercitar el contrato de validate"
+fi
+mkdir -p "$tricotomia/bin" "$tricotomia/.config/keiron-planner"
+printf 'no-es-una-key-real\n' > "$tricotomia/.config/keiron-planner/linear.key"
+
+cat > "$tricotomia/bin/curl" <<'CURL'
+#!/bin/sh
+case "${KP_CASO:-}" in
+  valida)    printf '%s' '{"data":{"viewer":{"name":"Sonda"},"organization":{"name":"Keiron","urlKey":"keiron"}}}' ;;
+  rechazada) case " $* " in *" -f "*|*" --fail "*) exit 22 ;; esac
+             printf '%s' '{"errors":[{"message":"Authentication required, not authenticated"}]}' ;;
+  caida)     printf 'curl: (6) Could not resolve host: api.linear.app\n' >&2; exit 6 ;;
+esac
+CURL
+chmod +x "$tricotomia/bin/curl"
+
+# La marca es lo que discrimina, y no el código: rechazada y caída salen las dos 1, porque
+# die sale 1 siempre. Que un desenlace 2 nunca se reporte como key inválida es la cláusula
+# del contrato, y la única forma de verla es el texto que la persona lee.
+for caso in "valida:0:Key válida en" "rechazada:1:no sirve" "caida:1:no de la credencial"; do
+  modo="${caso%%:*}"
+  resto="${caso#*:}"
+  esperado="${resto%%:*}"
+  marca="${resto#*:}"
+  rc=0
+  dicho="$(KP_CASO="$modo" PATH="$tricotomia/bin:$PATH" HOME="$tricotomia" \
+    XDG_CONFIG_HOME="$tricotomia/.config" dash "$instalador" --verify 2>&1)" || rc=$?
+  if [ "$rc" -ne "$esperado" ]; then
+    fail "[57] con la respuesta $modo, $instalador --verify salió $rc y tiene que salir $esperado"
+  fi
+  if ! printf '%s\n' "$dicho" | grep -qF "$marca"; then
+    fail "[57] con la respuesta $modo, el mensaje de $instalador no dice \"$marca\": $(printf '%s\n' "$dicho" | tail -1)"
+  fi
+done
+
 report
 
-echo "$CHECK_NAME: OK - manifiesto válido con author, dependencies en un string pelado, nada trackeado matchea *.key, y el instalador chequea el intérprete, guarda la key en su ruta sin imprimirla, y corre bajo dash sin diagnóstico"
+echo "$CHECK_NAME: OK - manifiesto válido con author, dependencies en un string pelado, nada trackeado matchea *.key, y el instalador chequea el intérprete, guarda la key en su ruta sin imprimirla, corre bajo dash sin diagnóstico, y distingue los tres desenlaces de su validación"
