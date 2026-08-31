@@ -14,21 +14,46 @@ ENDPOINT="https://api.linear.app/graphql"
 
 die() { printf '%s\n' "$1" >&2; exit 1; }
 
+# Lo llaman las dos rutas que validan. Sin esta guarda, la ausencia de curl llega como
+# rc 2 y el mensaje de ese código culpa a la red de algo que es una herramienta que falta.
+need_curl() { command -v curl >/dev/null 2>&1 || die "Falta curl."; }
+
 # Valida una key contra la API.
 #   0  sirve. Escribe "Nombre - workspace X (slug)" en stdout.
 #   1  la API la rechazó.
 #   2  el script no pudo decidir: red caída, respuesta rara, falta una
 #      herramienta. Este caso nunca se reporta como key inválida.
 validate() {
-  _linear_key="$1"
+  # El trim es una condición de la línea de abajo: la key viaja en un config de curl que
+  # es una sola línea, y un espacio o un salto adentro la partiría en dos dejando un
+  # pedazo de la key en la posición del nombre de opción, que es la única parte del
+  # config que curl nombra cuando no la reconoce. El valor entra por heredoc, que no
+  # aparece en la línea de comando de ningún proceso.
+  _linear_key=$(tr -d '[:space:]' <<KEY
+$1
+KEY
+)
+
+  # La key va por el config que curl lee de stdin y no por -H: en argv la levanta
+  # cualquier agente de EDR o MDM que registre la línea de comando de cada exec, y una
+  # Personal API key de Linear no tiene alcance ni vencimiento, así que nadie se entera
+  # de que hay que revocarla.
+  #
   # Sin -f ni --fail, y la ausencia del flag es la decisión: una key rechazada devuelve
   # 401 con JSON válido, y curl -sS sin -f sale 0 y deja ese JSON en stdout, así que el
   # python lo lee y devuelve 1. Con -f, curl sale no cero y descarta el body: se dispara
   # el return 2 y quien tiene una key mala lee "el problema no es tu credencial".
-  _resp=$(curl -sS --max-time 20 -X POST "$ENDPOINT" \
+  #
+  # El stderr de curl no se captura y va derecho al del script, que es lo que prometen
+  # los mensajes del rc 2 cuando dicen que el detalle está arriba. Adentro de la
+  # sustitución quedaba atrapado en $_resp y el return 2 lo tiraba, y de paso ensuciaba
+  # el JSON que lee el python.
+  _resp=$(curl -sS --config - --max-time 20 -X POST "$ENDPOINT" \
     -H 'Content-Type: application/json' \
-    -H "Authorization: $_linear_key" \
-    -d '{"query":"{ viewer { name } organization { name urlKey } }"}' 2>&1) || return 2
+    -d '{"query":"{ viewer { name } organization { name urlKey } }"}' <<CONFIG
+header = "Authorization: $_linear_key"
+CONFIG
+) || return 2
 
   printf '%s' "$_resp" | python3 -c '
 import json, sys
@@ -58,6 +83,7 @@ print(viewer.get("name", "?") + " - workspace " + org.get("name", "?") + " (" + 
 
 cmd_verify() {
   [ -f "$KEY_FILE" ] || die "No hay key guardada en $KEY_FILE. Ejecuta /planner-setup"
+  need_curl
   if _who=$(validate "$(cat "$KEY_FILE")"); then
     printf 'Key válida en %s\n  %s\n' "$KEY_FILE" "$_who"
   else
@@ -80,7 +106,7 @@ cmd_remove() {
 }
 
 cmd_install() {
-  command -v curl >/dev/null 2>&1 || die "Falta curl."
+  need_curl
 
   # Se ejecuta python3 -V en vez de resolver la ruta del ejecutable: en macOS
   # /usr/bin/python3 existe como stub aunque las Command Line Tools no estén instaladas,
@@ -99,6 +125,20 @@ ahí es donde falla. Instálalas con:
 
 No guardé nada." ;;
   esac
+
+  # Sin terminal no hay forma de apagar el eco, y una key tipeada con eco queda en el
+  # scrollback y en cualquier transcript que esté grabando. La guarda va antes de la
+  # primera pregunta y no antes de la última: sin TTY, un read choca con EOF y bajo
+  # set -e mata el script en el acto, dejando el prompt colgado sin explicación y sin
+  # decir que no hay TTY, que es la condición de la que depende quien lo invoca.
+  if [ ! -t 0 ]; then
+    die "Necesito una terminal de verdad para pedir la key sin mostrarla.
+
+Este script se está ejecutando sin TTY, por ejemplo desde un pipe, un hook o un
+agente. Abre una terminal y ejecuta /planner-setup ahí.
+
+No guardé nada."
+  fi
 
   if [ -f "$KEY_FILE" ] && _who=$(validate "$(cat "$KEY_FILE")" 2>/dev/null); then
     printf 'Ya hay una key válida en %s\n  %s\n\n' "$KEY_FILE" "$_who"
@@ -123,17 +163,6 @@ La key queda solo en tu máquina, en un archivo que solo tú puedes leer.
 No se sube a ningún repo y no se comparte con nadie.
 
 HELP
-
-  # Sin terminal no hay forma de apagar el eco, y una key tipeada con eco queda en el
-  # scrollback y en cualquier transcript que esté grabando.
-  if [ ! -t 0 ]; then
-    die "Necesito una terminal de verdad para pedir la key sin mostrarla.
-
-Este script se está ejecutando sin TTY, por ejemplo desde un pipe, un hook o un
-agente. Abre una terminal y ejecuta /planner-setup ahí.
-
-No guardé nada."
-  fi
 
   printf 'Pega la key y presiona Enter. No se va a ver mientras escribes: '
   _stty_saved=$(stty -g)
