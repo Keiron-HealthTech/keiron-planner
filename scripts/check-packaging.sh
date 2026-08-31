@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 . scripts/_common.sh
 
-# Afirmaciones 14, 15, 17, 18, 21 y 56.
+# Afirmaciones 14, 15, 17, 18, 21, 56 y 57.
 
 # --- tercer tier: sin fuente y sin herramientas no hay nada que chequear ---
 
@@ -236,12 +236,13 @@ done
 # subproceso levanta el falso. Queda offline y determinista.
 #
 # El precio es este stub, que es superficie que alguien mantiene. Por eso vive acá y no en
-# un archivo aparte, y responde por caso en vez de imitar a curl: lo único que tiene que ser
-# fiel es la forma de lo que curl deja en stdout y su código. La única bandera que mira es
-# -f, y por eso: con -f, curl sale 22 sobre el 401 y descarta el body, así que la rama de
-# rechazo se convierte en un desenlace 2 y quien tiene una key mala lee que el problema no
-# es su credencial. Esa inversión es la regresión más probable del archivo y hasta ahora no
-# la miraba ninguna afirmación.
+# un archivo aparte, y responde por caso en vez de imitar a curl. Lo que sí modela es lo que
+# cambia el resultado: el config que recibe por stdin, y la bandera de fallo duro.
+#
+# Con fallo duro, curl sale 22 sobre el 401 y descarta el body, así que la rama de rechazo
+# se convierte en un desenlace 2 y quien tiene una key mala lee que el problema no es su
+# credencial. Se reconoce también agrupada, porque curl acepta opciones cortas juntas y
+# -sSf es la forma más común de agregarla sobre una invocación que ya es -sS.
 if ! tricotomia="$(mktemp -d "${TMPDIR:-/tmp}/kp-tri.XXXXXX")"; then
   bail "[57] no se pudo crear el directorio temporal donde ejercitar el contrato de validate"
 fi
@@ -250,9 +251,18 @@ printf 'no-es-una-key-real\n' > "$tricotomia/.config/keiron-planner/linear.key"
 
 cat > "$tricotomia/bin/curl" <<'CURL'
 #!/bin/sh
+cat > "$KP_CONFIG_VISTO"
+duro=""
+for a in "$@"; do
+  case "$a" in
+    --fail|--fail-with-body) duro=1 ;;
+    --*) ;;
+    -*f*) duro=1 ;;
+  esac
+done
 case "${KP_CASO:-}" in
   valida)    printf '%s' '{"data":{"viewer":{"name":"Sonda"},"organization":{"name":"Keiron","urlKey":"keiron"}}}' ;;
-  rechazada) case " $* " in *" -f "*|*" --fail "*) exit 22 ;; esac
+  rechazada) if [ -n "$duro" ]; then exit 22; fi
              printf '%s' '{"errors":[{"message":"Authentication required, not authenticated"}]}' ;;
   caida)     printf 'curl: (6) Could not resolve host: api.linear.app\n' >&2; exit 6 ;;
 esac
@@ -268,7 +278,8 @@ for caso in "valida:0:Key válida en" "rechazada:1:no sirve" "caida:1:no de la c
   esperado="${resto%%:*}"
   marca="${resto#*:}"
   rc=0
-  dicho="$(KP_CASO="$modo" PATH="$tricotomia/bin:$PATH" HOME="$tricotomia" \
+  dicho="$(KP_CASO="$modo" KP_CONFIG_VISTO="$tricotomia/visto" \
+    PATH="$tricotomia/bin:$PATH" HOME="$tricotomia" \
     XDG_CONFIG_HOME="$tricotomia/.config" dash "$instalador" --verify 2>&1)" || rc=$?
   if [ "$rc" -ne "$esperado" ]; then
     fail "[57] con la respuesta $modo, $instalador --verify salió $rc y tiene que salir $esperado"
@@ -278,6 +289,38 @@ for caso in "valida:0:Key válida en" "rechazada:1:no sirve" "caida:1:no de la c
   fi
 done
 
+# El config por stdin es lo que hoy transporta la credencial, y una sola comparación
+# establece las tres cosas que lo hacen seguro: que es una línea sola, que el token de
+# opción es la constante, y que la key llega entera. Si se partiera, curl leería un pedazo
+# de la credencial como nombre de opción, que es la única parte del config que nombra
+# cuando no la reconoce.
+if [ "$(cat "$tricotomia/visto" 2>/dev/null || true)" != 'header = "Authorization: no-es-una-key-real"' ]; then
+  fail "[57] el config que $instalador le pasa a curl no es la línea que declara: $(cat "$tricotomia/visto" 2>/dev/null | tr '\n' ' ' || true)"
+fi
+
+# Cuarto caso, y va afuera del bucle porque no perturba la respuesta sino el intérprete.
+# El falso modela el stub de macOS: existe, no reporta versión y falla. Sin la guarda, el
+# pipe de validate sale 127, que no es ninguno de los tres desenlaces, y el mensaje culpa a
+# la credencial. El bin del curl falso queda igual adelante, así que el caso sigue offline
+# aunque alguien mueva la guarda después de la validación.
+mkdir -p "$tricotomia/sin-python3"
+cat > "$tricotomia/sin-python3/python3" <<'PY3'
+#!/bin/sh
+echo "xcrun: error: invalid active developer path" >&2
+exit 1
+PY3
+chmod +x "$tricotomia/sin-python3/python3"
+rc=0
+dicho="$(KP_CASO=valida KP_CONFIG_VISTO="$tricotomia/visto" \
+  PATH="$tricotomia/sin-python3:$tricotomia/bin:$PATH" HOME="$tricotomia" \
+  XDG_CONFIG_HOME="$tricotomia/.config" dash "$instalador" --verify 2>&1)" || rc=$?
+if [ "$rc" -ne 1 ]; then
+  fail "[57] sin un python3 que funcione, $instalador --verify salió $rc y tiene que salir 1"
+fi
+if ! printf '%s\n' "$dicho" | grep -qF 'No hay un python3 que funcione'; then
+  fail "[57] sin un python3 que funcione, $instalador --verify culpa a la credencial: $(printf '%s\n' "$dicho" | tail -1)"
+fi
+
 report
 
-echo "$CHECK_NAME: OK - manifiesto válido con author, dependencies en un string pelado, nada trackeado matchea *.key, y el instalador chequea el intérprete, guarda la key en su ruta sin imprimirla, corre bajo dash sin diagnóstico, y distingue los tres desenlaces de su validación"
+echo "$CHECK_NAME: OK - manifiesto válido con author, dependencies en un string pelado, nada trackeado matchea *.key, y el instalador chequea el intérprete, guarda la key en su ruta sin imprimirla, corre bajo dash sin diagnóstico, y su validación manda la credencial en una línea de config, distingue los tres desenlaces, y no culpa a la credencial de una herramienta que falta"

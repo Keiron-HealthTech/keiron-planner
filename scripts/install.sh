@@ -18,6 +18,30 @@ die() { printf '%s\n' "$1" >&2; exit 1; }
 # rc 2 y el mensaje de ese código culpa a la red de algo que es una herramienta que falta.
 need_curl() { command -v curl >/dev/null 2>&1 || die "Falta curl."; }
 
+# La llaman las dos rutas que validan, por la misma razón que need_curl y con un modo de
+# falla peor: sin un python3 que funcione el pipe de validate sale 127, que no es 2, así
+# que la guarda del desenlace 2 no lo atrapa y el mensaje culpa a la credencial de una
+# herramienta que falta.
+#
+# Se ejecuta python3 -V en vez de resolver la ruta del ejecutable: en macOS
+# /usr/bin/python3 existe como stub aunque las Command Line Tools no estén instaladas, así
+# que la presencia del ejecutable pasa el chequeo y el intérprete falla después. Un solo
+# case decide los dos fracasos, el ejecutable ausente y el stub que no reporta versión.
+need_python3() {
+  _pyv=$(python3 -V 2>&1) || true
+  case "$_pyv" in
+    "Python 3."*) : ;;
+    *) die "No hay un python3 que funcione: python3 -V dijo \"$_pyv\".
+
+En macOS /usr/bin/python3 existe aunque las Command Line Tools no estén instaladas, y
+ahí es donde falla. Instálalas con:
+
+  xcode-select --install
+
+No guardé nada." ;;
+  esac
+}
+
 # Valida una key contra la API.
 #   0  sirve. Escribe "Nombre - workspace X (slug)" en stdout.
 #   1  la API la rechazó.
@@ -84,6 +108,7 @@ print(viewer.get("name", "?") + " - workspace " + org.get("name", "?") + " (" + 
 cmd_verify() {
   [ -f "$KEY_FILE" ] || die "No hay key guardada en $KEY_FILE. Ejecuta /planner-setup"
   need_curl
+  need_python3
   if _who=$(validate "$(cat "$KEY_FILE")"); then
     printf 'Key válida en %s\n  %s\n' "$KEY_FILE" "$_who"
   else
@@ -107,24 +132,7 @@ cmd_remove() {
 
 cmd_install() {
   need_curl
-
-  # Se ejecuta python3 -V en vez de resolver la ruta del ejecutable: en macOS
-  # /usr/bin/python3 existe como stub aunque las Command Line Tools no estén instaladas,
-  # así que la presencia del ejecutable pasa el chequeo y el intérprete falla después. Un
-  # solo case decide los dos fracasos, el ejecutable ausente y el stub que no reporta
-  # versión.
-  _pyv=$(python3 -V 2>&1) || true
-  case "$_pyv" in
-    "Python 3."*) : ;;
-    *) die "No hay un python3 que funcione: python3 -V dijo \"$_pyv\".
-
-En macOS /usr/bin/python3 existe aunque las Command Line Tools no estén instaladas, y
-ahí es donde falla. Instálalas con:
-
-  xcode-select --install
-
-No guardé nada." ;;
-  esac
+  need_python3
 
   # Sin terminal no hay forma de apagar el eco, y una key tipeada con eco queda en el
   # scrollback y en cualquier transcript que esté grabando. La guarda va antes de la
