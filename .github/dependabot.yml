@@ -1,0 +1,19 @@
+version: 2
+
+updates:
+  # El directorio es la raíz y no `.github/workflows/`: el ecosistema github-actions
+  # resuelve los workflows desde la raíz, y apuntándolo al directorio real no encuentra
+  # ninguno.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+# No hay entrada npm: el CLI de Claude Code se instala global y sin pin desde el
+# workflow, así que ya está siempre en su última versión y no hay manifiesto que
+# actualizar. Es la única dependencia que puede poner los checks en rojo sin que nadie
+# toque el repo.
