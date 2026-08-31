@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 . scripts/_common.sh
 
-# Afirmaciones 14, 15 y 21.
+# Afirmaciones 14, 15, 17, 18, 21 y 56.
 
 # --- tercer tier: sin fuente y sin herramientas no hay nada que chequear ---
 
@@ -25,6 +25,29 @@ if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
   bail "[21] esto no es un work tree de git; no hay árbol trackeado que revisar"
 fi
 
+instalador=scripts/install.sh
+
+if [ ! -f "$instalador" ]; then
+  bail "[17] falta $instalador; las afirmaciones sobre el instalador quedan sin correr"
+fi
+
+if ! command -v dash > /dev/null 2>&1; then
+  bail "[56] dash no está en el PATH; en macOS /bin/sh es bash 3.2 en modo posix, así que no hay otro juez de portabilidad POSIX"
+fi
+
+# Un solo trap EXIT en todo el archivo: registrar un segundo lo REEMPLAZA en vez de
+# sumarlo, y el temporal del primero quedaría sin borrar en cada corrida. Medido bajo
+# bash 3.2. Las dos variables arrancan vacías porque el trap se registra antes de que
+# exista cualquiera de los dos directorios, y cada temporal lleva su propio template
+# para que un directorio que sobreviva nombre qué fugó.
+aislado=""
+hogar=""
+limpiar() {
+  if [ -n "$aislado" ]; then rm -rf "$aislado"; fi
+  if [ -n "$hogar" ]; then rm -rf "$hogar"; fi
+}
+trap limpiar EXIT
+
 # --- afirmación 14: el manifiesto pasa el CLI y declara author ---
 
 # El validador camina la raíz del plugin entera, y CLAUDE.md ahí adentro le arranca un
@@ -32,14 +55,6 @@ fi
 # que lo silencie, y lo dispara solo CLAUDE.md. Por eso la validación corre sobre una
 # copia aislada del manifiesto: conserva --strict y sigue distinguiendo un campo
 # desconocido. Lo que deja de mirar es el plugin tal como se despacha.
-aislado=""
-limpiar_aislado() {
-  if [ -n "$aislado" ]; then
-    rm -rf "$aislado"
-  fi
-}
-trap limpiar_aislado EXIT
-
 if ! aislado="$(mktemp -d "${TMPDIR:-/tmp}/kp-manifest.XXXXXX")"; then
   bail "[14] no se pudo crear el directorio temporal donde validar el manifiesto aislado"
 fi
@@ -131,6 +146,86 @@ if ! git check-ignore -q sonda-de-prueba.key; then
   fail "[21] .gitignore no cubre *.key"
 fi
 
+# --- afirmación 17: el chequeo del intérprete distingue el stub de macOS ---
+
+if ! grep -q 'python3 -V' "$instalador"; then
+  fail "[17] $instalador no chequea el intérprete con python3 -V"
+fi
+
+if ! grep -q 'xcode-select --install' "$instalador"; then
+  fail "[17] $instalador no nombra xcode-select --install en el mensaje del intérprete que falta"
+fi
+
+# En macOS /usr/bin/python3 existe como stub aunque las Command Line Tools no estén
+# instaladas, así que la presencia del ejecutable pasa y el intérprete falla después.
+# La grep corre contra el instalador y no contra este archivo, que nombra el literal en
+# su patrón y en su mensaje. Y por ser de ausencia, el literal queda prohibido en todo
+# el instalador, comentarios incluidos: uno que lo nombre lo pone en rojo solo.
+if grep -q 'command -v python3' "$instalador"; then
+  fail "[17] $instalador chequea el intérprete con command -v python3, que pasa sobre el stub de macOS"
+fi
+
+# --- afirmación 18: la key no se imprime, y su ruta está entera en una línea ---
+
+if [ "$(grep -cF '${XDG_CONFIG_HOME:-$HOME/.config}/keiron-planner/linear.key' "$instalador" || true)" != "1" ]; then
+  fail "[18] $instalador no escribe la ruta de la key entera y una sola vez en una línea"
+fi
+
+# Conteo exacto y no lista blanca por forma: cada exclusión por forma es un agujero
+# futuro, y "redirigido a archivo" no distingue > "$KEY_FILE" de > /tmp/debug. Así el
+# check se pone rojo cuando alguien AGREGA un uso, en vez de pasar en verde cuando
+# alguien agrega un echo. El precio es que cambiar la forma del instalador lo pone rojo
+# aunque el cambio sea inocuo, y el número de acá es el único lugar donde vive.
+# Cuenta LÍNEAS y no ocurrencias, así que un uso pegado a una línea que ya cuenta se
+# escapa: medido, una fuga agregada a la línea de la escritura deja el conteo en siete
+# mientras las ocurrencias pasan de ocho a nueve. Contar ocurrencias cambiaría la
+# sustancia de la afirmación, así que la brecha queda declarada y no tapada.
+usos_esperados=7
+usos="$(grep -c '_linear_key' "$instalador" || true)"
+if [ "$usos" != "$usos_esperados" ]; then
+  fail "[18] la variable de la key aparece en $usos líneas de $instalador y tiene que aparecer en $usos_esperados; si el cambio es legítimo, este número se actualiza acá y en ningún otro lado"
+fi
+
+# --- afirmación 56: install.sh corre bajo dash ---
+
+# Las tres partes de abajo cazan cosas distintas y ninguna contiene a las otras. Medido:
+# un error de sintaxis después del case lo caza solo dash -n, porque la ejecución nunca
+# llega; set -o pipefail arriba lo caza el código de salida; y unos dobles corchetes en
+# la ruta de --verify NO cambian el código de salida, que sigue siendo 1, así que la
+# única señal es el diagnóstico que dash escribe en stderr.
+if ! parseo="$(dash -n "$instalador" 2>&1)"; then
+  fail "[56] dash -n rechazó $instalador: $(printf '%s\n' "$parseo" | tail -1)"
+fi
+
+# HOME y XDG_CONFIG_HOME se SETEAN a un temporal y nunca se desasignan. Sin aislar,
+# --verify encuentra la key real de la máquina y hace una llamada de red a Linear, así
+# que la afirmación pasaría a depender de la red. Y desasignándolas, la expansión de la
+# ruta de la key aborta bajo set -u con código 2 y no 1.
+if ! hogar="$(mktemp -d "${TMPDIR:-/tmp}/kp-home.XXXXXX")"; then
+  bail "[56] no se pudo crear el directorio temporal que aísla HOME"
+fi
+
+# El código esperado es por modo y es exacto. Aceptar "no cero" dejaría pasar en verde
+# justo la familia de fallas que esta afirmación busca: dash rechazando el archivo sale
+# 2, un array sale 2, los paréntesis dobles salen 127, y las dos variables desasignadas
+# salen 2. Y el diagnóstico no se puede pedir como "stderr vacío": die escribe por
+# stderr, así que --verify sin key siempre deja texto ahí. Se busca la forma con que dash
+# prefija sus diagnósticos, que ningún mensaje del instalador contiene.
+for caso in "--verify:1" "--nope:1" "--remove:0"; do
+  modo="${caso%%:*}"
+  esperado="${caso##*:}"
+  rc=0
+  err="$(HOME="$hogar" XDG_CONFIG_HOME="$hogar/.config" \
+    dash "$instalador" "$modo" 2>&1 >/dev/null)" || rc=$?
+  if [ "$rc" -ne "$esperado" ]; then
+    fail "[56] dash $instalador $modo salió $rc y tiene que salir $esperado"
+  fi
+  diagnostico="$(printf '%s\n' "$err" | grep -E "^$instalador: [0-9]+: " || true)"
+  if [ -n "$diagnostico" ]; then
+    fail "[56] dash diagnosticó $instalador en el modo $modo: $(printf '%s\n' "$diagnostico" | head -1)"
+  fi
+done
+
 report
 
-echo "$CHECK_NAME: OK - manifiesto válido con author, dependencies en un string pelado, y nada trackeado matchea *.key"
+echo "$CHECK_NAME: OK - manifiesto válido con author, dependencies en un string pelado, nada trackeado matchea *.key, y el instalador chequea el intérprete, guarda la key en su ruta sin imprimirla, y corre bajo dash sin diagnóstico"
