@@ -15,11 +15,11 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # El paquete del CLI declara engines.node >= 22 y su postinstall corre node. Sin
       # este paso, una falla del instalador se leería como una falla del manifiesto.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
 
@@ -31,7 +31,7 @@ jobs:
       # Un intérprete 3.9 aparte, que ningún check consume todavía. Va acá porque el job
       # es único y los dos setup pesados se pagan una sola vez.
       # Entre comillas: sin comillas el YAML lo lee como número, y 3.10 sería 3.1.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         id: py39
         with:
           python-version: '3.9'
