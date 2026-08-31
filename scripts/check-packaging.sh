@@ -174,16 +174,15 @@ fi
 # Conteo exacto y no lista blanca por forma: cada exclusión por forma es un agujero
 # futuro, y "redirigido a archivo" no distingue > "$KEY_FILE" de > /tmp/debug. Así el
 # check se pone rojo cuando alguien AGREGA un uso, en vez de pasar en verde cuando
-# alguien agrega un echo. El precio es que cambiar la forma del instalador lo pone rojo
-# aunque el cambio sea inocuo, y el número de acá es el único lugar donde vive.
-# Cuenta LÍNEAS y no ocurrencias, así que un uso pegado a una línea que ya cuenta se
-# escapa: medido, una fuga agregada a la línea de la escritura deja el conteo en siete
-# mientras las ocurrencias pasan de ocho a nueve. Contar ocurrencias cambiaría la
-# sustancia de la afirmación, así que la brecha queda declarada y no tapada.
-usos_esperados=7
-usos="$(grep -c '_linear_key' "$instalador" || true)"
-if [ "$usos" != "$usos_esperados" ]; then
-  fail "[18] la variable de la key aparece en $usos líneas de $instalador y tiene que aparecer en $usos_esperados; si el cambio es legítimo, este número se actualiza acá y en ningún otro lado"
+# alguien agrega un echo. Cuenta OCURRENCIAS y no líneas, y las dos razones están
+# medidas: un uso pegado a una línea que ya cuenta no agrega ninguna línea y se
+# escaparía, y un reformateo que parta una línea agrega una sin agregar ningún uso y
+# daría rojo falso. La línea del trim ya lleva dos ocurrencias, así que el número de acá
+# no es la cantidad de líneas, y es el único lugar donde vive.
+ocurrencias_esperadas=8
+ocurrencias="$(grep -o '_linear_key' "$instalador" | grep -c . || true)"
+if [ "$ocurrencias" != "$ocurrencias_esperadas" ]; then
+  fail "[18] la variable de la key aparece $ocurrencias veces en $instalador y tiene que aparecer $ocurrencias_esperadas veces; si el cambio es legítimo, este número se actualiza acá y en ningún otro lado"
 fi
 
 # --- afirmación 56: install.sh corre bajo dash ---
