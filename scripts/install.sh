@@ -52,7 +52,8 @@ validate() {
   # es una sola línea, y un espacio o un salto adentro la partiría en dos dejando un
   # pedazo de la key en la posición del nombre de opción, que es la única parte del
   # config que curl nombra cuando no la reconoce. El valor entra por heredoc, que no
-  # aparece en la línea de comando de ningún proceso.
+  # aparece en la línea de comando de ningún proceso. Es además el único trim que alcanza
+  # a la key leída del archivo, que llega hasta acá sin pasar por el de cmd_install.
   _linear_key=$(tr -d '[:space:]' <<KEY
 $1
 KEY
@@ -181,7 +182,9 @@ HELP
   trap - EXIT INT TERM
   printf '\n'
 
-  # Quitar espacios de los costados, que es el error más común al pegar.
+  # Sin este trim los bytes que se guardan no son los que se validaron: validate trima por
+  # su cuenta, así que la key pasaría la validación y al archivo irían los bytes tal como
+  # se pegaron. Es lo único que ata lo escrito a lo validado.
   _linear_key=$(printf '%s' "$_linear_key" | tr -d '[:space:]')
   [ -n "$_linear_key" ] || die "No pegaste nada."
 
