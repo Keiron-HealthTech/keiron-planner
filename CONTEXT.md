@@ -139,6 +139,25 @@ está permitido, y es el mecanismo.
 | `milestone:create` | Crear un milestone | Un corte demoable del colapso. Nunca lleva fecha. |
 | `work:write` | Escribir el trabajo | Lo que produce un colapso o un aterrizaje, en una sola invocación: las issues de ejecución en una llamada atómica, las relaciones `related` hacia su ticket de decisión, y el label `map:no-landing` cuando no hubo trabajo. La lista de issues puede venir vacía. Ninguna issue lleva label `map` y su cuerpo es un imperativo, no una pregunta. |
 
+## Los checks
+
+La verificación del plugin son checks estructurales sobre el repo, al estilo de
+los `scripts/check-*.sh` de `spec-driven-dev`. No verifican comportamiento
+conversacional: eso quedó fuera de alcance al trazar el mapa.
+
+| Término | Qué es |
+| --- | --- |
+| Afirmación | Una invariante estructural del repo, escrita como una oración verificable y con un método que la chequea. Es el término del que cuelgan los demás. Cada una tiene un número, y ese número aparece entre corchetes en el mensaje de falla del script que la emite. |
+| Estado | Lo que una afirmación dice de sí misma en la tabla, y toma estos valores. `pendiente` es acuñada pero todavía sin script que la chequee. `viva` es la que un script emite hoy. `retirada` es la que otra afirmación reemplazó, y se conserva con su puntero para que nadie la reescriba leyendo el research donde nació. Una fila pasa a `viva` en la misma task que escribe su check, y no antes: así se nota cuando alguien construyó algo sin chequearlo. |
+| `scripts/CHECKS.md` | Donde vive la tabla de afirmaciones, agrupada por el script que las chequea. Es la **única casa del conteo**: una afirmación que no tiene fila acá no existe, y ningún otro archivo del repo vuelve a contarlas. El script no es una columna, es el encabezado de cada bloque, porque una columna sería una segunda copia. |
+| `scripts/_common.sh` | El contrato que cada script de check sourcea. No lleva shebang ni bit de ejecución, así que queda fuera del namespace `check-*` y no entra al glob del runner. Tiene un gemelo en Python, `scripts/_common.py`, con las mismas funciones y la misma forma de mensaje, porque no todo script del set es bash. |
+| `fail` | Acumula una falla y sigue. Su mensaje lleva el número de la afirmación entre corchetes, y ese literal es lo que permite comparar lo que los scripts emiten contra lo que la tabla dice. |
+| `report` | Imprime todas las fallas acumuladas y sale distinto de cero. Una corrida nombra todo lo que está roto, no lo primero que encontró. |
+| `bail` | El tercer tier: cuando falta el archivo o la herramienta que el check mira, reporta y sale ahí mismo. Las fallas derivadas de una fuente ausente son ruido, y sepultan el mensaje que importa. |
+| `require_nonempty` | La regla anti vacuidad como función: un check cuya fuente falta o cuya extracción da vacío falla, nunca pasa. Una aserción que quiere acumular en vez de cortar no usa el helper, usa `fail`. |
+| `scripts/run-checks.sh` | Corre todos los checks y agrega sus códigos de salida. La lista sale de un glob y no de ninguna lista escrita, así que agregar un check no toca ni el runner ni el workflow. Ejecuta cada check como subproceso y nunca lo sourcea. |
+| El idioma de los scripts | Comentarios y mensajes de falla en español, con los términos canónicos en inglés. Su lector es el dev leader. No llevan `lang:` porque la columna de idioma es de los `.md`. Y la prohibición de guiones largos de `Regla de idioma` **alcanza también a los mensajes que los scripts emiten**: la regla no distingue prosa de salida de programa. |
+
 ## Dependencias
 
 `keiron-planner` declara `spec-driven-dev` en el campo `dependencies` de su
