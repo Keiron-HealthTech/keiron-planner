@@ -69,4 +69,4 @@ report
 
 n="$(printf '%s\n' "$archivos" | grep -c . || true)"
 m="$(printf '%s\n' "$ingleses" | grep -c . || true)"
-echo "$CHECK_NAME: OK - $n archivos .md del árbol declaran lang:, y sus $m archivos en inglés no tienen prosa en español"
+echo "$CHECK_NAME: OK - $n archivos .md del árbol declaran lang:, y $m en inglés sin prosa en español"
