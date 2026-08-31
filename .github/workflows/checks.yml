@@ -1,0 +1,49 @@
+name: Checks
+
+# La forma del disparador se copia del repo hermano. La estructura de jobs no: allá
+# hay un job por script, que dejaría la lista de checks escrita dos veces, en el YAML
+# y en el runner. Acá la lista existe una sola vez, en el glob, así que este archivo
+# no se toca nunca al agregar un check.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # El paquete del CLI declara engines.node >= 22 y su postinstall corre node.
+      # Sin este paso, una falla del instalador se leería como una falla del
+      # manifiesto.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Medido: el binario recién instalado valida un manifiesto y sale 0 con HOME
+      # vacío, sin credencial y sin onboarding, así que la validación corre en CI
+      # igual que en local.
+      - name: Instalar el CLI de Claude Code
+        run: npm i -g @anthropic-ai/claude-code
+
+      # Un intérprete 3.9 aparte, para la afirmación que compara versiones y que nace
+      # más adelante. Va ahora porque el job es único y los dos setup pesados se pagan
+      # una sola vez.
+      # La versión va entre comillas: sin comillas el YAML la lee como número, y el
+      # día que alguien la suba a 3.10 se convierte en 3.1.
+      - uses: actions/setup-python@v5
+        id: py39
+        with:
+          python-version: '3.9'
+
+      # PY39 va como env del paso y no del job: un env a nivel de job no puede
+      # referenciar la salida de un paso.
+      - name: Checks estructurales
+        env:
+          PY39: ${{ steps.py39.outputs.python-path }}
+        run: ./scripts/run-checks.sh
