@@ -134,6 +134,26 @@ if set(del_contrato) != set(del_glosario):
     fail("[32] la tabla de " + CONTRATO + " y la de " + GLOSARIO + " no son el "
          "mismo conjunto: %s" % sorted(set(del_contrato) ^ set(del_glosario)))
 
+FUNCS = dict((n.name, n) for n in ARBOL.body if isinstance(n, ast.FunctionDef))
+if "cmd_preflight" not in FUNCS or "resolver_ctx" not in FUNCS:
+    bail("[32] " + ADAPTER + " no define cmd_preflight y resolver_ctx; las "
+         "afirmaciones sobre el adapter quedan sin correr")
+
+# --- afirmación 33: la query aparece en un solo lugar ------------------------
+asignaciones = [n for n in ARBOL.body if isinstance(n, ast.Assign)
+                and any(getattr(x, "id", None) == "PREFLIGHT_QUERY"
+                        for x in n.targets)]
+if len(asignaciones) != 1:
+    fail("[33] PREFLIGHT_QUERY se asigna %d veces a nivel módulo, y tiene que ser "
+         "exactamente una" % len(asignaciones))
+dentro_del_preflight = set(id(n) for n in ast.walk(FUNCS["cmd_preflight"]))
+fuera = [getattr(n, "lineno", 0) for n in ast.walk(ARBOL)
+         if isinstance(n, ast.Name) and n.id == "PREFLIGHT_QUERY"
+         and isinstance(n.ctx, ast.Load) and id(n) not in dentro_del_preflight]
+if fuera:
+    fail("[33] PREFLIGHT_QUERY se referencia fuera de cmd_preflight, en las líneas "
+         "%s" % fuera)
+
 report()
 print("%s: OK - los %d subcomandos de %s son los de %s y los de %s, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, len(literales), ADAPTER, CONTRATO, GLOSARIO,
