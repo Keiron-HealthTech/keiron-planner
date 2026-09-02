@@ -2,8 +2,22 @@
 """El adapter de Linear. El contrato de las doce operaciones y de los códigos de
 salida vive en scripts/LINEAR-OPERATIONS.md."""
 import argparse
+import os
 import sys
 
+ENDPOINT = "https://api.linear.app/graphql"
+
+# Los ocho del ctx. Su segunda copia es la tabla Tipos de ticket de CONTEXT.md.
+LABELS = ["map", "map:research", "map:prototype", "map:grilling", "map:task",
+          "hitl:pm", "hitl:design", "hitl:dev"]
+
+# Aparte de LABELS a propósito: Discovery es del equipo, se busca y nunca se crea.
+DISCOVERY = "Discovery"
+
+SIN_KEY = 3
+SIN_TEAM = 4
+SIN_CERRADOS = 5
+SIN_LABEL_MAP = 6
 NO_IMPLEMENTADO = 9
 
 
@@ -12,6 +26,28 @@ def die(codigo, mensaje, remediacion):
     argumento no lleva default, así que olvidarlo es un TypeError y no una omisión."""
     print("linear.py: %s\n  remediación: %s" % (mensaje, remediacion), file=sys.stderr)
     sys.exit(codigo)
+
+
+def ruta_key():
+    # or, no el default de .get: con la variable seteada y vacía, .get devuelve una
+    # ruta relativa al cwd y el instalador cae al default. Solo or coincide con los
+    # tres casos de ${XDG_CONFIG_HOME:-$HOME/.config}.
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(
+        os.path.expanduser("~"), ".config")
+    return os.path.join(base, "keiron-planner", "linear.key")
+
+
+def leer_key():
+    ruta = ruta_key()
+    if not os.path.isfile(ruta):
+        die(SIN_KEY, "no hay credencial de Linear en %s" % ruta,
+            "corre /planner-setup")
+    with open(ruta, encoding="utf-8") as fh:
+        key = fh.read().strip()
+    if not key:
+        die(SIN_KEY, "la credencial guardada en %s está vacía" % ruta,
+            "corre /planner-setup")
+    return key
 
 
 def cmd_stub(args):
