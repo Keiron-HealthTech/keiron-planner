@@ -154,6 +154,43 @@ if fuera:
     fail("[33] PREFLIGHT_QUERY se referencia fuera de cmd_preflight, en las líneas "
          "%s" % fuera)
 
+
+def invocado(f):
+    if isinstance(f, ast.Name):
+        return f.id
+    if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name):
+        return f.value.id + "." + f.attr
+    return None
+
+
+def alcanzable(raiz):
+    vistos, cola = set(), [raiz]
+    while cola:
+        cur = cola.pop()
+        if cur in vistos or cur not in FUNCS:
+            continue
+        vistos.add(cur)
+        for n in ast.walk(FUNCS[cur]):
+            if isinstance(n, ast.Call) and invocado(n.func) in FUNCS:
+                cola.append(invocado(n.func))
+    return vistos
+
+
+RUTA = alcanzable("cmd_preflight")
+require_nonempty(RUTA, "[34] el grafo alcanzable desde cmd_preflight dio vacío")
+
+# --- afirmación 34: ninguna mutation ------------------------------------------
+QUERY = (asignaciones[0].value.value
+         if asignaciones and isinstance(asignaciones[0].value, ast.Constant) else "")
+literales_ruta = [n.value for nm in RUTA for n in ast.walk(FUNCS[nm])
+                  if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+sucios = [s for s in literales_ruta if "mutation" in s]
+if sucios:
+    fail("[34] %d literales de string del grafo alcanzable desde cmd_preflight "
+         "contienen una mutation" % len(sucios))
+if "mutation" in QUERY:
+    fail("[34] el valor de PREFLIGHT_QUERY contiene una mutation")
+
 report()
 print("%s: OK - los %d subcomandos de %s son los de %s y los de %s, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, len(literales), ADAPTER, CONTRATO, GLOSARIO,
