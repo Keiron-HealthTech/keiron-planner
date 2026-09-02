@@ -307,6 +307,54 @@ else:
 if "Discovery" in etiquetas:
     fail("[37] Discovery aparece adentro de LABELS, y va como campo separado")
 
+CONSTS = {}
+for _n in ARBOL.body:
+    if (isinstance(_n, ast.Assign) and isinstance(_n.value, ast.Constant)
+            and isinstance(_n.value.value, int)
+            and not isinstance(_n.value.value, bool)):
+        for _t in _n.targets:
+            if isinstance(_t, ast.Name):
+                CONSTS[_t.id] = _n.value.value
+
+# --- afirmación 39b: el flag apaga exactamente una falla ----------------------
+add_boot = [n for n in ast.walk(ARBOL) if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute) and n.func.attr == "add_argument"
+            and n.args and isinstance(n.args[0], ast.Constant)
+            and n.args[0].value == "--bootstrap"]
+if len(add_boot) != 1:
+    fail("[39] hay %d add_argument(--bootstrap) y tiene que haber uno" % len(add_boot))
+else:
+    sobre = BIND.get(getattr(add_boot[0].func.value, "id", ""), "?")
+    if sobre != "preflight":
+        fail("[39] --bootstrap se declara sobre el subparser %s y no sobre preflight"
+             % sobre)
+condiciones = []
+for nm in sorted(RUTA):
+    for n in ast.walk(FUNCS[nm]):
+        if isinstance(n, ast.If) and any(
+                (isinstance(x, ast.Name) and x.id == "bootstrap")
+                or (isinstance(x, ast.Attribute) and x.attr == "bootstrap")
+                for x in ast.walk(n.test)):
+            condiciones.append((nm, n))
+if len(condiciones) != 1:
+    fail("[39] el valor de --bootstrap participa en %d condiciones del grafo del "
+         "preflight, y tiene que participar en una" % len(condiciones))
+else:
+    nm, n = condiciones[0]
+    codigos_de_la_guarda = set()
+    for c in ast.walk(n):
+        if (isinstance(c, ast.Call) and isinstance(c.func, ast.Name)
+                and c.func.id == "die"):
+            a = c.args[0] if c.args else None
+            if isinstance(a, ast.Name) and a.id in CONSTS:
+                codigos_de_la_guarda.add(CONSTS[a.id])
+            elif isinstance(a, ast.Constant) and isinstance(a.value, int):
+                codigos_de_la_guarda.add(a.value)
+    if codigos_de_la_guarda != set([CONSTS.get("SIN_LABEL_MAP")]):
+        fail("[39] la única condición sobre --bootstrap alcanza los códigos %s, y "
+             "tiene que alcanzar solo el de SIN_LABEL_MAP"
+             % sorted(codigos_de_la_guarda))
+
 report()
 print("%s: OK - los %d subcomandos de %s son los de %s y los de %s, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, len(literales), ADAPTER, CONTRATO, GLOSARIO,
