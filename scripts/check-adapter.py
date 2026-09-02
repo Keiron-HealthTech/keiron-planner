@@ -238,6 +238,27 @@ for op in resueltos:
            for nm in alcanzable(h) for x in ast.walk(FUNCS[nm])):
         fail("[35] el consumidor %s resuelve un ctx por su cuenta, vía %s" % (op, h))
 
+# --- afirmación 36: un solo print a stdout ------------------------------------
+a_stdout = []
+for nm in sorted(RUTA):
+    for n in ast.walk(FUNCS[nm]):
+        if isinstance(n, ast.Call) and invocado(n.func) == "print":
+            if not any(kw.arg == "file" and isinstance(kw.value, ast.Attribute)
+                       and kw.value.attr == "stderr"
+                       and isinstance(kw.value.value, ast.Name)
+                       and kw.value.value.id == "sys" for kw in n.keywords):
+                a_stdout.append((nm, n))
+if len(a_stdout) != 1:
+    fail("[36] hay %d print a stdout en el grafo del preflight, y tiene que haber "
+         "exactamente uno" % len(a_stdout))
+else:
+    nm, n = a_stdout[0]
+    if nm != "cmd_preflight":
+        fail("[36] el único print a stdout vive en %s y no en cmd_preflight" % nm)
+    if not (n.args and isinstance(n.args[0], ast.Call)
+            and invocado(n.args[0].func) == "json.dumps"):
+        fail("[36] el argumento del único print a stdout no es un json.dumps")
+
 report()
 print("%s: OK - los %d subcomandos de %s son los de %s y los de %s, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, len(literales), ADAPTER, CONTRATO, GLOSARIO,
