@@ -56,12 +56,15 @@ vivo: el agente nunca contesta por el humano.
 
 | Label | Modo | Cuando |
 | --- | --- | --- |
+| `map` | Ambos | No es un tipo: es lo que hace que la issue sea un ticket de decisión, es por lo que filtra `frontier:query`, y su ausencia hace mentir a una lectura del mapa. |
 | `map:research` | AFK | Falta un hecho que vive fuera del repo. |
 | `map:prototype` | HITL | La pregunta es cómo debería verse o comportarse. |
 | `map:grilling` | HITL | Conversación. El caso por defecto. |
 | `map:task` | Ambos | Trabajo manual que desbloquea una decisión. Es el único tipo que hace en vez de decidir. |
+| `hitl:pm` | HITL | El interlocutor es product. |
+| `hitl:design` | HITL | El interlocutor es diseño. |
+| `hitl:dev` | HITL | El interlocutor es desarrollo. |
 
-El interlocutor de un ticket HITL va como `hitl:pm`, `hitl:design` o `hitl:dev`.
 Un ticket sin ninguno de esos labels es AFK, y esa ausencia es la señal.
 
 ## Terminos de Keiron que se conservan
