@@ -29,3 +29,25 @@ para que el adapter tenga su contrato a mano.
 | `ticket:rule-out` | Cierra un ticket sin resolverlo. La única destructiva. |
 | `milestone:create` | Un corte demoable del colapso. Nunca lleva fecha. |
 | `work:write` | Lo que produce un colapso o un aterrizaje, en una sola invocación. |
+
+## Los códigos de salida del preflight
+
+| Código | Constante | Falla dura | Remediación | Marca |
+| --- | --- | --- | --- | --- |
+| 3 | `SIN_KEY` | No hay credencial en disco, está vacía, o Linear la rechazó. | Instalar o reinstalar la credencial corriendo `/planner-setup`. | `/planner-setup` |
+| 4 | `SIN_TEAM` | El team que nombra `--team` no existe, o la credencial no lo ve. | Corregir la key del team que se le pasa a `--team`. | la key del team |
+| 5 | `SIN_CERRADOS` | El team no tiene un estado `completed`, o no tiene uno `canceled`. | Revisar el workflow del team y dejarle los dos estados. | el workflow del team |
+| 6 | `SIN_LABEL_MAP` | El label `map` no existe en el workspace. | Correr el preflight con `--bootstrap` la primera vez, cuando el label todavía no está. | `--bootstrap` |
+
+Los cuatro códigos son distintos entre sí y ninguno es cero. La columna `Marca` es la
+subcadena que el mensaje de esa falla emite por stderr, y se copia byte a byte: la
+comparación es literal, va sin acentos para que no dependa de la codificación de la
+salida, y las cuatro marcas tienen que ser distintas entre sí, porque una remediación
+genérica pasaría las cuatro sin distinguirlas. Reformular una marca sin tocar el
+mensaje, o al revés, deja el contrato y el script en desacuerdo.
+
+Los otros tres códigos que el adapter puede devolver no son fallas duras del preflight.
+El **9** es el de los stubs, los once subcomandos que todavía no tienen cuerpo. El
+**2** lo emite `argparse`, y cubre tres casos: falta el subcomando, falta un argumento
+requerido, o el subcomando no existe. El **1** queda reservado para lo que el script no
+pudo decidir.
