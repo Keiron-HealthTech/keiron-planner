@@ -137,6 +137,15 @@ CASOS = [
 class Args(object):
     pass
 
+def _post_falso(respuesta):
+    # El invariante es que cmd_preflight le pasa la PREFLIGHT_QUERY real y no otra
+    # cosa; una q distinta revienta acá en vez de devolver la respuesta enlatada.
+    def _post(q, v, k):
+        if q != mod.PREFLIGHT_QUERY:
+            raise AssertionError("cmd_preflight no pasó PREFLIGHT_QUERY a _post")
+        return respuesta
+    return _post
+
 fallas = []
 marcas = [v[1] for v in tabla.values()]
 if len(set(marcas)) != len(marcas):
@@ -145,7 +154,7 @@ if len(set(marcas)) != len(marcas):
 for nombre, resp, bootstrap, con_key, esperado_ok, constante in CASOS:
     plantar() if con_key else borrar()
     if resp is not None:
-        mod._post = (lambda r: (lambda q, v, k: r))(RESPUESTAS[resp])
+        mod._post = _post_falso(RESPUESTAS[resp])
     args = Args(); args.team = "CRM"; args.bootstrap = bootstrap
     so, se = io.StringIO(), io.StringIO()
     rc = 0

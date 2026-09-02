@@ -165,12 +165,18 @@ if len(asignaciones) != 1:
     fail("[33] PREFLIGHT_QUERY se asigna %d veces a nivel módulo, y tiene que ser "
          "exactamente una" % len(asignaciones))
 dentro_del_preflight = set(id(n) for n in ast.walk(FUNCS["cmd_preflight"]))
-fuera = [getattr(n, "lineno", 0) for n in ast.walk(ARBOL)
-         if isinstance(n, ast.Name) and n.id == "PREFLIGHT_QUERY"
-         and isinstance(n.ctx, ast.Load) and id(n) not in dentro_del_preflight]
+referencias = [n for n in ast.walk(ARBOL)
+               if isinstance(n, ast.Name) and n.id == "PREFLIGHT_QUERY"
+               and isinstance(n.ctx, ast.Load)]
+fuera = [getattr(n, "lineno", 0) for n in referencias
+         if id(n) not in dentro_del_preflight]
+dentro = [n for n in referencias if id(n) in dentro_del_preflight]
 if fuera:
     fail("[33] PREFLIGHT_QUERY se referencia fuera de cmd_preflight, en las líneas "
          "%s" % fuera)
+if not dentro:
+    fail("[33] PREFLIGHT_QUERY no se referencia desde cmd_preflight; nada asegura "
+         "que _post reciba la constante")
 
 
 def invocado(f):
