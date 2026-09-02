@@ -99,7 +99,7 @@ una segunda copia.
 ### `check-py39.sh`
 | Nº | Afirmación | Cómo | Brecha | Estado | Origen |
 | --- | --- | --- | --- | --- | --- |
-| 19 | `linear.py` corre en Python 3.9 | resuelve intérprete en orden `$PY39`, `python3.9`, `/usr/bin/python3` si reporta 3.9.x; falla duro si ninguno. Importa el módulo y corre `--help` de los doce subcomandos | prueba lo que se ejecuta al importar y al parsear argumentos. Una construcción de 3.10 escondida en una rama que solo corre contra la API no se ve | pendiente | 07 |
+| 19 | `linear.py` corre en Python 3.9 | resuelve intérprete en orden `$PY39`, `python3.9`, `/usr/bin/python3` si reporta 3.9.x; falla duro si ninguno. Importa el módulo y corre `--help` de los doce subcomandos | prueba lo que se ejecuta al importar y al parsear argumentos. Una construcción de 3.10 escondida en una rama que solo corre contra la API no se ve. Y la cadena cuelga de un solo eslabón local: hoy `python3.9` no está en el PATH y el único 3.9 de la máquina es `/usr/bin/python3`, así que el día que macOS lo mueva a 3.11 el check se pone rojo por una razón ajena al adapter | viva | 07 |
 
 ### `check-prose.sh`
 | Nº | Afirmación | Cómo | Brecha | Estado | Origen |
