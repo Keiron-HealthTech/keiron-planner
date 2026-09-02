@@ -259,6 +259,54 @@ else:
             and invocado(n.args[0].func) == "json.dumps"):
         fail("[36] el argumento del único print a stdout no es un json.dumps")
 
+# --- afirmación 37: las ocho claves y discovery separado ----------------------
+etiquetas = []
+for n in ARBOL.body:
+    if isinstance(n, ast.Assign) and any(getattr(x, "id", None) == "LABELS"
+                                         for x in n.targets):
+        etiquetas = [e.value for e in n.value.elts
+                     if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+tipos = tabla(GLOSARIO, "## Tipos de ticket")
+require_nonempty(etiquetas, "[37] la constante LABELS del adapter dio vacía")
+require_nonempty(tipos, "[37] la tabla Tipos de ticket de " + GLOSARIO + " dio vacía")
+if set(etiquetas) != set(tipos):
+    fail("[37] LABELS y la tabla Tipos de ticket no son el mismo conjunto: solo en "
+         "el código %s, solo en la tabla %s" % (sorted(set(etiquetas) - set(tipos)),
+                                                sorted(set(tipos) - set(etiquetas))))
+retornos = [n for n in ast.walk(FUNCS["resolver_ctx"])
+            if isinstance(n, ast.Return) and isinstance(n.value, ast.Dict)]
+if len(retornos) != 1:
+    fail("[37] resolver_ctx tiene %d return con un dict, y tiene que tener uno"
+         % len(retornos))
+else:
+    claves, no_lit = [], 0
+    for k in retornos[0].value.keys:
+        if isinstance(k, ast.Constant) and isinstance(k.value, str):
+            claves.append(k.value)
+        else:
+            no_lit += 1
+    if no_lit:
+        fail("[37] el dict del ctx tiene %d claves que no son literales" % no_lit)
+    # única copia del conjunto, así que se escribe acá con su número al lado
+    if set(claves) != set(["viewer", "team", "done", "canceled", "default", "labels",
+                           "discovery"]):
+        fail("[37] las claves de primer nivel del ctx son %s" % sorted(claves))
+    valor_discovery = None
+    for k, v in zip(retornos[0].value.keys, retornos[0].value.values):
+        if isinstance(k, ast.Constant) and k.value == "discovery":
+            valor_discovery = v
+    refs = [n for n in ast.walk(FUNCS["resolver_ctx"])
+            if isinstance(n, ast.Name) and n.id == "DISCOVERY"]
+    en_valor = ([n for n in ast.walk(valor_discovery)
+                 if isinstance(n, ast.Name) and n.id == "DISCOVERY"]
+                if valor_discovery is not None else [])
+    if len(refs) != 1 or len(en_valor) != 1:
+        fail("[37] DISCOVERY se referencia %d veces en resolver_ctx y %d de ellas "
+             "en el valor de la clave discovery; tiene que ser una y una"
+             % (len(refs), len(en_valor)))
+if "Discovery" in etiquetas:
+    fail("[37] Discovery aparece adentro de LABELS, y va como campo separado")
+
 report()
 print("%s: OK - los %d subcomandos de %s son los de %s y los de %s, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, len(literales), ADAPTER, CONTRATO, GLOSARIO,
