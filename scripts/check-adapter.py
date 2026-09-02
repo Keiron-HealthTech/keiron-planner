@@ -57,6 +57,7 @@ _reexec()
 os.chdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import ast  # noqa: E402  después del re-exec: el ast que importa es el de 3.9
+import re  # noqa: E402
 from _common import fail, report, bail, require_nonempty, CHECK_NAME  # noqa: E402
 
 ADAPTER = "scripts/linear.py"
@@ -81,6 +82,23 @@ def tabla(ruta, encabezado):
             primera = celdas[1].strip()
             if len(primera) > 2 and primera[0] == "`" and primera[-1] == "`":
                 filas.append(primera[1:-1])
+    return filas
+
+
+def tabla_codigos(ruta):
+    """Código y constante de cada fila de la tabla de códigos de salida."""
+    filas, dentro = [], False
+    with open(ruta, encoding="utf-8") as fh:
+        for linea in fh:
+            if linea.startswith("## "):
+                dentro = linea.rstrip("\n") == "## Los códigos de salida del preflight"
+                continue
+            if not dentro or not linea.startswith("|"):
+                continue
+            celdas = [c.strip() for c in linea.split("|")]
+            if len(celdas) != 7 or not celdas[1].isdigit():
+                continue
+            filas.append((int(celdas[1]), celdas[2].strip("`")))
     return filas
 
 
@@ -355,7 +373,62 @@ else:
              "tiene que alcanzar solo el de SIN_LABEL_MAP"
              % sorted(codigos_de_la_guarda))
 
+# --- afirmación 40: cuatro códigos distintos -----------------------------------
+con_sys_exit = sorted(set(nm for nm, fn in FUNCS.items() for n in ast.walk(fn)
+                          if isinstance(n, ast.Call)
+                          and invocado(n.func) == "sys.exit"))
+if con_sys_exit != ["die"]:
+    fail("[40] sys.exit aparece en %s, y tiene que aparecer solo en die"
+         % (con_sys_exit or "ninguna función"))
+otras = [n for n in ast.walk(ARBOL)
+         if (isinstance(n, ast.Call) and invocado(n.func) in ("os._exit", "exit"))
+         or (isinstance(n, ast.Raise) and isinstance(n.exc, ast.Call)
+             and invocado(n.exc.func) == "SystemExit")]
+if otras:
+    fail("[40] hay %d salidas por una vía que no es die: os._exit, exit() o raise "
+         "SystemExit" % len(otras))
+llamadas_die = [n for nm in RUTA for n in ast.walk(FUNCS[nm])
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                and n.func.id == "die"]
+require_nonempty(llamadas_die, "[40] no hay ninguna llamada a die alcanzable desde "
+                               "cmd_preflight")
+codigos, opacos = {}, 0
+for n in llamadas_die:
+    if len(n.args) != 3:
+        opacos += 1
+        continue
+    a = n.args[0]
+    if isinstance(a, ast.Constant) and isinstance(a.value, int):
+        codigos[a.value] = "(literal)"
+    elif isinstance(a, ast.Name) and a.id in CONSTS:
+        codigos[CONSTS[a.id]] = a.id
+    else:
+        opacos += 1
+if opacos:
+    fail("[40] %d llamadas a die tienen un código que no resuelve a un entero, o no "
+         "llevan los tres argumentos" % opacos)
+if len(codigos) != 4:
+    fail("[40] las fallas duras alcanzables tienen %d códigos distintos y tienen "
+         "que tener cuatro: %s" % (len(codigos), sorted(codigos)))
+malos = [c for c in codigos if c in (0, 1, 2)]
+if malos:
+    fail("[40] estos códigos de falla dura colisionan con los reservados: %s" % malos)
+del_contrato_codigos = {}
+for fila in tabla_codigos(CONTRATO):
+    del_contrato_codigos[fila[0]] = fila[1]
+require_nonempty(del_contrato_codigos, "[40] la tabla de códigos de salida de " +
+                 CONTRATO + " dio vacía")
+if codigos != del_contrato_codigos:
+    fail("[40] el mapa de códigos del AST %s no es el de %s %s"
+         % (sorted(codigos.items()), CONTRATO,
+            sorted(del_contrato_codigos.items())))
+raiz = re.findall(r"^  (\w+)[\s({]", QUERY, re.M)
+require_nonempty(raiz, "[40] no se pudo leer ningún campo raíz de PREFLIGHT_QUERY")
+prohibidos = [c for c in raiz if c in ("project", "document")]
+if prohibidos:
+    fail("[40] la query del preflight consulta %s" % prohibidos)
+
 report()
-print("%s: OK - los %d subcomandos de %s son los de %s y los de %s, bajo Python "
-      "%d.%d.%d" % (CHECK_NAME, len(literales), ADAPTER, CONTRATO, GLOSARIO,
+print("%s: OK - las ocho afirmaciones de AST sobre %s cierran, bajo Python "
+      "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))
