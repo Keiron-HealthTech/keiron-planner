@@ -10,7 +10,7 @@ existe, y ningún otro archivo del repo vuelve a contarlas. Los research donde
 nacieron quedan como registro de su momento, y pueden decir números que ya no
 valen.
 
-**57 acuñadas, 51 no retiradas, 6 retiradas.**
+**58 acuñadas, 52 no retiradas, 6 retiradas.**
 
 La columna Estado es lo que la afirmación 50 va a leer, y toma tres valores. Una
 afirmación acuñada que todavía no tiene script arranca en `pendiente`. Cambia de
@@ -100,6 +100,7 @@ una segunda copia.
 | Nº | Afirmación | Cómo | Brecha | Estado | Origen |
 | --- | --- | --- | --- | --- | --- |
 | 19 | `linear.py` corre en Python 3.9 | resuelve intérprete en orden `$PY39`, `python3.9`, `/usr/bin/python3` si reporta 3.9.x; falla duro si ninguno. Importa el módulo y corre `--help` de los doce subcomandos | prueba lo que se ejecuta al importar y al parsear argumentos. Una construcción de 3.10 escondida en una rama que solo corre contra la API no se ve. Y la cadena cuelga de un solo eslabón local: hoy `python3.9` no está en el PATH y el único 3.9 de la máquina es `/usr/bin/python3`, así que el día que macOS lo mueva a 3.11 el check se pone rojo por una razón ajena al adapter | viva | 07 |
+| 58 | El `preflight`, corrido de punta a punta sobre respuestas enlatadas y sin red, produce sus cinco desenlaces: las cuatro fallas duras con cuatro códigos distintos entre sí y distintos de cero, ninguno 1 ni 2, cada una con un mensaje que nombra su remediación, y el éxito con el ctx por stdout y nada más | siete ejecuciones bajo el intérprete de la cadena de la 19, con `HOME` y `XDG_CONFIG_HOME` seteadas a un temporal, la key plantada ahí y borrada en el caso sin credencial, `urllib.request.urlopen` neutralizado en el proceso del check, y un `_post` falso que responde por caso; exige el código exacto, stdout vacío en la falla, y que stderr contenga la marca que declara `LINEAR-OPERATIONS.md`, con las cuatro marcas distintas entre sí; el éxito exige código 0 y stdout parseable como JSON con siete claves y ocho labels. Ni los códigos ni las marcas viven en el script: salen de la tabla | Cuatro límites. Uno, el transporte no se ejercita: el endpoint, el header Authorization con la key pelada, el TLS y la forma real de la respuesta de Linear siguen sin cobertura, el mismo límite que la afirmación 57 escribió para el curl falso de install.sh. Dos, el falso es superficie que alguien mantiene, y el modo de falla que importa es que mienta y la afirmación siga verde; lo acota que solo modela _post, que responde por caso, y que si el seam se mueve el check se pone rojo y no verde. Tres, la marca es un literal de texto, así que reformular la remediación sin tocar la tabla pone la afirmación roja sin que la regla cambie; es la misma brecha que la 25 y la 55, con el atenuante de que los dos lados viven en el mismo commit. Cuatro, nada verifica que linear.py no acepte un override de la credencial por entorno; la afirmación que lo cubriría es la 27, que sigue pendiente | viva | CRM-3393 |
 
 ### `check-prose.sh`
 | Nº | Afirmación | Cómo | Brecha | Estado | Origen |
