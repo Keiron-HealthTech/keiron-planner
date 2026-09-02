@@ -100,20 +100,28 @@ def borrar():
     if os.path.isfile(RUTA):
         os.remove(RUTA)
 
-ESTADOS = [{"id": "s1", "name": "Done", "type": "completed", "position": 1},
-           {"id": "s2", "name": "Canceled", "type": "canceled", "position": 2},
-           {"id": "s3", "name": "Todo", "type": "unstarted", "position": 0}]
+# Dos completed y dos canceled, con la posición más baja en la segunda mitad de la
+# lista: si resolver_ctx tomara el primer estado del tipo en vez del de menor
+# position, el desempate quedaría mal y no acertaría con ESPERADO.
+ESTADOS = [{"id": "s1", "name": "Done", "type": "completed", "position": 5},
+           {"id": "s2", "name": "Canceled", "type": "canceled", "position": 9},
+           {"id": "s3", "name": "Todo", "type": "unstarted", "position": 0},
+           {"id": "s4", "name": "Merged", "type": "completed", "position": 1},
+           {"id": "s5", "name": "Duplicate", "type": "canceled", "position": 2}]
 
-def sano(labels=None):
+def sano(labels=None, discovery=False):
     nombres = mod.LABELS if labels is None else labels
+    etiquetas = [{"id": "l-" + n, "name": n} for n in nombres]
+    if discovery:
+        etiquetas.append({"id": "l-" + mod.DISCOVERY, "name": mod.DISCOVERY})
     return {"data": {
         "viewer": {"id": "v1"},
         "team": {"id": "t1", "key": "CRM", "defaultIssueState": {"id": "s3"},
                  "states": {"nodes": ESTADOS}},
-        "issueLabels": {"nodes": [{"id": "l-" + n, "name": n} for n in nombres]}}}
+        "issueLabels": {"nodes": etiquetas}}}
 
 RESPUESTAS = {
-    "exito": sano(),
+    "exito": sano(discovery=True),
     "credencial-rechazada": {"errors": [{"message": "Authentication required"}]},
     "sin-team": {"data": {"viewer": {"id": "v1"}, "team": None,
                           "issueLabels": {"nodes": []}}},
@@ -133,6 +141,19 @@ CASOS = [
     ("sin-label-map",        "sin-label-map", False, True,  None, "SIN_LABEL_MAP"),
     ("sin-map+bootstrap",    "sin-label-map", True,  True,  0,    None),
 ]
+
+# El ctx completo que cada caso de éxito tiene que producir, no solo su forma: done y
+# canceled vienen del estado de menor position entre los dos candidatos de ESTADOS, y
+# discovery resuelve a su id solo cuando la respuesta trae el label Discovery.
+ESPERADO = {
+    "exito": {"viewer": "v1", "team": "t1", "done": "s4", "canceled": "s5",
+              "default": "s3", "discovery": "l-" + mod.DISCOVERY,
+              "labels": dict((n, "l-" + n) for n in mod.LABELS)},
+    "sin-map+bootstrap": {"viewer": "v1", "team": "t1", "done": "s4",
+                          "canceled": "s5", "default": "s3", "discovery": None,
+                          "labels": dict((n, None if n == "map" else "l-" + n)
+                                        for n in mod.LABELS)},
+}
 
 class Args(object):
     pass
@@ -175,6 +196,9 @@ for nombre, resp, bootstrap, con_key, esperado_ok, constante in CASOS:
                 detalle = "claves=%d labels=%d" % (len(d), len(d.get("labels", {})))
                 if len(d) != 7 or len(d.get("labels", {})) != 8:
                     fallas.append(nombre + ": el ctx no tiene siete claves y ocho labels")
+                esperado = ESPERADO.get(nombre)
+                if esperado is not None and d != esperado:
+                    fallas.append("%s: ctx=%s, esperado %s" % (nombre, d, esperado))
             except ValueError:
                 detalle = "stdout no parsea como JSON"
                 fallas.append(nombre + ": stdout no parsea como JSON")
