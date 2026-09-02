@@ -132,6 +132,14 @@ def resolver_ctx(payload, bootstrap, team):
     }
 
 
+def cmd_preflight(args):
+    key = leer_key()
+    payload = _post(PREFLIGHT_QUERY,
+                     {"team": args.team, "labels": LABELS + [DISCOVERY]}, key)
+    ctx = resolver_ctx(payload, args.bootstrap, args.team)
+    print(json.dumps(ctx, separators=(",", ":")))
+
+
 def cmd_stub(args):
     die(NO_IMPLEMENTADO,
         "el subcomando %s todavía no está implementado" % args.operacion,
@@ -148,7 +156,7 @@ def construir_parser():
     p_preflight = subs.add_parser("preflight")
     p_preflight.add_argument("--team", required=True)
     p_preflight.add_argument("--bootstrap", action="store_true")
-    p_preflight.set_defaults(func=cmd_stub)
+    p_preflight.set_defaults(func=cmd_preflight)
 
     p_map_create = subs.add_parser("map:create")
     p_map_create.add_argument("--ctx", required=True)
