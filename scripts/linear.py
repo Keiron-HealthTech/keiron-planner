@@ -2,8 +2,11 @@
 """El adapter de Linear. El contrato de las doce operaciones y de los códigos de
 salida vive en scripts/LINEAR-OPERATIONS.md."""
 import argparse
+import json
 import os
 import sys
+import urllib.error
+import urllib.request
 
 ENDPOINT = "https://api.linear.app/graphql"
 
@@ -48,6 +51,41 @@ def leer_key():
         die(SIN_KEY, "la credencial guardada en %s está vacía" % ruta,
             "corre /planner-setup")
     return key
+
+
+# Un solo POST, tres campos raíz, cero project y cero document. El preflight es de
+# solo lectura y no emite ninguna mutation. La afirmación que lo asegura camina los
+# nodos del AST y no el texto del archivo, así que este comentario es inofensivo.
+PREFLIGHT_QUERY = """
+query($team: String!, $labels: [String!]!) {
+  viewer { id displayName }
+  team(id: $team) {
+    id key name
+    defaultIssueState { id name }
+    states(first: 50) { nodes { id name type position } }
+  }
+  issueLabels(first: 250, filter: { name: { in: $labels } }) {
+    nodes { id name team { id } }
+  }
+}
+"""
+
+
+def _post(query, variables, key):
+    """La ÚNICA función que toca la red. El check de runtime la rebindea desde
+    afuera para ejercitar los desenlaces del preflight sin red y sin credencial."""
+    cuerpo = json.dumps({"query": query, "variables": variables}).encode("utf-8")
+    pedido = urllib.request.Request(ENDPOINT, data=cuerpo, method="POST")
+    pedido.add_header("Content-Type", "application/json")
+    pedido.add_header("Authorization", key)
+    try:
+        with urllib.request.urlopen(pedido, timeout=30) as respuesta:
+            return json.loads(respuesta.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            return json.loads(exc.read().decode("utf-8"))
+        except ValueError:
+            return {"errors": [{"message": "HTTP %s" % exc.code}]}
 
 
 def cmd_stub(args):
