@@ -191,6 +191,53 @@ if sucios:
 if "mutation" in QUERY:
     fail("[34] el valor de PREFLIGHT_QUERY contiene una mutation")
 
+BIND = {}
+for _n in ast.walk(ARBOL):
+    if isinstance(_n, ast.Assign) and isinstance(_n.value, ast.Call):
+        _f = _n.value.func
+        if isinstance(_f, ast.Attribute) and _f.attr == "add_parser" and _n.value.args:
+            _a = _n.value.args[0]
+            if isinstance(_a, ast.Constant) and isinstance(_a.value, str):
+                for _t in _n.targets:
+                    if isinstance(_t, ast.Name):
+                        BIND[_t.id] = _a.value
+
+# --- afirmación 35: los siete consumidores ------------------------------------
+CONSUMIDORES = ["map:create", "ticket:create", "frontier:query", "ticket:claim",
+                "ticket:resolve", "ticket:rule-out", "work:write"]
+ctx_req, handler = {}, {}
+for n in ast.walk(ARBOL):
+    if not isinstance(n, ast.Call):
+        continue
+    f = n.func
+    if not (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name)):
+        continue
+    op = BIND.get(f.value.id)
+    if op is None:
+        continue
+    if (f.attr == "add_argument" and n.args
+            and isinstance(n.args[0], ast.Constant) and n.args[0].value == "--ctx"):
+        ctx_req[op] = any(kw.arg == "required" and isinstance(kw.value, ast.Constant)
+                          and kw.value.value is True for kw in n.keywords)
+    if f.attr == "set_defaults":
+        for kw in n.keywords:
+            if kw.arg == "func" and isinstance(kw.value, ast.Name):
+                handler[op] = kw.value.id
+resueltos = [op for op in CONSUMIDORES if op in handler]
+require_nonempty(ctx_req, "[35] el conjunto de subcomandos que declaran --ctx dio vacío")
+require_nonempty(resueltos, "[35] el conjunto de handlers de los consumidores dio vacío")
+if sorted(k for k, v in ctx_req.items() if v) != sorted(CONSUMIDORES):
+    fail("[35] los subcomandos con --ctx requerido no son los siete consumidores: %s"
+         % sorted(k for k, v in ctx_req.items() if v))
+sin_req = sorted(k for k, v in ctx_req.items() if not v)
+if sin_req:
+    fail("[35] estos declaran --ctx sin required=True: %s" % sin_req)
+for op in resueltos:
+    h = handler[op]
+    if any(isinstance(x, ast.Name) and x.id == "PREFLIGHT_QUERY"
+           for nm in alcanzable(h) for x in ast.walk(FUNCS[nm])):
+        fail("[35] el consumidor %s resuelve un ctx por su cuenta, vía %s" % (op, h))
+
 report()
 print("%s: OK - los %d subcomandos de %s son los de %s y los de %s, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, len(literales), ADAPTER, CONTRATO, GLOSARIO,
