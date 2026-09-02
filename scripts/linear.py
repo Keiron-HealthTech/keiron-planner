@@ -88,6 +88,50 @@ def _post(query, variables, key):
             return {"errors": [{"message": "HTTP %s" % exc.code}]}
 
 
+def resolver_ctx(payload, bootstrap, team):
+    """Pura: de la respuesta al ctx. Tres de las cuatro fallas duras viven acá."""
+    if payload.get("errors"):
+        die(SIN_KEY, "la API de Linear rechazó la credencial guardada",
+            "corre /planner-setup de nuevo con una key nueva")
+    datos = payload.get("data") or {}
+    equipo = datos.get("team")
+    if not equipo:
+        die(SIN_TEAM, "el team %s no existe o la credencial no lo ve" % team,
+            "revisa la key del team y los permisos de la credencial")
+    estados = (equipo.get("states") or {}).get("nodes") or []
+    cerrados = sorted([e for e in estados if e.get("type") == "completed"],
+                       key=lambda e: e.get("position") or 0)
+    cancelados = sorted([e for e in estados if e.get("type") == "canceled"],
+                         key=lambda e: e.get("position") or 0)
+    if not cerrados or not cancelados:
+        die(SIN_CERRADOS,
+            "el team %s no tiene ningún estado de tipo completed, o ninguno de "
+            "tipo canceled" % team,
+            "crea los estados que faltan en el workflow del team")
+    encontrados = {}
+    for nodo in ((datos.get("issueLabels") or {}).get("nodes") or []):
+        encontrados[nodo.get("name")] = nodo.get("id")
+    labels = {}
+    for nombre in LABELS:
+        labels[nombre] = encontrados.get(nombre)
+    if labels["map"] is None and not bootstrap:
+        die(SIN_LABEL_MAP, "el label map no existe en el workspace",
+            "corre /map-new, que pasa --bootstrap al preflight")
+    faltantes = [n for n in LABELS if labels[n] is None]
+    if faltantes:
+        print("aviso: faltan labels, los crea el primer ticket:create: %s"
+              % ", ".join(faltantes), file=sys.stderr)
+    return {
+        "viewer": (datos.get("viewer") or {}).get("id"),
+        "team": equipo.get("id"),
+        "done": cerrados[0].get("id"),
+        "canceled": cancelados[0].get("id"),
+        "default": (equipo.get("defaultIssueState") or {}).get("id"),
+        "labels": labels,
+        "discovery": encontrados.get(DISCOVERY),
+    }
+
+
 def cmd_stub(args):
     die(NO_IMPLEMENTADO,
         "el subcomando %s todavía no está implementado" % args.operacion,
