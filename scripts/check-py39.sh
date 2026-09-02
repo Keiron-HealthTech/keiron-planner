@@ -190,10 +190,10 @@ print("fallas=%s" % (fallas if fallas else "ninguna"))
 sys.exit(1 if fallas else 0)
 PY
 )"
-printf '%s\n' "$salida" | sed 's/^/  /' >&2
 if printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas=ninguna'; then
   :
 else
+  printf '%s\n' "$salida" | sed 's/^/  /' >&2
   fail "[58] el preflight no distingue sus cinco desenlaces, o un mensaje no nombra su remediación"
 fi
 
