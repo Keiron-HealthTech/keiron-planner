@@ -218,8 +218,8 @@ def clasificar_frontera(nodos, cerrados):
             "title": nodo.get("title"),
             "url": nodo.get("url"),
             "createdAt": nodo.get("createdAt"),
-            "labels": [e.get("name")
-                       for e in ((nodo.get("labels") or {}).get("nodes") or [])],
+            "labels": [etiqueta.get("name") for etiqueta
+                       in ((nodo.get("labels") or {}).get("nodes") or [])],
         }
         if asignado is None and not bloqueantes:
             tomables.append(entrada)
@@ -248,25 +248,29 @@ def truncadas(proyecto):
 
 
 def cmd_frontier_query(args):
-    # Cada conexión cortada miente distinto: decirle a quien perdió relations que un
-    # ticket bloqueado puede parecer tomable sería falso.
-    consecuencias = {
-        "issues": "los dos conteos son cotas inferiores y falta frontera",
-        "relations": "no afecta la frontera: el predicado no lee esta conexión",
-        "inverseRelations": "un ticket bloqueado puede parecer tomable, y la lista "
-                            "de bloqueantes de una entrada puede venir incompleta",
-    }
     ctx = json.loads(args.ctx)
     cerrados = {ctx["done"], ctx["canceled"]}
     key = leer_key()
     payload = _post(FRONTIER_QUERY,
                     {"project": args.project, "label": LABEL_MAPA}, key)
     proyecto = resolver_datos(payload)
-    salida = {"found": False, "truncated": [],
-              "counts": {"open": 0, "takeable": 0},
-              "tickets": [], "notTakeable": []}
-    if proyecto is not None:
+    if proyecto is None:
+        # found es lo único que separa un --project que no resolvió de un mapa ya
+        # colapsado: los dos llevan los conteos en cero y las dos listas vacías.
+        salida = {"found": False, "truncated": [],
+                  "counts": {"open": 0, "takeable": 0},
+                  "tickets": [], "notTakeable": []}
+    else:
         cortadas = truncadas(proyecto)
+        # Cada conexión cortada miente distinto: decirle a quien perdió relations
+        # que un ticket bloqueado puede parecer tomable sería falso.
+        consecuencias = {
+            "issues": "los dos conteos son cotas inferiores y falta frontera",
+            "relations": "no afecta la frontera: el predicado no lee esta conexión",
+            "inverseRelations": "un ticket bloqueado puede parecer tomable, y la "
+                                "lista de bloqueantes de una entrada puede venir "
+                                "incompleta",
+        }
         for nombre in cortadas:
             print("aviso: %s vino truncada: %s" % (nombre, consecuencias[nombre]),
                   file=sys.stderr)
