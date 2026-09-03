@@ -434,7 +434,56 @@ prohibidos = [c for c in raiz if c in ("project", "document")]
 if prohibidos:
     fail("[40] la query del preflight consulta %s" % prohibidos)
 
+# --- afirmación 53: los bloqueos salen solo de inverseRelations ----------------
+
+
+def _claves(nodo):
+    """Todo nombre con el que un subárbol indexa un payload, en las tres formas
+    que el adapter usa. Con atributos solos el conjunto daría vacío: la respuesta
+    de _post es un dict y se indexa con corchetes o con .get."""
+    nombres = set()
+    for n in ast.walk(nodo):
+        if isinstance(n, ast.Subscript):
+            # En 3.9 el slice de un índice simple ES el Constant: no hay ast.Index
+            # en el medio, y por eso este check se re-exec a 3.9 antes de tocar ast.
+            if isinstance(n.slice, ast.Constant) and isinstance(n.slice.value, str):
+                nombres.add(n.slice.value)
+        elif isinstance(n, ast.Attribute):
+            nombres.add(n.attr)
+        elif (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+              and n.func.attr == "get" and n.args
+              and isinstance(n.args[0], ast.Constant)
+              and isinstance(n.args[0].value, str)):
+            nombres.add(n.args[0].value)
+    return nombres
+
+
+RUTA_FRONTERA = alcanzable(handler.get("frontier:query"))
+require_nonempty(RUTA_FRONTERA,
+                 "[53] el grafo alcanzable desde el handler de frontier:query dio "
+                 "vacío")
+CLAVES = dict((nm, _claves(FUNCS[nm])) for nm in RUTA_FRONTERA)
+# Leer un bloqueante es sintáctico y no depende de ningún nombre de función: es
+# nombrar inverseRelations e issue a la vez. El escaneo de truncado nombra las dos
+# conexiones pero no issue, así que su relations es legal y queda afuera.
+PREDICADO = sorted(nm for nm, claves in CLAVES.items()
+                   if "inverseRelations" in claves and "issue" in claves)
+require_nonempty(PREDICADO,
+                 "[53] ninguna función alcanzable desde frontier:query lee un "
+                 "bloqueante: ninguna nombra inverseRelations e issue a la vez")
+mezcladas = sorted(nm for nm in PREDICADO
+                   if "relations" in CLAVES[nm] or "relatedIssue" in CLAVES[nm])
+if mezcladas:
+    fail("[53] estas funciones leen un bloqueante y además nombran relations o "
+         "relatedIssue: %s" % mezcladas)
+con_related = sorted(nm for nm, claves in CLAVES.items()
+                     if "relatedIssue" in claves)
+if con_related:
+    fail("[53] relatedIssue solo lo trae relations.nodes, y estas funciones del "
+         "grafo de frontier:query lo nombran: %s" % con_related)
+
+
 report()
-print("%s: OK - las ocho afirmaciones de AST sobre %s cierran, bajo Python "
+print("%s: OK - las nueve afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))

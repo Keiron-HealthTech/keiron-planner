@@ -17,6 +17,11 @@ LABELS = ["map", "map:research", "map:prototype", "map:grilling", "map:task",
 # Aparte de LABELS a propósito: Discovery es del equipo, se busca y nunca se crea.
 DISCOVERY = "Discovery"
 
+# El nombre del label del mapa, no su id: el ctx que cierra /map-new todavía dice
+# map: null porque el label nació después del preflight. Constante y no argumento,
+# para que no se pueda pasar el equivocado.
+LABEL_MAPA = "map"
+
 SIN_KEY = 3
 SIN_TEAM = 4
 SIN_CERRADOS = 5
@@ -66,6 +71,37 @@ query($team: String!, $labels: [String!]!) {
   }
   issueLabels(first: 250, filter: { name: { in: $labels } }) {
     nodes { id name team { id } }
+  }
+}
+"""
+
+
+# Los tamaños de página van adentro del string y nunca en una constante: así la
+# query y la medición de complejidad que la aprobó no pueden divergir. relations
+# viaja sin nodes a propósito: el predicado no la lee, y no pedirla deja el payload
+# incapaz de entregar un bloqueante por la conexión equivocada.
+FRONTIER_QUERY = """
+query($project: String!, $label: String!) {
+  project(id: $project) {
+    issues(first: 50, filter: { labels: { some: { name: { eq: $label } } } }) {
+      pageInfo { hasNextPage }
+      nodes {
+        identifier
+        title
+        url
+        createdAt
+        state { id name }
+        assignee { displayName }
+        labels { nodes { name } }
+        relations(first: 10) {
+          pageInfo { hasNextPage }
+        }
+        inverseRelations(first: 10) {
+          pageInfo { hasNextPage }
+          nodes { type issue { identifier title url state { id } } }
+        }
+      }
+    }
   }
 }
 """
@@ -140,6 +176,109 @@ def cmd_preflight(args):
     print(json.dumps(ctx, separators=(",", ":")))
 
 
+def resolver_datos(payload):
+    """La puerta compartida de las dos operaciones de lectura. Un data.project nulo
+    no es falla dura: el llamador lo emite como found: false y sale en cero."""
+    if payload.get("errors"):
+        die(SIN_KEY, "la API de Linear rechazó la consulta o la credencial guardada",
+            "corre /planner-setup de nuevo con una key nueva")
+    return (payload.get("data") or {}).get("project")
+
+
+def bloqueantes_abiertos(nodo, cerrados):
+    """La única función que nombra inverseRelations e issue a la vez: los bloqueos
+    salen de ahí y nunca de relations. Devuelve la lista, y la lista vacía es el
+    'sin bloqueantes abiertos' de la tercera condición del predicado."""
+    abiertos = []
+    for rel in ((nodo.get("inverseRelations") or {}).get("nodes") or []):
+        if rel.get("type") != "blocks":
+            continue
+        bloqueante = rel.get("issue") or {}
+        if (bloqueante.get("state") or {}).get("id") in cerrados:
+            continue
+        abiertos.append({"identifier": bloqueante.get("identifier"),
+                         "title": bloqueante.get("title"),
+                         "url": bloqueante.get("url")})
+    return abiertos
+
+
+def clasificar_frontera(nodos, cerrados):
+    """Las tres condiciones, el orden y el reparto en las dos listas, en un solo
+    recorrido. cerrados es el par de ids del ctx: nunca state.type, porque el team
+    tiene dos estados canceled y uno de ellos se llama Blocked."""
+    tomables, no_tomables = [], []
+    for nodo in sorted(nodos, key=lambda n: (n.get("createdAt") or "",
+                                             n.get("identifier") or "")):
+        if (nodo.get("state") or {}).get("id") in cerrados:
+            continue
+        asignado = (nodo.get("assignee") or {}).get("displayName")
+        bloqueantes = bloqueantes_abiertos(nodo, cerrados)
+        entrada = {
+            "identifier": nodo.get("identifier"),
+            "title": nodo.get("title"),
+            "url": nodo.get("url"),
+            "createdAt": nodo.get("createdAt"),
+            "labels": [e.get("name")
+                       for e in ((nodo.get("labels") or {}).get("nodes") or [])],
+        }
+        if asignado is None and not bloqueantes:
+            tomables.append(entrada)
+            continue
+        entrada["assignee"] = asignado
+        entrada["blockers"] = bloqueantes
+        no_tomables.append(entrada)
+    return tomables, no_tomables
+
+
+def truncadas(proyecto):
+    """Los nombres de las conexiones cortadas, en el orden fijo del contrato. Nombra
+    relations e inverseRelations pero nunca issue, así que no lee un bloqueante."""
+    conexion = proyecto.get("issues") or {}
+    nodos = conexion.get("nodes") or []
+    cortadas = []
+    if (conexion.get("pageInfo") or {}).get("hasNextPage"):
+        cortadas.append("issues")
+    if any(((n.get("relations") or {}).get("pageInfo") or {}).get("hasNextPage")
+           for n in nodos):
+        cortadas.append("relations")
+    if any(((n.get("inverseRelations") or {}).get("pageInfo") or {}).get("hasNextPage")
+           for n in nodos):
+        cortadas.append("inverseRelations")
+    return cortadas
+
+
+def cmd_frontier_query(args):
+    # Cada conexión cortada miente distinto: decirle a quien perdió relations que un
+    # ticket bloqueado puede parecer tomable sería falso.
+    consecuencias = {
+        "issues": "los dos conteos son cotas inferiores y falta frontera",
+        "relations": "no afecta la frontera: el predicado no lee esta conexión",
+        "inverseRelations": "un ticket bloqueado puede parecer tomable, y la lista "
+                            "de bloqueantes de una entrada puede venir incompleta",
+    }
+    ctx = json.loads(args.ctx)
+    cerrados = {ctx["done"], ctx["canceled"]}
+    key = leer_key()
+    payload = _post(FRONTIER_QUERY,
+                    {"project": args.project, "label": LABEL_MAPA}, key)
+    proyecto = resolver_datos(payload)
+    salida = {"found": False, "truncated": [],
+              "counts": {"open": 0, "takeable": 0},
+              "tickets": [], "notTakeable": []}
+    if proyecto is not None:
+        cortadas = truncadas(proyecto)
+        for nombre in cortadas:
+            print("aviso: %s vino truncada: %s" % (nombre, consecuencias[nombre]),
+                  file=sys.stderr)
+        tomables, no_tomables = clasificar_frontera(
+            (proyecto.get("issues") or {}).get("nodes") or [], cerrados)
+        salida = {"found": True, "truncated": cortadas,
+                  "counts": {"open": len(tomables) + len(no_tomables),
+                             "takeable": len(tomables)},
+                  "tickets": tomables, "notTakeable": no_tomables}
+    print(json.dumps(salida, separators=(",", ":")))
+
+
 def cmd_stub(args):
     die(NO_IMPLEMENTADO,
         "el subcomando %s todavía no está implementado" % args.operacion,
@@ -177,7 +316,8 @@ def construir_parser():
 
     p_frontier_query = subs.add_parser("frontier:query")
     p_frontier_query.add_argument("--ctx", required=True)
-    p_frontier_query.set_defaults(func=cmd_stub)
+    p_frontier_query.add_argument("--project", required=True)
+    p_frontier_query.set_defaults(func=cmd_frontier_query)
 
     p_ticket_claim = subs.add_parser("ticket:claim")
     p_ticket_claim.add_argument("--ctx", required=True)
