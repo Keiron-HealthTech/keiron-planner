@@ -482,8 +482,47 @@ if con_related:
     fail("[53] relatedIssue solo lo trae relations.nodes, y estas funciones del "
          "grafo de frontier:query lo nombran: %s" % con_related)
 
+# --- afirmación 23: ninguna mutation en la ruta de map:read --------------------
+STRCONSTS = {}
+for _n in ARBOL.body:
+    if (isinstance(_n, ast.Assign) and isinstance(_n.value, ast.Constant)
+            and isinstance(_n.value.value, str)):
+        for _t in _n.targets:
+            if isinstance(_t, ast.Name):
+                STRCONSTS[_t.id] = _n.value.value
+
+RUTA_MAP = alcanzable(handler.get("map:read"))
+require_nonempty(RUTA_MAP,
+                 "[23] el grafo alcanzable desde el handler de map:read dio vacío")
+# Va antes de las guardas de vacuidad porque es la que caza el stub sin ambigüedad:
+# cmd_stub sí tiene literales propios, pero llama a _post cero veces. Exigir
+# exactamente una caza además un segundo round trip, que ninguna vacuidad vería.
+posts = [n for nm in sorted(RUTA_MAP) for n in ast.walk(FUNCS[nm])
+         if isinstance(n, ast.Call) and invocado(n.func) == "_post"]
+if len(posts) != 1:
+    fail("[23] el grafo alcanzable desde map:read llama a _post %d veces, y tiene "
+         "que llamarlo exactamente una" % len(posts))
+LITERALES_MAP = [n.value for nm in sorted(RUTA_MAP) for n in ast.walk(FUNCS[nm])
+                 if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+require_nonempty(LITERALES_MAP,
+                 "[23] el conjunto de literales de string del grafo de map:read dio "
+                 "vacío")
+# La query no es un literal del subárbol: se referencia por nombre. Sin este cuarto
+# conjunto la afirmación probaría cero justo sobre el texto que importa.
+REFERIDAS = sorted(set(n.id for nm in RUTA_MAP for n in ast.walk(FUNCS[nm])
+                       if isinstance(n, ast.Name) and n.id in STRCONSTS))
+require_nonempty(REFERIDAS,
+                 "[23] el grafo de map:read no referencia ninguna constante de "
+                 "string del módulo, así que su query no entra en el conjunto")
+sucios_map = [s for s in LITERALES_MAP + [STRCONSTS[nm] for nm in REFERIDAS]
+              if "mutation" in s]
+if sucios_map:
+    fail("[23] %d cadenas alcanzables desde map:read, contando el valor de las "
+         "constantes de string que el grafo referencia por nombre, contienen una "
+         "mutation" % len(sucios_map))
+
 
 report()
-print("%s: OK - las nueve afirmaciones de AST sobre %s cierran, bajo Python "
+print("%s: OK - las diez afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))

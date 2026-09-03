@@ -314,6 +314,28 @@ def truncadas(proyecto):
     return cortadas
 
 
+def cmd_map_read(args):
+    key = leer_key()
+    payload = _post(MAP_READ_QUERY, {"project": args.project}, key)
+    proyecto = resolver_datos(payload)
+    crudo = None if proyecto is None else proyecto.get("content")
+    if crudo is None:
+        # Un Project que no resolvió y un Project sin overview llevan la misma forma
+        # vacía, y found es lo único que los separa. Un "" no se colapsa a null: la
+        # diferencia entre "no hay overview" y "el overview está vacío" no cuesta
+        # nada conservar.
+        salida = {"found": proyecto is not None, "content": None,
+                  "sections": dict((ancla, None) for ancla in ANCLAS)}
+    else:
+        # El paso 1 de la regla de la huella, una sola vez y sobre todo el texto:
+        # content sale ya normalizado, así que las seis huellas se reproducen desde
+        # content y nada más, sin conocer el payload crudo.
+        texto = crudo.replace("\r\n", "\n").replace("\r", "\n")
+        salida = {"found": True, "content": texto,
+                  "sections": huellas(cortar_secciones(texto))}
+    print(json.dumps(salida, separators=(",", ":")))
+
+
 def cmd_frontier_query(args):
     ctx = json.loads(args.ctx)
     cerrados = {ctx["done"], ctx["canceled"]}
@@ -373,7 +395,8 @@ def construir_parser():
     p_map_create.set_defaults(func=cmd_stub)
 
     p_map_read = subs.add_parser("map:read")
-    p_map_read.set_defaults(func=cmd_stub)
+    p_map_read.add_argument("--project", required=True)
+    p_map_read.set_defaults(func=cmd_map_read)
 
     p_map_write = subs.add_parser("map:write")
     p_map_write.set_defaults(func=cmd_stub)
