@@ -2,6 +2,7 @@
 """El adapter de Linear. El contrato de las doce operaciones y de los códigos de
 salida vive en scripts/LINEAR-OPERATIONS.md."""
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -21,6 +22,12 @@ DISCOVERY = "Discovery"
 # map: null porque el label nació después del preflight. Constante y no argumento,
 # para que no se pueda pasar el equivocado.
 LABEL_MAPA = "map"
+
+# Los seis encabezados del mapa, sin el "## ". El orden es contrato: el dict de
+# sections se arma iterando esta lista, así que dos corridas sobre el mismo mapa
+# emiten la misma línea.
+ANCLAS = ["Destino", "Notas", "Decisiones hasta ahora", "Aún no especificado",
+          "Fuera de alcance", "El colapso"]
 
 SIN_KEY = 3
 SIN_TEAM = 4
@@ -102,6 +109,18 @@ query($project: String!, $label: String!) {
         }
       }
     }
+  }
+}
+"""
+
+
+# Un solo campo raíz, y es el markdown. El estado interno del editor de Linear no
+# se pide en ninguna parte de este archivo: no es contrato y escribirlo de vuelta
+# corrompe el documento.
+MAP_READ_QUERY = """
+query($project: String!) {
+  project(id: $project) {
+    content
   }
 }
 """
