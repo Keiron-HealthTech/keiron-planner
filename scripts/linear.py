@@ -204,6 +204,54 @@ def resolver_datos(payload):
     return (payload.get("data") or {}).get("project")
 
 
+def cortar_secciones(texto):
+    """Pura: del overview a los seis cuerpos. Solo rstrip al buscar el ancla y nunca
+    lstrip, para que una línea indentada no se dispute la sección con la de verdad.
+    Normaliza por su cuenta, así que sirve sola sobre un texto que todavía trae CRLF."""
+    lineas = texto.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    encabezados = dict(("## " + ancla, ancla) for ancla in ANCLAS)
+    cuerpos = dict((ancla, None) for ancla in ANCLAS)
+    actual = None
+    for linea in lineas:
+        limpia = linea.rstrip()
+        ancla = encabezados.get(limpia)
+        if ancla is not None:
+            if cuerpos[ancla] is None:
+                cuerpos[ancla] = []
+                actual = ancla
+            else:
+                # Se hashea la primera aparición y map:read sale en cero igual: abortar
+                # por ancla ambigua es regla de escritura, no de lectura.
+                print("aviso: el ancla %s aparece más de una vez: se hashea la "
+                      "primera" % ancla, file=sys.stderr)
+                actual = None
+            continue
+        # Un encabezado de nivel tres o más profundo no matchea ninguno de los dos
+        # prefijos, así que pertenece al cuerpo.
+        if limpia.startswith("## ") or limpia.startswith("# "):
+            actual = None
+            continue
+        if actual is not None:
+            cuerpos[actual].append(linea)
+    return cuerpos
+
+
+def huellas(cuerpos):
+    """La otra mitad de la regla que map:write va a tener que reproducir: sha256
+    completo, sin truncar. None es que falta el ancla y nunca que la sección esté
+    vacía, que lleva la huella de la cadena vacía. Los espacios del principio de una
+    línea no se tocan: son el anidado de una viñeta y son señal."""
+    salida = {}
+    for ancla in ANCLAS:
+        lineas = cuerpos.get(ancla)
+        if lineas is None:
+            salida[ancla] = None
+            continue
+        cuerpo = "\n".join(linea.rstrip() for linea in lineas).strip("\n")
+        salida[ancla] = hashlib.sha256(cuerpo.encode("utf-8")).hexdigest()
+    return salida
+
+
 def bloqueantes_abiertos(nodo, cerrados):
     """La única función que nombra inverseRelations e issue a la vez: los bloqueos
     salen de ahí y nunca de relations. Devuelve la lista, y la lista vacía es el
