@@ -187,6 +187,35 @@ def invocado(f):
     return None
 
 
+def _fold_cadena(nodo):
+    """Repliega un BinOp de + entre literales de string, que ast.parse no resuelve
+    por su cuenta (la adyacente "a" "b" sí llega repliegada como un solo Constant).
+    a + b + c parsea left-leaning, y la recursión baja por ese lado."""
+    if isinstance(nodo, ast.Constant) and isinstance(nodo.value, str):
+        return nodo.value
+    if isinstance(nodo, ast.BinOp) and isinstance(nodo.op, ast.Add):
+        izquierda = _fold_cadena(nodo.left)
+        derecha = _fold_cadena(nodo.right)
+        if izquierda is not None and derecha is not None:
+            return izquierda + derecha
+    return None
+
+
+def _literales_de(nodos):
+    """Todo literal de string de un iterable de nodos AST, incluido el que un BinOp
+    arma por concatenación. Comparte método entre las afirmaciones 23 y 34, así que
+    una mutation partida en dos con + no se cuela por ninguna de las dos rutas."""
+    valores = []
+    for n in nodos:
+        if isinstance(n, ast.Constant) and isinstance(n.value, str):
+            valores.append(n.value)
+        elif isinstance(n, ast.BinOp):
+            plegado = _fold_cadena(n)
+            if plegado is not None:
+                valores.append(plegado)
+    return valores
+
+
 def alcanzable(raiz):
     vistos, cola = set(), [raiz]
     while cola:
@@ -204,10 +233,8 @@ RUTA = alcanzable("cmd_preflight")
 require_nonempty(RUTA, "[34] el grafo alcanzable desde cmd_preflight dio vacío")
 
 # --- afirmación 34: ninguna mutation ------------------------------------------
-QUERY = (asignaciones[0].value.value
-         if asignaciones and isinstance(asignaciones[0].value, ast.Constant) else "")
-literales_ruta = [n.value for nm in RUTA for n in ast.walk(FUNCS[nm])
-                  if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+QUERY = (_fold_cadena(asignaciones[0].value) or "") if asignaciones else ""
+literales_ruta = [s for nm in RUTA for s in _literales_de(ast.walk(FUNCS[nm]))]
 sucios = [s for s in literales_ruta if "mutation" in s]
 if sucios:
     fail("[34] %d literales de string del grafo alcanzable desde cmd_preflight "
@@ -502,8 +529,7 @@ posts = [n for nm in sorted(RUTA_MAP) for n in ast.walk(FUNCS[nm])
 if len(posts) != 1:
     fail("[23] el grafo alcanzable desde map:read llama a _post %d veces, y tiene "
          "que llamarlo exactamente una" % len(posts))
-LITERALES_MAP = [n.value for nm in sorted(RUTA_MAP) for n in ast.walk(FUNCS[nm])
-                 if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+LITERALES_MAP = [s for nm in sorted(RUTA_MAP) for s in _literales_de(ast.walk(FUNCS[nm]))]
 require_nonempty(LITERALES_MAP,
                  "[23] el conjunto de literales de string del grafo de map:read dio "
                  "vacío")
