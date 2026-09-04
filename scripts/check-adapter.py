@@ -512,11 +512,21 @@ if con_related:
 # --- afirmación 23: ninguna mutation en la ruta de map:read --------------------
 STRCONSTS = {}
 for _n in ARBOL.body:
-    if (isinstance(_n, ast.Assign) and isinstance(_n.value, ast.Constant)
-            and isinstance(_n.value.value, str)):
-        for _t in _n.targets:
-            if isinstance(_t, ast.Name):
-                STRCONSTS[_t.id] = _n.value.value
+    if not isinstance(_n, ast.Assign):
+        continue
+    if isinstance(_n.value, ast.Constant) and isinstance(_n.value.value, str):
+        _valor_str = _n.value.value
+    elif isinstance(_n.value, ast.BinOp):
+        # Misma _fold_cadena de las afirmaciones 23 y 34: una constante de módulo
+        # armada con + no queda afuera del conjunto solo por no ser un Constant.
+        _valor_str = _fold_cadena(_n.value)
+    else:
+        _valor_str = None
+    if _valor_str is None:
+        continue
+    for _t in _n.targets:
+        if isinstance(_t, ast.Name):
+            STRCONSTS[_t.id] = _valor_str
 
 RUTA_MAP = alcanzable(handler.get("map:read"))
 require_nonempty(RUTA_MAP,
