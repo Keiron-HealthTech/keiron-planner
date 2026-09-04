@@ -198,9 +198,20 @@ def cmd_preflight(args):
 def resolver_datos(payload):
     """La puerta compartida de las dos operaciones de lectura. Un data.project nulo
     no es falla dura: el llamador lo emite como found: false y sale en cero."""
-    if payload.get("errors"):
-        die(SIN_KEY, "la API de Linear rechazó la consulta o la credencial guardada",
-            "corre /planner-setup de nuevo con una key nueva")
+    errores = payload.get("errors")
+    if errores:
+        # Una entrada puede no traer message, o no ser un dict: HTTPError sintetiza
+        # la suya con un solo campo, pero el shape real de Linear no está prometido.
+        textos = []
+        for error in errores:
+            mensaje = error.get("message") if isinstance(error, dict) else None
+            textos.append(str(mensaje) if mensaje is not None else str(error))
+        die(SIN_KEY,
+            "la API de Linear devolvió un error para esta consulta: %s"
+            % "; ".join(textos),
+            "revisa el mensaje de arriba; si nombra la credencial corre "
+            "/planner-setup de nuevo con una key nueva, si no, puede ser un "
+            "límite temporal o un problema de la consulta")
     return (payload.get("data") or {}).get("project")
 
 
