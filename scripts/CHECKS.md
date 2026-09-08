@@ -10,7 +10,7 @@ existe, y ningún otro archivo del repo vuelve a contarlas. Los research donde
 nacieron quedan como registro de su momento, y pueden decir números que ya no
 valen.
 
-**58 acuñadas, 52 no retiradas, 6 retiradas.**
+**59 acuñadas, 53 no retiradas, 6 retiradas.**
 
 La columna Estado es lo que la afirmación 50 va a leer, y toma tres valores. Una
 afirmación acuñada que todavía no tiene script arranca en `pendiente`. Cambia de
@@ -77,6 +77,7 @@ una segunda copia.
 | 52 | Toda construcción de `issueRelationCreate` con `type: "related"` en `linear.py` pone el ticket de decisión del lado `issueId` | AST, dentro de la función de `work:write` | ninguna | pendiente | 12 |
 | 53 | El predicado de frontera evalúa bloqueos solo sobre `inverseRelations`, y ninguna rama lo evalúa sobre `relations` | AST: el handler real se resuelve por set_defaults sobre el subparser de frontier:query; en su grafo de llamadas, las funciones que leen un bloqueante, o sea las que nombran inverseRelations y issue, no nombran relations ni relatedIssue, y el conjunto no puede estar vacío; el nombre se extrae del subscript con literal, del atributo y del argumento de get, porque la respuesta es un dict y una extracción solo de atributos daría el conjunto vacío | llamadas indirectas por dict de handlers o getattr no se siguen; una clave armada por concatenación o guardada en una variable no se ve; y prueba de qué conexión sale el bloqueante, no que el filtro por type blocks ni el par de ids cerrados estén bien | viva | 12, celdas Cómo y Brecha editadas por D16 de CRM-3394 |
 | 54 | La lista de labels que `ticket:create` crea cuando faltan tiene nueve elementos e incluye `map:no-landing`, y ninguna otra función de `linear.py` crea labels | AST | ninguna | pendiente | 12 |
+| 59 | `frontier:query` emite `counts.milestones` en todas sus ramas, como conteo y nunca como veredicto, y su query pide `projectMilestones` | AST: el handler real se resuelve por set_defaults sobre el subparser de frontier:query; en su grafo de llamadas, todo dict literal con la clave `counts` lleva como valor un dict literal cuyas claves son exactamente `open`, `takeable` y `milestones`, y el valor de `milestones` es un entero literal que no es booleano o una llamada a `len`; y alguna constante de string del módulo que el grafo referencia por nombre contiene `projectMilestones`. El conjunto de dicts con clave `counts` no puede estar vacío | llamadas indirectas por dict de handlers o getattr no se siguen, la misma limitación que la 23, la 34 y la 53; un `counts` armado por actualización de dict en vez de por literal no se ve; y prueba que el valor tiene forma de conteo, no que el número que produce sea el correcto | viva | CRM-3395 |
 
 ### `check-packaging.sh`
 | Nº | Afirmación | Cómo | Brecha | Estado | Origen |
