@@ -107,9 +107,26 @@ Un ticket sin ninguno de esos labels es AFK, y esa ausencia es la señal.
 
 Cada comando cierra con un **next recommended**: un token de un conjunto cerrado
 de seis que dice qué correr después. Es la costura entre comandos y lo único del
-flujo que se puede verificar mecánicamente. El sexto, `sdd-new`, es además la
-costura con el plugin hermano: se emite cuando el mapa está colapsado y el trabajo
-pasa a SDD.
+flujo que se puede verificar mecánicamente. El conjunto vive en
+`skills/_shared/map-contract.md`, y esa es su única casa: acá no se enumera, porque
+una tercera copia que ninguna afirmación compare es una futura contradicción. El
+sexto, `sdd-new`, es además la costura con el plugin hermano: se emite cuando el
+mapa está colapsado y el trabajo pasa a SDD.
+
+El **veredicto** es lo que `/map-status`, y el paso 3 de `/map-work`, dicen del mapa
+antes de proponer nada. Toma cuatro valores y solo cuatro:
+
+| Veredicto | Cuando |
+| --- | --- |
+| en curso | Hay tickets abiertos y la frontera tiene al menos uno tomable. |
+| trabado | Hay tickets abiertos y ninguno es tomable. |
+| listo para colapsar | Cero tickets abiertos y cero milestones. |
+| colapsado | Cero tickets abiertos y al menos un milestone. |
+
+El veredicto **no es** el token, y la relación no es uno a uno: `trabado` mapea a
+dos tokens distintos según la causa, y un Project que resolvió y no carga ningún
+mapa emite token sin tener veredicto. Deducir cuatro tokens de cuatro veredictos es
+el error que esta línea existe para prevenir.
 
 ## Las operaciones del tracker
 
@@ -135,7 +152,7 @@ está permitido, y es el mecanismo.
 | `map:write` | Escribir el mapa | Un read-modify-write entero adentro de una sola invocación. Recibe la edición como argumentos semánticos, nunca markdown: relee justo antes de escribir para que la ventana sean milisegundos y no la sesión. |
 | `ticket:create` | Crear un ticket | Un issue del Project cuyo cuerpo es la pregunta y nada más. El tipo, el modo, el bloqueo y la toma viven en campos nativos del tracker. Es además el **único** que crea los labels del plugin que falten, los nueve, aunque no los use todos. Nunca crea `Discovery`. |
 | `ticket:block` | Bloquear | La relación nativa de bloqueo. Se escribe en una segunda pasada, porque los tickets tienen que existir para poder referenciarse. |
-| `frontier:query` | Consultar la frontera | Los tickets abiertos, sin bloqueantes abiertos y sin assignee. |
+| `frontier:query` | Consultar la frontera | Los tickets abiertos, sin bloqueantes abiertos y sin assignee, y además la cantidad de milestones del Project, que es lo único que distingue un mapa listo para colapsar de uno ya colapsado. |
 | `ticket:claim` | Tomar | El primer write de la sesión. No se libera sola. |
 | `ticket:resolve` | Resolver | Los tickets nuevos, su cableado, el comentario, el estado y el mapa, en ese orden. El mapa siempre último. Las cinco escrituras van adentro de una sola invocación: el orden lo garantiza el adapter, nunca el modelo. |
 | `ticket:rule-out` | Sacar de alcance | La única operación destructiva: cierra un ticket sin resolverlo. Su línea va a Fuera de alcance, nunca a Decisiones. |
