@@ -187,6 +187,35 @@ def invocado(f):
     return None
 
 
+def _fold_cadena(nodo):
+    """Repliega un BinOp de + entre literales de string, que ast.parse no resuelve
+    por su cuenta (la adyacente "a" "b" sí llega repliegada como un solo Constant).
+    a + b + c parsea left-leaning, y la recursión baja por ese lado."""
+    if isinstance(nodo, ast.Constant) and isinstance(nodo.value, str):
+        return nodo.value
+    if isinstance(nodo, ast.BinOp) and isinstance(nodo.op, ast.Add):
+        izquierda = _fold_cadena(nodo.left)
+        derecha = _fold_cadena(nodo.right)
+        if izquierda is not None and derecha is not None:
+            return izquierda + derecha
+    return None
+
+
+def _literales_de(nodos):
+    """Todo literal de string de un iterable de nodos AST, incluido el que un BinOp
+    arma por concatenación. Comparte método entre las afirmaciones 23 y 34, así que
+    una mutation partida en dos con + no se cuela por ninguna de las dos rutas."""
+    valores = []
+    for n in nodos:
+        if isinstance(n, ast.Constant) and isinstance(n.value, str):
+            valores.append(n.value)
+        elif isinstance(n, ast.BinOp):
+            plegado = _fold_cadena(n)
+            if plegado is not None:
+                valores.append(plegado)
+    return valores
+
+
 def alcanzable(raiz):
     vistos, cola = set(), [raiz]
     while cola:
@@ -204,10 +233,8 @@ RUTA = alcanzable("cmd_preflight")
 require_nonempty(RUTA, "[34] el grafo alcanzable desde cmd_preflight dio vacío")
 
 # --- afirmación 34: ninguna mutation ------------------------------------------
-QUERY = (asignaciones[0].value.value
-         if asignaciones and isinstance(asignaciones[0].value, ast.Constant) else "")
-literales_ruta = [n.value for nm in RUTA for n in ast.walk(FUNCS[nm])
-                  if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+QUERY = (_fold_cadena(asignaciones[0].value) or "") if asignaciones else ""
+literales_ruta = [s for nm in RUTA for s in _literales_de(ast.walk(FUNCS[nm]))]
 sucios = [s for s in literales_ruta if "mutation" in s]
 if sucios:
     fail("[34] %d literales de string del grafo alcanzable desde cmd_preflight "
@@ -434,7 +461,104 @@ prohibidos = [c for c in raiz if c in ("project", "document")]
 if prohibidos:
     fail("[40] la query del preflight consulta %s" % prohibidos)
 
+# --- afirmación 53: los bloqueos salen solo de inverseRelations ----------------
+
+
+def _claves(nodo):
+    """Todo nombre con el que un subárbol indexa un payload, en las tres formas
+    que el adapter usa. Con atributos solos el conjunto daría vacío: la respuesta
+    de _post es un dict y se indexa con corchetes o con .get."""
+    nombres = set()
+    for n in ast.walk(nodo):
+        if isinstance(n, ast.Subscript):
+            # En 3.9 el slice de un índice simple ES el Constant: no hay ast.Index
+            # en el medio, y por eso este check se re-exec a 3.9 antes de tocar ast.
+            if isinstance(n.slice, ast.Constant) and isinstance(n.slice.value, str):
+                nombres.add(n.slice.value)
+        elif isinstance(n, ast.Attribute):
+            nombres.add(n.attr)
+        elif (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+              and n.func.attr == "get" and n.args
+              and isinstance(n.args[0], ast.Constant)
+              and isinstance(n.args[0].value, str)):
+            nombres.add(n.args[0].value)
+    return nombres
+
+
+RUTA_FRONTERA = alcanzable(handler.get("frontier:query"))
+require_nonempty(RUTA_FRONTERA,
+                 "[53] el grafo alcanzable desde el handler de frontier:query dio "
+                 "vacío")
+CLAVES = dict((nm, _claves(FUNCS[nm])) for nm in RUTA_FRONTERA)
+# Leer un bloqueante es sintáctico y no depende de ningún nombre de función: es
+# nombrar inverseRelations e issue a la vez. El escaneo de truncado nombra las dos
+# conexiones pero no issue, así que su relations es legal y queda afuera.
+PREDICADO = sorted(nm for nm, claves in CLAVES.items()
+                   if "inverseRelations" in claves and "issue" in claves)
+require_nonempty(PREDICADO,
+                 "[53] ninguna función alcanzable desde frontier:query lee un "
+                 "bloqueante: ninguna nombra inverseRelations e issue a la vez")
+mezcladas = sorted(nm for nm in PREDICADO
+                   if "relations" in CLAVES[nm] or "relatedIssue" in CLAVES[nm])
+if mezcladas:
+    fail("[53] estas funciones leen un bloqueante y además nombran relations o "
+         "relatedIssue: %s" % mezcladas)
+con_related = sorted(nm for nm, claves in CLAVES.items()
+                     if "relatedIssue" in claves)
+if con_related:
+    fail("[53] relatedIssue solo lo trae relations.nodes, y estas funciones del "
+         "grafo de frontier:query lo nombran: %s" % con_related)
+
+# --- afirmación 23: ninguna mutation en la ruta de map:read --------------------
+STRCONSTS = {}
+for _n in ARBOL.body:
+    if not isinstance(_n, ast.Assign):
+        continue
+    if isinstance(_n.value, ast.Constant) and isinstance(_n.value.value, str):
+        _valor_str = _n.value.value
+    elif isinstance(_n.value, ast.BinOp):
+        # Misma _fold_cadena de las afirmaciones 23 y 34: una constante de módulo
+        # armada con + no queda afuera del conjunto solo por no ser un Constant.
+        _valor_str = _fold_cadena(_n.value)
+    else:
+        _valor_str = None
+    if _valor_str is None:
+        continue
+    for _t in _n.targets:
+        if isinstance(_t, ast.Name):
+            STRCONSTS[_t.id] = _valor_str
+
+RUTA_MAP = alcanzable(handler.get("map:read"))
+require_nonempty(RUTA_MAP,
+                 "[23] el grafo alcanzable desde el handler de map:read dio vacío")
+# Va antes de las guardas de vacuidad porque es la que caza el stub sin ambigüedad:
+# cmd_stub sí tiene literales propios, pero llama a _post cero veces. Exigir
+# exactamente una caza además un segundo round trip, que ninguna vacuidad vería.
+posts = [n for nm in sorted(RUTA_MAP) for n in ast.walk(FUNCS[nm])
+         if isinstance(n, ast.Call) and invocado(n.func) == "_post"]
+if len(posts) != 1:
+    fail("[23] el grafo alcanzable desde map:read llama a _post %d veces, y tiene "
+         "que llamarlo exactamente una" % len(posts))
+LITERALES_MAP = [s for nm in sorted(RUTA_MAP) for s in _literales_de(ast.walk(FUNCS[nm]))]
+require_nonempty(LITERALES_MAP,
+                 "[23] el conjunto de literales de string del grafo de map:read dio "
+                 "vacío")
+# La query no es un literal del subárbol: se referencia por nombre. Sin este cuarto
+# conjunto la afirmación probaría cero justo sobre el texto que importa.
+REFERIDAS = sorted(set(n.id for nm in RUTA_MAP for n in ast.walk(FUNCS[nm])
+                       if isinstance(n, ast.Name) and n.id in STRCONSTS))
+require_nonempty(REFERIDAS,
+                 "[23] el grafo de map:read no referencia ninguna constante de "
+                 "string del módulo, así que su query no entra en el conjunto")
+sucios_map = [s for s in LITERALES_MAP + [STRCONSTS[nm] for nm in REFERIDAS]
+              if "mutation" in s]
+if sucios_map:
+    fail("[23] %d cadenas alcanzables desde map:read, contando el valor de las "
+         "constantes de string que el grafo referencia por nombre, contienen una "
+         "mutation" % len(sucios_map))
+
+
 report()
-print("%s: OK - las ocho afirmaciones de AST sobre %s cierran, bajo Python "
+print("%s: OK - las diez afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))
