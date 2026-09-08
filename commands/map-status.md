@@ -96,8 +96,12 @@ guarantee it.
 Print these six, and not one more. The block labels are the Spanish the person reads.
 
 1. `Destino`: the line of the map, taken from `content` only when the fingerprint of the
-   `Destino` section is not null. This block also carries the fog patch count below.
-2. `Veredicto`: one of the four values above, with its counts when it is `en curso`.
+   `Destino` section is not null.
+2. `Veredicto`: one of the four values above, with its counts when it is `en curso`, and the
+   fog patch count on the line under them, so the two read as one health line: first
+   `en curso: 4 tomables, 2 tomados, 1 bloqueado`, and under it `niebla: 6 parches`. The count
+   is reported in this block and not in block 1 because it is a health signal of the map just
+   like the verdict, and this is the block that already carries numbers.
 3. `Frontera`: the entries of `tickets`, each by name and with its link, in the order they
    arrive. That order is already `createdAt` ascending and the adapter computed it, so do not
    re-sort them.
@@ -139,8 +143,8 @@ true date under a true label is worth more than no date.
 
 ## The fog patch count
 
-Compute it here, over the `content` that `map:read` already returned. The adapter gains no key
-for this.
+Compute it here, over the `content` that `map:read` already returned, and report it in block 2.
+The adapter gains no key for this.
 
 - If the fingerprint of the `Aún no especificado` section is null, say the section is not there
   and search `content` for nothing.
@@ -152,6 +156,8 @@ for this.
   are patches and that nobody is looking at them, without turning the report into a copy of
   the map.
 
-The count feeds no verdict and becomes no seventh block. The fog carries a number while blocks
+The count feeds no verdict and becomes no seventh block. It sits next to the verdict and is
+never folded into it: two Projects identical in their three counts, one with no patches and one
+with twenty, emit the same verdict and the same token. The fog carries a number while blocks
 3, 4 and 5 carry names, and that is not an inconsistency: the fog is prose inside the map with
 nothing to point at, and those are tickets with a name and a URL.
