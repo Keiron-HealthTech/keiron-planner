@@ -128,6 +128,36 @@ dos tokens distintos según la causa, y un Project que resolvió y no carga ning
 mapa emite token sin tener veredicto. Deducir cuatro tokens de cuatro veredictos es
 el error que esta línea existe para prevenir.
 
+### El vocabulario `ROUTE`
+
+Todo archivo de `commands/` declara una línea `ROUTE:` que dice quién atiende el
+comando. Es un conjunto cerrado:
+
+| Valor | Qué significa | Uso |
+| --- | --- | --- |
+| `skills/{name}/SKILL.md` | El comando rutea a una skill que conduce una disciplina. | Ninguno en este plugin todavía. |
+| `orchestrator meta-command` | El comando lo atiende el orchestrator y no una skill. | Ninguno en este plugin todavía. |
+| `read-only` | El comando lee y reporta, y no escribe nada. | `map-status.md`, desde CRM-3395. |
+| Una ruta relativa al repo, a un archivo que existe | El comando corre un script. | `planner-setup.md`, con `scripts/install.sh`. |
+
+`skills/{name}/SKILL.md`, `orchestrator meta-command` y `read-only` vienen heredados
+del plugin hermano. La forma de ruta relativa a un archivo la agregó la decisión D4 de
+la spec de `packaging`, acá.
+
+**Y esa forma no la acepta el checker del hermano.** Medido: el `case` de su
+`scripts/check-commands.sh` acepta los heredados y su rama por defecto falla diciendo
+que el valor no es ninguno de ellos, así que reusar ese checker sobre
+`commands/planner-setup.md` daría rojo. Que el vocabulario viva en el hermano es
+verdadero para los heredados y falso para el nuestro, y sin esta línea alguien lo
+reusa y no entiende el rojo.
+
+El `ROUTE:` lleva la ruta **relativa al repo**, mientras el cuerpo del comando lleva
+la de runtime, `${CLAUDE_PLUGIN_ROOT}/...`. Son dos formas del mismo hecho y no hay
+cómo evitarlo: el `ROUTE:` tiene que resolver adentro del árbol para que se pueda
+verificar que el archivo existe, y el modelo necesita la otra para ejecutar.
+
+Las dueñas de este vocabulario son las afirmaciones 3 y 8+16.
+
 ## Las operaciones del tracker
 
 Lo que el adapter sabe hacer. Son doce, y los comandos se arman con ellas. El
