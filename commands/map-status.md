@@ -102,7 +102,7 @@ Print these six, and not one more. The block labels are the Spanish the person r
    arrive. That order is already `createdAt` ascending and the adapter computed it, so do not
    re-sort them.
 4. `Tomados`: every entry of `notTakeable` whose `assignee` is not null, each one with the
-   ticket name and its link, who holds it (the `displayName` inside `assignee`), and its
+   ticket name and its link, the value of `assignee`, which is who holds it, and its
    `createdAt` labelled for what it is. The label carries a rule of its own, below.
 5. `Bloqueados`: every entry of `notTakeable` whose `blockers` is not empty, each one with its
    blockers by name and with their links.
