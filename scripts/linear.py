@@ -109,6 +109,10 @@ query($project: String!, $label: String!) {
         }
       }
     }
+    projectMilestones(first: 10) {
+      pageInfo { hasNextPage }
+      nodes { id }
+    }
   }
 }
 """
@@ -322,6 +326,9 @@ def truncadas(proyecto):
     if any(((n.get("inverseRelations") or {}).get("pageInfo") or {}).get("hasNextPage")
            for n in nodos):
         cortadas.append("inverseRelations")
+    hitos = proyecto.get("projectMilestones") or {}
+    if (hitos.get("pageInfo") or {}).get("hasNextPage"):
+        cortadas.append("projectMilestones")
     return cortadas
 
 
@@ -358,7 +365,7 @@ def cmd_frontier_query(args):
         # found es lo único que separa un --project que no resolvió de un mapa ya
         # colapsado: los dos llevan los conteos en cero y las dos listas vacías.
         salida = {"found": False, "truncated": [],
-                  "counts": {"open": 0, "takeable": 0},
+                  "counts": {"open": 0, "takeable": 0, "milestones": 0},
                   "tickets": [], "notTakeable": []}
     else:
         cortadas = truncadas(proyecto)
@@ -370,15 +377,23 @@ def cmd_frontier_query(args):
             "inverseRelations": "un ticket bloqueado puede parecer tomable, y la "
                                 "lista de bloqueantes de una entrada puede venir "
                                 "incompleta",
+            # No es "ninguna": el veredicto sobrevive porque solo necesita cero
+            # contra más de cero, y una página cortada trajo al menos un nodo. Lo
+            # que sí queda mal es el número.
+            "projectMilestones": "el veredicto no cambia, porque solo distingue "
+                                 "cero de más de cero, pero counts.milestones "
+                                 "queda como cota inferior",
         }
         for nombre in cortadas:
             print("aviso: %s vino truncada: %s" % (nombre, consecuencias[nombre]),
                   file=sys.stderr)
         tomables, no_tomables = clasificar_frontera(
             (proyecto.get("issues") or {}).get("nodes") or [], cerrados)
+        nodos_hitos = (proyecto.get("projectMilestones") or {}).get("nodes") or []
         salida = {"found": True, "truncated": cortadas,
                   "counts": {"open": len(tomables) + len(no_tomables),
-                             "takeable": len(tomables)},
+                             "takeable": len(tomables),
+                             "milestones": len(nodos_hitos)},
                   "tickets": tomables, "notTakeable": no_tomables}
     print(json.dumps(salida, separators=(",", ":")))
 

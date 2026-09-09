@@ -557,8 +557,75 @@ if sucios_map:
          "constantes de string que el grafo referencia por nombre, contienen una "
          "mutation" % len(sucios_map))
 
+# --- afirmación 59: counts.milestones es un conteo y nunca un veredicto ----------
+
+# La raíz es la misma que la de la 53, o sea el grafo alcanzable desde el handler que
+# set_defaults ata al subparser de frontier:query. El ancla no es el nombre de una
+# función sino el nombre de la clave: así una salida que se mude a un helper sigue
+# entrando al conjunto.
+DICTS_COUNTS = [n for nm in sorted(RUTA_FRONTERA) for n in ast.walk(FUNCS[nm])
+                if isinstance(n, ast.Dict)
+                and any(isinstance(k, ast.Constant) and k.value == "counts"
+                        for k in n.keys)]
+require_nonempty(DICTS_COUNTS,
+                 "[59] ningún dict literal del grafo de frontier:query lleva la clave "
+                 "counts; el handler volvió a ser un stub, o la salida dejó de armarse "
+                 "con literales, y toda aserción posterior sería derivada")
+
+CLAVES_COUNTS = set(["open", "takeable", "milestones"])
+
+
+def _valor_apareado(nodo, clave):
+    for k, v in zip(nodo.keys, nodo.values):
+        if isinstance(k, ast.Constant) and k.value == clave:
+            return v
+    return None
+
+
+def _forma_de_conteo(nodo):
+    """Un entero literal que NO es booleano, o una llamada a len. El booleano se
+    excluye explícito porque en Python un True es instancia de int, así que una
+    verificación por tipo que no lo excluya deja pasar milestones: True."""
+    if isinstance(nodo, ast.Constant):
+        return isinstance(nodo.value, int) and not isinstance(nodo.value, bool)
+    return isinstance(nodo, ast.Call) and invocado(nodo.func) == "len"
+
+
+for _dict in DICTS_COUNTS:
+    _linea = getattr(_dict, "lineno", 0)
+    _interno = _valor_apareado(_dict, "counts")
+    if not isinstance(_interno, ast.Dict):
+        # Falla y nunca saltea esta entrada: saltearla haría que la afirmación pruebe
+        # cero sin decirlo.
+        fail("[59] el valor apareado con counts en la línea %d no es un dict literal, "
+             "así que sus claves no se pueden comparar" % _linea)
+        continue
+    _claves = set(k.value for k in _interno.keys
+                  if isinstance(k, ast.Constant) and isinstance(k.value, str))
+    if _claves != CLAVES_COUNTS:
+        # Igualdad de conjuntos: ninguna rama puede olvidarse la clave nueva y ninguna
+        # puede agregar una cuarta.
+        fail("[59] el counts de la línea %d tiene las claves %s y tiene que tener "
+             "exactamente %s" % (_linea, sorted(_claves), sorted(CLAVES_COUNTS)))
+        continue
+    if not _forma_de_conteo(_valor_apareado(_interno, "milestones")):
+        fail("[59] el valor de milestones en la línea %d no es un entero literal no "
+             "booleano ni una llamada a len, así que no tiene forma de conteo" % _linea)
+
+# Sin esta mitad la afirmación pasaría con una clave estructuralmente perfecta que vale
+# cero para siempre, porque la query nunca pidió la conexión.
+REFERIDAS_FRONTERA = sorted(set(n.id for nm in RUTA_FRONTERA
+                                for n in ast.walk(FUNCS[nm])
+                                if isinstance(n, ast.Name) and n.id in STRCONSTS))
+require_nonempty(REFERIDAS_FRONTERA,
+                 "[59] el grafo de frontier:query no referencia ninguna constante de "
+                 "string del módulo, así que su query no entra en el conjunto")
+if not any("projectMilestones" in STRCONSTS[nm] for nm in REFERIDAS_FRONTERA):
+    fail("[59] ninguna constante de string que el grafo de frontier:query referencia "
+         "por nombre contiene projectMilestones")
+
 
 report()
-print("%s: OK - las diez afirmaciones de AST sobre %s cierran, bajo Python "
+print("%s: OK - las once afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))

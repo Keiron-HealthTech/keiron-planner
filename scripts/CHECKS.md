@@ -10,7 +10,7 @@ existe, y ningún otro archivo del repo vuelve a contarlas. Los research donde
 nacieron quedan como registro de su momento, y pueden decir números que ya no
 valen.
 
-**58 acuñadas, 52 no retiradas, 6 retiradas.**
+**59 acuñadas, 53 no retiradas, 6 retiradas.**
 
 La columna Estado es lo que la afirmación 50 va a leer, y toma tres valores. Una
 afirmación acuñada que todavía no tiene script arranca en `pendiente`. Cambia de
@@ -30,8 +30,8 @@ una segunda copia.
 ### `check-roster.sh`
 | Nº | Afirmación | Cómo | Brecha | Estado | Origen |
 | --- | --- | --- | --- | --- | --- |
-| 3 | `map-status.md` dice `ROUTE: read-only` y no existe `skills/map-status/` | extrae la línea `ROUTE:` y exige el literal, más la no existencia del directorio | ninguna | pendiente | 08 |
-| 7 | El conjunto de tokens de `map-contract.md` es exactamente el que emiten los comandos | igualdad de conjuntos entre la tabla del contrato y los tokens que aparecen en `commands/*.md`. El seis no aparece en el script | ninguna | pendiente | 08, corregida por el 06 |
+| 3 | `map-status.md` dice `ROUTE: read-only` y no existe `skills/map-status/` | extrae la línea `ROUTE:` y exige el literal, más la no existencia del directorio | ninguna | viva | 08 |
+| 7 | El conjunto de tokens de `map-contract.md` es exactamente el que emiten los comandos | igualdad de conjuntos entre la tabla del contrato y los tokens que aparecen en `commands/*.md`. El seis no aparece en el script | ninguna | viva | 08, corregida por el 06 |
 | 8+16 | Todo archivo de `commands/` declara un `ROUTE:`; los que rutean a skill apuntan a una que existe, y los dos que no son `map-status.md` y `planner-setup.md`, sin `skills/` correspondiente | recorre `commands/*.md`, parte los `ROUTE:` en dos conjuntos, verifica existencia y no existencia. Ni el seis ni el cuatro aparecen | el techo de 25 líneas por comando que el plugin hermano impone en su `check-commands.sh` no está acuñado acá y esta afirmación no lo mira: se respeta como convención y se verifica a mano. Tampoco mira el frontmatter ni la ausencia de restatements, que el hermano sí chequea | pendiente | 08 → 06 → 07 |
 | 39a | `--bootstrap` aparece en `commands/map-new.md` y en ningún otro archivo de `commands/` | el conjunto de archivos que lo contienen es exactamente `{map-new.md}` | ninguna | pendiente | 14 |
 | 50 | Los números marcados `viva` en `CHECKS.md` y los `[N]` que emiten los scripts son el mismo conjunto | igualdad de conjuntos entre la columna Nº de las filas `viva` y los `[N]` extraídos del fuente de los checks, anclados en la comilla que abre el literal que los lleva: desde que hay un check que no es bash, un indexado como `nodos[0]` es indistinguible de un `[0]` y sin el anclaje entran al conjunto tres números que nadie acuñó. Del lado del registro la celda de número se normaliza antes de ordenar, sacándole la letra a `39a` y `39b` y expandiendo la fila fusionada `8+16` en sus dos números | ninguna | pendiente | 10 |
@@ -77,6 +77,7 @@ una segunda copia.
 | 52 | Toda construcción de `issueRelationCreate` con `type: "related"` en `linear.py` pone el ticket de decisión del lado `issueId` | AST, dentro de la función de `work:write` | ninguna | pendiente | 12 |
 | 53 | El predicado de frontera evalúa bloqueos solo sobre `inverseRelations`, y ninguna rama lo evalúa sobre `relations` | AST: el handler real se resuelve por set_defaults sobre el subparser de frontier:query; en su grafo de llamadas, las funciones que leen un bloqueante, o sea las que nombran inverseRelations y issue, no nombran relations ni relatedIssue, y el conjunto no puede estar vacío; el nombre se extrae del subscript con literal, del atributo y del argumento de get, porque la respuesta es un dict y una extracción solo de atributos daría el conjunto vacío | llamadas indirectas por dict de handlers o getattr no se siguen; una clave armada por concatenación o guardada en una variable no se ve; y prueba de qué conexión sale el bloqueante, no que el filtro por type blocks ni el par de ids cerrados estén bien | viva | 12, celdas Cómo y Brecha editadas por D16 de CRM-3394 |
 | 54 | La lista de labels que `ticket:create` crea cuando faltan tiene nueve elementos e incluye `map:no-landing`, y ninguna otra función de `linear.py` crea labels | AST | ninguna | pendiente | 12 |
+| 59 | `frontier:query` emite `counts.milestones` en todas sus ramas, como conteo y nunca como veredicto, y su query pide `projectMilestones` | AST: el handler real se resuelve por set_defaults sobre el subparser de frontier:query; en su grafo de llamadas, todo dict literal con la clave `counts` lleva como valor un dict literal cuyas claves son exactamente `open`, `takeable` y `milestones`, y el valor de `milestones` es un entero literal que no es booleano o una llamada a `len`; y alguna constante de string del módulo que el grafo referencia por nombre contiene `projectMilestones`. El conjunto de dicts con clave `counts` no puede estar vacío | llamadas indirectas por dict de handlers o getattr no se siguen, la misma limitación que la 23, la 34 y la 53; un `counts` armado por actualización de dict en vez de por literal no se ve; y prueba que el valor tiene forma de conteo, no que el número que produce sea el correcto | viva | CRM-3395 |
 
 ### `check-packaging.sh`
 | Nº | Afirmación | Cómo | Brecha | Estado | Origen |

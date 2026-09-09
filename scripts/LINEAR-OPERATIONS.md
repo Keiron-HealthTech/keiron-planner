@@ -64,23 +64,31 @@ mapa, que es lo que la vuelve utilizable como ancla.
 
 Cinco claves de primer nivel, las cinco siempre presentes:
 
-    found        bool. false cuando el Project no resolvió. Con found en false los dos
+    found        bool. false cuando el Project no resolvió. Con found en false los tres
                  conteos son cero y las dos listas están vacías, que es la misma forma
                  que tiene un mapa ya terminado: found es lo único que los separa.
-    truncated    lista de string. Subconjunto de issues, relations e inverseRelations,
-                 en ese orden fijo. Vacía si ninguna conexión vino cortada. Cada nombre
-                 que aparece acá lleva además una línea a stderr, y el código de salida
-                 sigue siendo 0 en todos los casos.
-    counts       objeto de dos claves enteras, open y takeable. open cuenta los tickets
-                 cuyo state.id no es ninguno de los dos ids cerrados del ctx. takeable
-                 cuenta los que además pasan las otras dos condiciones. Con issues
-                 cortada los dos son cotas inferiores.
+    truncated    lista de string. Subconjunto de issues, relations, inverseRelations y
+                 projectMilestones, en ese orden fijo. Vacía si ninguna conexión vino
+                 cortada. Cada nombre que aparece acá lleva además una línea a stderr, y
+                 el código de salida sigue siendo 0 en todos los casos.
+    counts       objeto de tres claves enteras, open, takeable y milestones. open cuenta
+                 los tickets cuyo state.id no es ninguno de los dos ids cerrados del
+                 ctx. takeable cuenta los que además pasan las otras dos condiciones.
+                 Con issues cortada los dos son cotas inferiores. milestones cuenta los
+                 nodos de projectMilestones que trajo la respuesta, y es cota inferior
+                 cuando esa conexión vino cortada.
     tickets      lista de objeto. Los abiertos tomables, createdAt ascendente.
     notTakeable  lista de objeto. Los abiertos no tomables, createdAt ascendente.
 
 No hay campo de veredicto, con ningún nombre. Ni `verdict`, ni `stuck`, ni
-`readyToCollapse`, ni un booleano equivalente: el veredicto se deriva de `open` y de
-`takeable`, y lo deriva quien consume esta salida.
+`readyToCollapse`, ni un booleano equivalente: el veredicto se deriva de los tres
+conteos, y lo deriva quien consume esta salida.
+
+`milestones` tampoco es un veredicto disfrazado. Es un entero y nunca un booleano, y
+dice cuántos milestones hay y jamás qué significa que los haya. Quien consume la salida
+es el que decide que cero abiertos con cero milestones es una cosa y cero abiertos con
+al menos uno es otra: sin el tercer conteo los dos casos son indistinguibles, que es el
+bug que el ticket 06 nombró.
 
 Una entrada de `tickets` lleva cinco claves, las cinco siempre presentes:
 
