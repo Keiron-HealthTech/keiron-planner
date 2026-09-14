@@ -162,6 +162,21 @@ mutation($project: String!, $content: String!) {
 """
 
 
+# Pide success y el id y la url del Project recién nacido, y eso NO es verificación
+# posterior a la escritura: es el payload de la propia mutation, en el mismo round trip,
+# y es el único camino para que quien la invoque sepa qué Project acaba de nacer. No pide
+# content de vuelta ni el estado interno del editor. Que el contenido viaje en el mismo
+# POST es lo que hace que crear cueste uno solo, y también lo que vuelve ambigua su falla.
+PROJECT_CREATE = """
+mutation($team: String!, $name: String!, $content: String!) {
+  projectCreate(input: { teamId: $team, name: $name, content: $content }) {
+    success
+    project { id url }
+  }
+}
+"""
+
+
 def _post(query, variables, key):
     """La ÚNICA función que toca la red. El check de runtime la rebindea desde
     afuera para ejercitar los desenlaces del preflight sin red y sin credencial."""
@@ -664,6 +679,96 @@ def _intentar_escribir(project, ediciones, esperadas, reintento, key):
     return (ok, detalle if not ok else noop)
 
 
+def esqueleto(destino, previo):
+    """El mapa recién nacido: los seis encabezados en el orden de contrato de ANCLAS,
+    Destino con el texto que la persona dictó, y el array de líneas del overview que ya
+    estaba preservado VERBATIM al final, bajo la frontera. Nunca lo reescribe ni lo
+    reordena. La frontera va ÚLTIMA y eso es un requisito del parser y no una preferencia
+    de lectura: la primitiva corta el recorrido ahí, así que ponerla antes dejaría a los
+    seis encabezados en la zona inerte."""
+    lineas = ["## " + ANCLAS[0], "", destino, ""]
+    for ancla in ANCLAS[1:]:
+        lineas.extend(["## " + ancla, ""])
+    if any(linea.strip() for linea in previo):
+        lineas.extend(["## " + ANTES_DEL_MAPA, ""])
+        lineas.extend(previo)
+    return lineas
+
+
+def _destino_de(args):
+    """El destino ya validado: acá se rompe todo lo que se pueda romper sin haber tocado
+    la red. Es LA exposición de la guarda del encabezado, porque el esqueleto lo escribe
+    crudo bajo su ancla y sin marcador de viñeta: al revés de los appends de map:write,
+    acá el valor ES la línea, y un encabezado metido por este argumento corta el mapa
+    entero para toda lectura futura."""
+    _sin_saltos("--destino", args.destino)
+    if not args.destino.strip():
+        die(SIN_KEY, "--destino recibió un texto vacío",
+            "pasá la frase que nombra a dónde va este mapa")
+    _no_es_encabezado("--destino", args.destino)
+    return args.destino
+
+
+def _resolver_creacion(payload):
+    """La puerta de projectCreate. La misma regla que _resolver_escritura —errors
+    primero, después 'is not True'— sobre la otra clave del payload, y además saca el id
+    y la url del mismo round trip. Es una función aparte y no un parámetro de
+    _resolver_escritura para no reabrir su cuerpo ni su clave. Devuelve
+    (ok, detalle, proyecto)."""
+    errores = _errores_de(payload)
+    if errores:
+        return (False, "; ".join(errores), {})
+    datos = (payload.get("data") or {}).get("projectCreate") or {}
+    if datos.get("success") is not True:
+        return (False, "projectCreate devolvió success=%s" % datos.get("success"), {})
+    return (True, "", datos.get("project") or {})
+
+
+def _ya_es_este_mapa(rangos, lineas, destino):
+    """True si el overview que acabamos de releer es exactamente el mapa que este intento
+    iba a escribir: las seis anclas presentes y el cuerpo de Destino, sin líneas vacías,
+    igual al destino recibido. Es la guarda que acota la inversión de idempotencia del
+    reintento de la adopción a 'mi escritura anterior aterrizó' y no a 'hay un mapa':
+    entre los dos intentos alguien pudo escribir OTRO mapa, y ese no es el nuestro."""
+    if sorted(rangos) != sorted(ANCLAS):
+        return False
+    inicio, corte = rangos[ANCLAS[0]]
+    return [l for l in lineas[inicio:corte] if l.strip()] == [destino]
+
+
+def _intentar_adoptar(project, destino, reintento, key):
+    """Un intento entero de la adopción: relee tarde, decide y escribe. Devuelve
+    (ok, detalle) y NUNCA termina el proceso por una falla de transporte, para que el
+    llamador pueda reintentar. Sí termina, y con razón, cuando el Project no resuelve o
+    cuando ya tiene un mapa que no es el nuestro: eso no lo arregla reintentar."""
+    lectura = _post(MAP_READ_QUERY, {"project": project}, key)
+    errores = _errores_de(lectura)
+    if errores:
+        return (False, "; ".join(errores))
+    proyecto = (lectura.get("data") or {}).get("project")
+    if proyecto is None:
+        die(SIN_KEY,
+            "el Project %s no resolvió, así que no hay overview que adoptar" % project,
+            "revisá el identificador que le pasaste a --project")
+    lineas = normalizar(proyecto.get("content") or "")
+    rangos, _duplicadas = rangos_de_anclas(lineas)
+    # Las dos condiciones juntas cubren el documento entero pese al corte de la
+    # primitiva: si la frontera está, la segunda aborta y no hace falta mirar debajo; si
+    # no está, no hay corte y la primera ve todo.
+    if rangos or any(es_frontera_del_mapa(l) for l in lineas):
+        if reintento and _ya_es_este_mapa(rangos, lineas, destino):
+            return (True, "")
+        die(SIN_KEY,
+            "el Project %s ya tiene un mapa: encontré %s"
+            % (project, ", ".join(sorted(rangos)) or ANTES_DEL_MAPA),
+            "si querés trazar otro mapa, usá otro Project; si querés editar este, "
+            "es map:write y no map:create")
+    escritura = _post(PROJECT_UPDATE,
+                      {"project": project,
+                       "content": "\n".join(esqueleto(destino, lineas))}, key)
+    return _resolver_escritura(escritura)
+
+
 def bloqueantes_abiertos(nodo, cerrados):
     """La única función que nombra inverseRelations e issue a la vez: los bloqueos
     salen de ahí y nunca de relations. Devuelve la lista, y la lista vacía es el
@@ -751,6 +856,52 @@ def cmd_map_read(args):
     print(json.dumps(salida, separators=(",", ":")))
 
 
+def cmd_map_create(args):
+    destino = _destino_de(args)      # valida la línea única antes de tocar la red
+    key = leer_key()
+    # La asimetría, y es deliberada: adoptar relee en cada intento, así que repetirlo es
+    # seguro porque la guarda de arriba re-evalúa sobre la relectura. Crear es un POST
+    # único cuyo fracaso de transporte no distingue "no llegó" de "llegó y se perdió la
+    # respuesta", así que reintentarlo puede dejar dos Projects hermanos con el mismo
+    # nombre, y el plugin no tiene ninguna operación para deshacerlo.
+    if args.project:
+        detalle = ""
+        for intento in range(MAX_INTENTOS):
+            ok, detalle = _intentar_adoptar(args.project, destino, intento > 0, key)
+            if ok:
+                print(json.dumps({"created": False, "project": args.project,
+                                  "url": None}, separators=(",", ":")))
+                return
+            print("aviso: el intento %s falló: %s" % (intento + 1, detalle),
+                  file=sys.stderr)
+        die(SIN_KEY,
+            "no se pudo adoptar el Project %s; el último intento dijo: %s"
+            % (args.project, detalle),
+            "volvé a correr el mismo comando: adoptar es seguro de repetir, porque una "
+            "segunda corrida sobre un Project que ya tiene mapa aborta sin escribir")
+    else:
+        # json.loads y no resolver_ctx: esa función transforma la respuesta del
+        # preflight en el ctx y lleva adentro tres de las cuatro fallas duras, así que
+        # llamarla acá le daría a map:create códigos de salida que D6 le prohíbe. El ctx
+        # ya viene resuelto en el blob, igual que lo consume frontier:query.
+        equipo = json.loads(args.ctx)["team"]
+        creacion = _post(PROJECT_CREATE,
+                         {"team": equipo, "name": args.name,
+                          "content": "\n".join(esqueleto(destino, []))}, key)
+        ok, detalle, proyecto = _resolver_creacion(creacion)
+        if not ok:
+            die(SIN_KEY,
+                "el projectCreate de %s no confirmó y NO SE SABE si el Project quedó "
+                "hecho: %s" % (args.name, detalle),
+                "abrí Linear y buscá un Project llamado %s ANTES de volver a correr: "
+                "si aparece, seguí con map:create --project sobre él; si no aparece, "
+                "volvé a correr este mismo comando. Esta rama no reintenta sola "
+                "justamente para no dejarte dos Projects con el mismo nombre"
+                % args.name)
+        print(json.dumps({"created": True, "project": proyecto.get("id"),
+                          "url": proyecto.get("url")}, separators=(",", ":")))
+
+
 def cmd_map_write(args):
     ediciones = _ediciones_de(args)      # valida todo antes de tocar la red
     esperadas = _esperadas_de(args)      # None cuando --expect-sections no vino
@@ -832,9 +983,17 @@ def construir_parser():
     p_preflight.add_argument("--bootstrap", action="store_true")
     p_preflight.set_defaults(func=cmd_preflight)
 
+    # Los dos flags del grupo mutuamente excluyente son INVISIBLES para el extractor de
+    # check-adapter.py, que solo ata variables asignadas desde add_parser: ninguna
+    # afirmación puede depender de --project ni de --name. El --ctx sí cuelga directo del
+    # subparser, así que la afirmación de los siete consumidores lo sigue viendo.
     p_map_create = subs.add_parser("map:create")
     p_map_create.add_argument("--ctx", required=True)
-    p_map_create.set_defaults(func=cmd_stub)
+    p_map_create.add_argument("--destino", required=True)
+    _origen_del_project = p_map_create.add_mutually_exclusive_group(required=True)
+    _origen_del_project.add_argument("--project")
+    _origen_del_project.add_argument("--name")
+    p_map_create.set_defaults(func=cmd_map_create)
 
     p_map_read = subs.add_parser("map:read")
     p_map_read.add_argument("--project", required=True)
