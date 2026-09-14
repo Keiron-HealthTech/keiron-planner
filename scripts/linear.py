@@ -36,11 +36,23 @@ ANCLAS = ["Destino", "Notas", "Decisiones hasta ahora", "Aún no especificado",
 # esqueleto, porque desde que corta el recorrido la primitiva es su consumidora.
 ANTES_DEL_MAPA = "Antes del mapa"
 
+# Las tres anclas que map:write edita, tomadas de ANCLAS por posición y nunca
+# reescritas: una segunda copia del texto del encabezado se desincroniza en el primer
+# rename, y el orden de ANCLAS ya es contrato.
+ANCLA_DECISIONES = ANCLAS[2]
+ANCLA_NIEBLA = ANCLAS[3]
+ANCLA_FUERA = ANCLAS[4]
+
 SIN_KEY = 3
 SIN_TEAM = 4
 SIN_CERRADOS = 5
 SIN_LABEL_MAP = 6
 NO_IMPLEMENTADO = 9
+
+# El tope de intentos del read-modify-write, y NO un código de salida: va en su propio
+# bloque para que nadie lo lea como el quinto. Es el único literal del contador en todo
+# el archivo, y el handler que reintenta lo referencia por nombre en el iter de su For.
+MAX_INTENTOS = 2
 
 
 def die(codigo, mensaje, remediacion):
@@ -132,6 +144,19 @@ MAP_READ_QUERY = """
 query($project: String!) {
   project(id: $project) {
     content
+  }
+}
+"""
+
+
+# No pide project { content } de vuelta: releer lo que se acaba de escribir es
+# verificación posterior a la escritura, y está prohibida. Y tampoco pide el estado
+# interno del editor de Linear, que no se nombra en ninguna parte de este archivo: no es
+# contrato, y escribirlo de vuelta corrompe el documento.
+PROJECT_UPDATE = """
+mutation($project: String!, $content: String!) {
+  projectUpdate(id: $project, input: { content: $content }) {
+    success
   }
 }
 """
@@ -325,6 +350,320 @@ def huellas(cuerpos):
     return salida
 
 
+def _sin_marcador(linea):
+    """La línea sin su marcador de viñeta ni su indentación. El despojo no es cosmética:
+    el serializador de Linear reescribe el guion como asterisco al guardar, así que un
+    matcher anclado en el guion dejaría de encontrar sus propias viñetas después de la
+    primera escritura."""
+    resto = linea.strip()
+    if len(resto) > 1 and resto[0] in ("-", "*", "+") and resto[1] == " ":
+        resto = resto[1:].lstrip(" ")
+    return resto
+
+
+def titulo_en_negrita(linea):
+    """El título de una viñeta de niebla, o None. Es la subcadena entre el primer par de
+    ** de la línea, verbatim, con su punto final si lo tiene: es la misma cadena que
+    --remove-fog recibe como argumento, así que las dos mitades no pueden divergir. Que
+    el cierre se busque desde el índice dos es lo que garantiza que el título no
+    contenga otro par de asteriscos."""
+    resto = _sin_marcador(linea)
+    if not resto.startswith("**"):
+        return None
+    cierre = resto.find("**", 2)
+    if cierre < 0:
+        return None
+    return resto[2:cierre] or None
+
+
+def _es_continuacion(linea):
+    """Una línea que pertenece a la viñeta de arriba: no vacía, indentada, y que no
+    arranca una viñeta nueva."""
+    if not linea.strip() or not linea.startswith(" "):
+        return False
+    marca = linea.strip()
+    return not (len(marca) > 1 and marca[0] in ("-", "*", "+") and marca[1] == " ")
+
+
+def _clave_de_unicidad(linea):
+    """Con qué se compara si una línea ya está. El título en negrita cuando la línea lo
+    tiene, porque una viñeta con el mismo título es la misma entrada aunque el cuerpo
+    haya cambiado, y la línea despojada de su marcador cuando no lo tiene, que es el
+    caso de una decisión."""
+    return titulo_en_negrita(linea) or _sin_marcador(linea)
+
+
+def _sin_saltos(etiqueta, valor):
+    """Un valor de una sola línea física. El adapter no envuelve texto, así que un salto
+    adentro de un argumento produciría markdown que nadie escribió."""
+    if "\n" in valor or "\r" in valor:
+        die(SIN_KEY,
+            "%s recibió un valor con un salto de línea y tiene que ser una sola "
+            "línea: %r" % (etiqueta, valor),
+            "sacá el salto de línea del argumento y volvé a correr")
+
+
+def _no_es_encabezado(etiqueta, valor):
+    """La guarda de la frontera. Mira el VALOR que llegó por argumento y no la línea
+    renderizada: la línea lleva el marcador de viñeta adelante, así que nunca empezaría
+    con una almohadilla y la guarda no mordería nunca. Un valor que es un encabezado de
+    nivel uno o dos parte en dos la sección donde cae, y si además es el de la frontera
+    corta el mapa entero de ahí para abajo en toda lectura futura."""
+    limpio = valor.rstrip()
+    if limpio.startswith("## ") or limpio.startswith("# "):
+        die(SIN_KEY,
+            "%s recibió %r, y una línea del mapa no puede ser un encabezado"
+            % (etiqueta, valor),
+            "sacale las almohadillas del principio y volvé a correr")
+
+
+def _validar_niebla(valor):
+    """Las cinco reglas de forma de una viñeta de niebla, sobre el valor que llegó por
+    argumento. Devuelve el título, que es además su clave de unicidad. La guarda del
+    encabezado no hace falta acá: la regla de que el valor empieza con ** ya impide que
+    una viñeta de niebla pueda ser un encabezado."""
+    _sin_saltos("--append-fog", valor)
+    titulo = titulo_en_negrita(valor) if valor.startswith("**") else None
+    if titulo is None:
+        die(SIN_KEY,
+            "--append-fog recibió %r, y una viñeta de niebla tiene que empezar con su "
+            "título entre dobles asteriscos" % valor,
+            'escribila como "**Título.** cuerpo" y volvé a correr')
+    cuerpo = valor[valor.find("**", 2) + 2:]
+    if cuerpo[:1] != " " or cuerpo[1:2] == " " or not cuerpo.strip():
+        die(SIN_KEY,
+            "--append-fog recibió %r, y después del título cerrado tiene que venir "
+            "exactamente un espacio y un cuerpo no vacío" % valor,
+            'escribila como "**Título.** cuerpo" y volvé a correr')
+    return titulo
+
+
+def _ediciones_de(args):
+    """Las ediciones agrupadas por ancla, ya validadas: acá se rompe todo lo que se pueda
+    romper sin haber tocado la red, que es lo que hace que una invocación mal formada no
+    gaste un round trip. Devuelve {ancla: (removes, appends)}, con el orden de la línea
+    de comandos preservado adentro de cada lista."""
+    ediciones = {}
+
+    def anotar(ancla, indice, dato):
+        ediciones.setdefault(ancla, ([], []))[indice].append(dato)
+
+    for enlace, gist in args.append_decision:
+        _sin_saltos("--append-decision", enlace)
+        _sin_saltos("--append-decision", gist)
+        if not enlace or any(c.isspace() for c in enlace):
+            die(SIN_KEY,
+                "el enlace de --append-decision está vacío o tiene espacios: %r"
+                % enlace,
+                "pasá la URL del ticket como un solo token, sin espacios")
+        if len(gist) > 120:
+            die(SIN_KEY,
+                "el gist de --append-decision tiene %s caracteres y el tope es de 120: "
+                "%r" % (len(gist), gist),
+                "acortá el gist; el detalle va en el comentario de resolución del "
+                "ticket y el mapa nunca lo repite")
+        _no_es_encabezado("--append-decision", enlace)
+        _no_es_encabezado("--append-decision", gist)
+        anotar(ANCLA_DECISIONES, 1, "- %s: %s" % (enlace, gist))
+
+    for valor in args.append_fog:
+        _validar_niebla(valor)
+        anotar(ANCLA_NIEBLA, 1, "- %s" % valor)
+
+    for titulo in args.remove_fog:
+        _sin_saltos("--remove-fog", titulo)
+        if not titulo.strip():
+            die(SIN_KEY, "--remove-fog recibió un título vacío",
+                "pasá el título de la viñeta, sin los asteriscos")
+        anotar(ANCLA_NIEBLA, 0, titulo)
+
+    for valor in args.append_out_of_scope:
+        _sin_saltos("--append-out-of-scope", valor)
+        if not valor.strip():
+            die(SIN_KEY, "--append-out-of-scope recibió una línea vacía",
+                "pasá la línea que querés dejar fuera de alcance")
+        _no_es_encabezado("--append-out-of-scope", valor)
+        anotar(ANCLA_FUERA, 1, "- %s" % valor)
+
+    if not ediciones:
+        die(SIN_KEY,
+            "map:write no recibió ninguna edición, y escribir cero ediciones es un "
+            "error de invocación y no un no-op silencioso",
+            "pasá al menos uno de --append-decision, --append-fog, --remove-fog o "
+            "--append-out-of-scope")
+    return ediciones
+
+
+def _esperadas_de(args):
+    """Las huellas que el llamador declaró, o None cuando --expect-sections no vino. El
+    único die de esta rama vive adentro de la comparación contra None, que es lo que
+    hace que la ausencia del flag no pueda producir una salida no cero."""
+    if args.expect_sections is None:
+        return None
+    try:
+        return json.loads(args.expect_sections)
+    except ValueError:
+        die(SIN_KEY,
+            "--expect-sections no parsea como JSON: %r" % args.expect_sections,
+            "pasá el JSON que map:read emitió en su clave sections, sin editarlo")
+
+
+def _sin_la_vineta(cuerpo, titulo):
+    """El cuerpo sin la viñeta de ese título, y cuántas se borraron. Se lleva la viñeta
+    entera y no solo su primera línea: una viñeta de niebla real ocupa varias líneas
+    físicas."""
+    salida = []
+    borradas = 0
+    indice = 0
+    while indice < len(cuerpo):
+        if titulo_en_negrita(cuerpo[indice]) != titulo:
+            salida.append(cuerpo[indice])
+            indice += 1
+            continue
+        borradas += 1
+        indice += 1
+        while indice < len(cuerpo) and _es_continuacion(cuerpo[indice]):
+            indice += 1
+    return salida, borradas
+
+
+def _con_la_linea(cuerpo, linea, reintento):
+    """El cuerpo con la línea agregada después de su última línea no vacía, así que la
+    línea en blanco que separa la sección del encabezado siguiente se conserva. Una línea
+    que ya está es abort duro, porque agregarla de nuevo la contaría dos veces; en la
+    rama del reintento se invierte a no-op con reporte, y esa es la única excepción."""
+    clave = _clave_de_unicidad(linea)
+    if any(_clave_de_unicidad(vieja) == clave for vieja in cuerpo):
+        if not reintento:
+            die(SIN_KEY,
+                "esta línea ya está en el mapa y agregarla nuevo la contaría dos "
+                "veces: %s" % linea,
+                "sacá esa edición de la invocación, o leé el mapa antes de escribir")
+        print("aviso: la línea ya estaba aplicada, así que este intento no la "
+              "repite: %s" % linea, file=sys.stderr)
+        return cuerpo
+    ultima = 0
+    for indice, texto in enumerate(cuerpo):
+        if texto.strip():
+            ultima = indice + 1
+    return cuerpo[:ultima] + [linea] + cuerpo[ultima:]
+
+
+def aplicar_ediciones(lineas, ediciones, reintento=False):
+    """Aplica las ediciones sección por sección sobre el array original y devuelve
+    (nuevas, noop). Todo lo que queda fuera de los rangos editados sobrevive byte a byte
+    y en su posición, la zona inerte de abajo de la frontera incluida. reintento invierte
+    la idempotencia de append: en la rama del reintento, 'esta línea ya está' pasa de
+    abort duro a no-op con reporte. Lo pone el script y nunca un argumento, así que la
+    excepción no se puede invocar desde afuera."""
+    rangos, duplicadas = rangos_de_anclas(lineas)
+    if duplicadas:
+        die(SIN_KEY,
+            "estas anclas aparecen más de una vez en el overview y una escritura no "
+            "puede elegir cuál: %s" % ", ".join(duplicadas),
+            "dejá una sola aparición de cada encabezado y volvé a correr")
+    for ancla in ANCLAS:
+        if ancla not in ediciones or ancla in rangos:
+            continue
+        removes, appends = ediciones[ancla]
+        die(SIN_KEY,
+            "el overview no tiene el encabezado %s, así que no hay dónde escribir "
+            "esto: %s" % (ancla, "; ".join(removes + appends)),
+            "agregá ese encabezado al overview, o trazá el mapa con map:create; "
+            "map:write nunca escribe al final del documento como reemplazo")
+    noop = []
+    nuevas = list(lineas)
+    # Descendente por índice de inicio: un splice corre los índices de todo lo que está
+    # más abajo, así que las secciones que faltan tienen que estar más arriba.
+    for ancla in sorted(ediciones, key=lambda a: rangos[a][0], reverse=True):
+        inicio, corte = rangos[ancla]
+        removes, appends = ediciones[ancla]
+        cuerpo = list(lineas[inicio:corte])
+        # Los remove antes que los append: es lo que le da sentido a graduar una niebla
+        # y abrir otra con el mismo título en una sola invocación.
+        for titulo in removes:
+            cuerpo, borradas = _sin_la_vineta(cuerpo, titulo)
+            if borradas > 1:
+                die(SIN_KEY,
+                    "el título %s matchea %s viñetas y una escritura no puede elegir "
+                    "cuál borrar" % (titulo, borradas),
+                    "dejá una sola viñeta con ese título y volvé a correr")
+            if borradas == 0:
+                noop.append(titulo)
+                print("aviso: no hay ninguna viñeta titulada %s, así que no se borró "
+                      "nada" % titulo, file=sys.stderr)
+        for linea in appends:
+            cuerpo = _con_la_linea(cuerpo, linea, reintento)
+        nuevas[inicio:corte] = cuerpo
+    return nuevas, noop
+
+
+def _errores_de(payload):
+    """Los mensajes de error de una respuesta, o la lista vacía. NO muere: la ruta de
+    escritura necesita decidir si reintenta, y resolver_datos no le sirve porque muere.
+    Duplica a propósito el extractor de resolver_datos, que este change tiene prohibido
+    tocar para que resolver_ctx lo siga tratando igual."""
+    textos = []
+    for error in (payload.get("errors") or []):
+        mensaje = error.get("message") if isinstance(error, dict) else None
+        textos.append(str(mensaje) if mensaje is not None else str(error))
+    return textos
+
+
+def _resolver_escritura(payload):
+    """La única puerta de projectUpdate. Un projectUpdate rechazado puede venir con
+    success: false y SIN errors de nivel superior, así que mirar solo errors reportaría
+    éxito sobre una escritura que Linear rechazó. Devuelve (ok, detalle)."""
+    errores = _errores_de(payload)
+    if errores:
+        return (False, "; ".join(errores))
+    datos = (payload.get("data") or {}).get("projectUpdate") or {}
+    # is not True y no un not pelado: la clave ausente y el false explícito son los dos
+    # casos que importan, y los dos caen del lado del fracaso.
+    if datos.get("success") is not True:
+        return (False, "projectUpdate devolvió success=%s" % datos.get("success"))
+    return (True, "")
+
+
+def _reportar_deriva(texto, esperadas):
+    """El único uso de --expect-sections: nombra por stderr las anclas cuya huella se
+    movió desde la lectura del llamador. Nunca aborta y nunca cambia el código de salida,
+    porque la escritura ya se re-deriva del texto recién leído: la deriva es información
+    para la persona y no un motivo para no escribir. Reusa huellas y cortar_secciones sin
+    tocarlas, así que las dos puntas comparan lo mismo."""
+    ahora = huellas(cortar_secciones(texto))
+    for ancla in ANCLAS:
+        if ancla in esperadas and esperadas[ancla] != ahora[ancla]:
+            print("aviso: la sección %s se movió desde tu lectura" % ancla,
+                  file=sys.stderr)
+
+
+def _intentar_escribir(project, ediciones, esperadas, reintento, key):
+    """Un intento entero del read-modify-write: relee tarde, re-deriva y escribe. Las dos
+    sentencias de red viven en esta función y en ninguna otra del grafo de map:write, y
+    el bucle vive en el handler: con el bucle acá, el salto del reintento se metería entre
+    las dos. Devuelve (ok, detalle) y NUNCA termina el proceso por una falla de
+    transporte, para que el llamador pueda reintentar."""
+    lectura = _post(MAP_READ_QUERY, {"project": project}, key)
+    errores = _errores_de(lectura)
+    if errores:
+        return (False, "; ".join(errores))
+    proyecto = (lectura.get("data") or {}).get("project")
+    if proyecto is None:
+        die(SIN_KEY,
+            "el Project %s no resolvió, así que no hay overview que reescribir"
+            % project,
+            "revisá el identificador que le pasaste a --project")
+    texto = proyecto.get("content") or ""
+    if esperadas is not None:
+        _reportar_deriva(texto, esperadas)
+    nuevas, noop = aplicar_ediciones(normalizar(texto), ediciones, reintento)
+    escritura = _post(PROJECT_UPDATE,
+                      {"project": project, "content": "\n".join(nuevas)}, key)
+    ok, detalle = _resolver_escritura(escritura)
+    return (ok, detalle if not ok else noop)
+
+
 def bloqueantes_abiertos(nodo, cerrados):
     """La única función que nombra inverseRelations e issue a la vez: los bloqueos
     salen de ahí y nunca de relations. Devuelve la lista, y la lista vacía es el
@@ -412,6 +751,25 @@ def cmd_map_read(args):
     print(json.dumps(salida, separators=(",", ":")))
 
 
+def cmd_map_write(args):
+    ediciones = _ediciones_de(args)      # valida todo antes de tocar la red
+    esperadas = _esperadas_de(args)      # None cuando --expect-sections no vino
+    key = leer_key()
+    detalle = ""
+    for intento in range(MAX_INTENTOS):
+        ok, detalle = _intentar_escribir(args.project, ediciones, esperadas,
+                                         intento > 0, key)
+        if ok:
+            print(json.dumps({"written": True, "attempts": intento + 1,
+                              "noop": detalle}, separators=(",", ":")))
+            return
+        print("aviso: el intento %s falló: %s" % (intento + 1, detalle),
+              file=sys.stderr)
+    die(SIN_KEY,
+        "no se pudo escribir el mapa; el último intento dijo: %s" % detalle,
+        "mirá el mensaje de arriba y volvé a correr el comando")
+
+
 def cmd_frontier_query(args):
     ctx = json.loads(args.ctx)
     cerrados = {ctx["done"], ctx["canceled"]}
@@ -482,8 +840,21 @@ def construir_parser():
     p_map_read.add_argument("--project", required=True)
     p_map_read.set_defaults(func=cmd_map_read)
 
+    # Sin --ctx a propósito: map:write es una de las cuatro operaciones que no lo
+    # consumen. El gist va como su propio token de argv y nunca empaquetado con el
+    # enlace, que es lo que permite aplicarle el tope al gist solo.
     p_map_write = subs.add_parser("map:write")
-    p_map_write.set_defaults(func=cmd_stub)
+    p_map_write.add_argument("--project", required=True)
+    p_map_write.add_argument("--append-decision", nargs=2, action="append",
+                             default=[], metavar=("ENLACE", "GIST"))
+    p_map_write.add_argument("--append-fog", action="append", default=[],
+                             metavar="VINETA")
+    p_map_write.add_argument("--remove-fog", action="append", default=[],
+                             metavar="TITULO")
+    p_map_write.add_argument("--append-out-of-scope", action="append", default=[],
+                             metavar="LINEA")
+    p_map_write.add_argument("--expect-sections")
+    p_map_write.set_defaults(func=cmd_map_write)
 
     p_ticket_create = subs.add_parser("ticket:create")
     p_ticket_create.add_argument("--ctx", required=True)
