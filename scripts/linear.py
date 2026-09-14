@@ -30,6 +30,12 @@ LABEL_MAPA = "map"
 ANCLAS = ["Destino", "Notas", "Decisiones hasta ahora", "Aún no especificado",
           "Fuera de alcance", "El colapso"]
 
+# El séptimo encabezado, y a propósito FUERA de ANCLAS: no es un ancla de lectura, no
+# lleva huella, y cortar_secciones tiene que seguir sin devolverle un cuerpo. Vive acá,
+# junto a la otra lista que la primitiva de rangos mira, y no con quien escribe el
+# esqueleto, porque desde que corta el recorrido la primitiva es su consumidora.
+ANTES_DEL_MAPA = "Antes del mapa"
+
 SIN_KEY = 3
 SIN_TEAM = 4
 SIN_CERRADOS = 5
@@ -228,35 +234,78 @@ def resolver_datos(payload):
     return (payload.get("data") or {}).get("project")
 
 
-def cortar_secciones(texto):
-    """Pura: del overview a los seis cuerpos. Solo rstrip al buscar el ancla y nunca
-    lstrip, para que una línea indentada no se dispute la sección con la de verdad.
-    Normaliza por su cuenta, así que sirve sola sobre un texto que todavía trae CRLF."""
-    lineas = texto.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+def es_frontera_del_mapa(linea):
+    """True si la línea es el encabezado que cierra el mapa. Un solo sitio de
+    definición porque tiene dos consumidores: rangos_de_anclas, para saber dónde dejar
+    de mirar, y la guarda de adopción de map:create, para saber que este Project ya
+    pasó por acá."""
+    return linea.rstrip() == "## " + ANTES_DEL_MAPA
+
+
+def normalizar(texto):
+    """El array de líneas sobre el que trabajan la lectura y la escritura. Es función
+    y no una línea repetida porque tiene dos consumidores: cortar_secciones y el paso
+    uno del read-modify-write."""
+    return texto.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+
+
+def rangos_de_anclas(lineas):
+    """La única función que parsea encabezados de ancla. Pura: no imprime y no termina.
+    Devuelve (rangos, duplicadas). rangos es {ancla: (i_inicio, i_fin)} sobre el array
+    original, con i_inicio la línea siguiente al encabezado de su PRIMERA aparición e
+    i_fin la primera línea que vuelve a ser un encabezado de nivel uno o dos, o el fin
+    del recorrido. duplicadas son las anclas cuyo encabezado aparece más de una vez, en
+    orden de documento y una sola vez cada una. El recorrido TERMINA en el encabezado
+    de la frontera: el mapa se acaba ahí y lo de abajo es zona inerte. Solo rstrip al
+    buscar el ancla y nunca lstrip, para que una línea indentada no se dispute la
+    sección con la de verdad."""
+    fin = len(lineas)
+    for indice, linea in enumerate(lineas):
+        if es_frontera_del_mapa(linea):
+            fin = indice
+            break
     encabezados = dict(("## " + ancla, ancla) for ancla in ANCLAS)
+    primera = {}
+    duplicadas = []
+    for indice in range(fin):
+        ancla = encabezados.get(lineas[indice].rstrip())
+        if ancla is None:
+            continue
+        if ancla not in primera:
+            primera[ancla] = indice
+        elif ancla not in duplicadas:
+            duplicadas.append(ancla)
+    rangos = {}
+    for ancla in primera:
+        inicio = primera[ancla]
+        corte = fin
+        for indice in range(inicio + 1, fin):
+            limpia = lineas[indice].rstrip()
+            # Un encabezado de nivel tres o más profundo no matchea ninguno de los dos
+            # prefijos, así que pertenece al cuerpo.
+            if limpia.startswith("## ") or limpia.startswith("# "):
+                corte = indice
+                break
+        rangos[ancla] = (inicio + 1, corte)
+    return rangos, duplicadas
+
+
+def cortar_secciones(texto):
+    """Pura salvo por el aviso: del overview a los seis cuerpos. El aviso de ancla
+    duplicada vive acá y no en la primitiva porque avisar y seguir es regla de LECTURA:
+    la primitiva reporta el hecho y cada llamador elige su política."""
+    lineas = normalizar(texto)
+    rangos, duplicadas = rangos_de_anclas(lineas)
+    for ancla in duplicadas:
+        # Se hashea la primera aparición y map:read sale en cero igual: abortar
+        # por ancla ambigua es regla de escritura, no de lectura.
+        print("aviso: el ancla %s aparece más de una vez: se hashea la "
+              "primera" % ancla, file=sys.stderr)
     cuerpos = dict((ancla, None) for ancla in ANCLAS)
-    actual = None
-    for linea in lineas:
-        limpia = linea.rstrip()
-        ancla = encabezados.get(limpia)
-        if ancla is not None:
-            if cuerpos[ancla] is None:
-                cuerpos[ancla] = []
-                actual = ancla
-            else:
-                # Se hashea la primera aparición y map:read sale en cero igual: abortar
-                # por ancla ambigua es regla de escritura, no de lectura.
-                print("aviso: el ancla %s aparece más de una vez: se hashea la "
-                      "primera" % ancla, file=sys.stderr)
-                actual = None
-            continue
-        # Un encabezado de nivel tres o más profundo no matchea ninguno de los dos
-        # prefijos, así que pertenece al cuerpo.
-        if limpia.startswith("## ") or limpia.startswith("# "):
-            actual = None
-            continue
-        if actual is not None:
-            cuerpos[actual].append(linea)
+    for ancla in ANCLAS:
+        if ancla in rangos:
+            inicio, corte = rangos[ancla]
+            cuerpos[ancla] = lineas[inicio:corte]
     return cuerpos
 
 
