@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import socket
 import sys
 import urllib.error
 import urllib.request
@@ -145,6 +146,14 @@ def _post(query, variables, key):
             return json.loads(exc.read().decode("utf-8"))
         except ValueError:
             return {"errors": [{"message": "HTTP %s" % exc.code}]}
+    # HTTPError va arriba porque es subclase de URLError: invertir el orden se come la
+    # rama que ya existía. Y socket.timeout va aparte porque bajo 3.9 no deriva de
+    # URLError, así que la cláusula de arriba no lo atrapa.
+    except urllib.error.URLError as exc:
+        return {"errors": [{"message": "no se pudo alcanzar %s: %s"
+                                       % (ENDPOINT, exc.reason)}]}
+    except socket.timeout:
+        return {"errors": [{"message": "%s no respondió a tiempo" % ENDPOINT}]}
 
 
 def resolver_ctx(payload, bootstrap, team):
