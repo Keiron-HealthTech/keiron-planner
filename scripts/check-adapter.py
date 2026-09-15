@@ -625,7 +625,408 @@ if not any("projectMilestones" in STRCONSTS[nm] for nm in REFERIDAS_FRONTERA):
          "por nombre contiene projectMilestones")
 
 
+# --- la ruta de escritura, raíz compartida por las nueve de este change -----------
+
+# Misma resolución que la 23, la 53 y la 59: el handler real sale de set_defaults y el
+# grafo de alcanzable(). Se define una sola vez y las nueve la citan.
+RUTA_ESCRITURA = alcanzable(handler.get("map:write"))
+require_nonempty(RUTA_ESCRITURA,
+                 "[24] el grafo alcanzable desde el handler de map:write dio vacío; el "
+                 "handler volvió a ser un stub y las nueve afirmaciones probarían cero")
+
+ARGS_DE = {}
+for _n in ast.walk(ARBOL):
+    if not isinstance(_n, ast.Call):
+        continue
+    _f = _n.func
+    if not (isinstance(_f, ast.Attribute) and isinstance(_f.value, ast.Name)):
+        continue
+    _op = BIND.get(_f.value.id)
+    if _op is None or _f.attr != "add_argument" or not _n.args:
+        continue
+    if isinstance(_n.args[0], ast.Constant):
+        ARGS_DE.setdefault(_op, {})[_n.args[0].value] = _n
+require_nonempty(ARGS_DE.get("map:write"),
+                 "[26] el subparser de map:write no declara ningún add_argument que el "
+                 "extractor vea; las afirmaciones sobre sus flags probarían cero")
+
+with open(ADAPTER, encoding="utf-8") as _fh:
+    FUENTE = _fh.read()
+
+IMPORTADOS = [a.name for n in ast.walk(ARBOL) if isinstance(n, ast.Import)
+              for a in n.names]
+DESDE = [n.module for n in ast.walk(ARBOL) if isinstance(n, ast.ImportFrom)]
+
+
+def _post_con(nodo, aguja):
+    """True si el subárbol lleva un Call a _post cuyo primer argumento es el nombre de
+    una constante de string del módulo cuyo valor contiene la aguja. Mira la constante
+    por nombre y no el literal, porque las queries se referencian, no se inlinean."""
+    for n in ast.walk(nodo):
+        if not (isinstance(n, ast.Call) and invocado(n.func) == "_post" and n.args):
+            continue
+        a = n.args[0]
+        if isinstance(a, ast.Name) and aguja in STRCONSTS.get(a.id, ""):
+            return True
+    return False
+
+
+def _corta(st):
+    """Una sentencia de primer nivel que interrumpe el flujo: la que la 24 no puede
+    tener entre la lectura y la escritura. Mira si la sentencia ES un Return, un Raise o
+    una llamada pelada a sys.exit, y NO si contiene uno anidado. La diferencia es
+    deliberada: una guarda condicional que aborta el intento es correcta, es la forma no
+    fatal del die que la Brecha de la fila ya excusaba, y es la que el reintento necesita
+    para devolver un fracaso releíble en vez de matar el proceso."""
+    if isinstance(st, (ast.Return, ast.Raise)):
+        return True
+    if isinstance(st, ast.Expr) and isinstance(st.value, ast.Call):
+        f = st.value.func
+        return (isinstance(f, ast.Attribute) and f.attr == "exit"
+                and getattr(f.value, "id", None) == "sys")
+    return False
+
+
+# --- afirmación 24: la lectura y la escritura en el mismo FunctionDef -------------
+
+LEEN = set(nm for nm in RUTA_ESCRITURA if _post_con(FUNCS[nm], "project(id:"))
+ESCRIBEN = set(nm for nm in RUTA_ESCRITURA if _post_con(FUNCS[nm], "projectUpdate"))
+require_nonempty(LEEN, "[24] ninguna función del grafo de map:write le pasa a _post una "
+                       "constante del módulo que contenga project(id:")
+require_nonempty(ESCRIBEN, "[24] ninguna función del grafo de map:write le pasa a _post "
+                           "una constante del módulo que contenga projectUpdate")
+AMBAS = sorted(LEEN & ESCRIBEN)
+if len(AMBAS) != 1:
+    fail("[24] la lectura y la escritura tienen que salir del mismo FunctionDef, y las "
+         "funciones que llevan las dos son %s" % AMBAS)
+else:
+    _cuerpo = FUNCS[AMBAS[0]].body
+    _lee = [i for i, st in enumerate(_cuerpo) if _post_con(st, "project(id:")]
+    _esc = [i for i, st in enumerate(_cuerpo) if _post_con(st, "projectUpdate")]
+    if not _lee or not _esc:
+        fail("[24] en %s las dos sentencias de red no están en el cuerpo de primer "
+             "nivel, así que su orden no se puede comparar" % AMBAS[0])
+    elif _lee[0] >= _esc[0]:
+        fail("[24] en %s la lectura está en la sentencia %d y la escritura en la %d, y "
+             "la lectura tiene que ir primero" % (AMBAS[0], _lee[0], _esc[0]))
+    else:
+        if isinstance(_cuerpo[_lee[0]], ast.Return):
+            fail("[24] en %s la sentencia de la lectura es un Return, así que todo lo "
+                 "que sigue es código muerto y el predicado pasaría por vacuidad"
+                 % AMBAS[0])
+        _medio = [i for i in range(_lee[0] + 1, _esc[0]) if _corta(_cuerpo[i])]
+        if _medio:
+            fail("[24] en %s las sentencias %s, entre la lectura y la escritura, son un "
+                 "retorno, un levantamiento o una salida de primer nivel"
+                 % (AMBAS[0], _medio))
+
+_POSTS_ESCRITURA = [n for nm in sorted(RUTA_ESCRITURA) for n in ast.walk(FUNCS[nm])
+                    if isinstance(n, ast.Call) and invocado(n.func) == "_post"]
+if len(_POSTS_ESCRITURA) != 2:
+    fail("[24] el grafo alcanzable desde map:write llama a _post %d veces, y tiene que "
+         "llamarlo exactamente dos" % len(_POSTS_ESCRITURA))
+
+# --- afirmación 26: --expect-sections existe y su ausencia no aborta --------------
+
+_EXPECT = ARGS_DE["map:write"].get("--expect-sections")
+if _EXPECT is None:
+    fail("[26] map:write no declara --expect-sections")
+elif any(kw.arg == "required" and isinstance(kw.value, ast.Constant)
+         and kw.value.value is True for kw in _EXPECT.keywords):
+    fail("[26] --expect-sections está declarado con required=True, así que su ausencia "
+         "aborta")
+
+IFS_EXPECT = []
+for _nm in sorted(RUTA_ESCRITURA):
+    for _n in ast.walk(FUNCS[_nm]):
+        if not (isinstance(_n, ast.If) and isinstance(_n.test, ast.Compare)):
+            continue
+        if not any(isinstance(c, ast.Constant) and c.value is None
+                   for c in _n.test.comparators):
+            continue
+        if "expect" not in ast.dump(_n.test) and "esperadas" not in ast.dump(_n.test):
+            continue
+        IFS_EXPECT.append(_n)
+require_nonempty(IFS_EXPECT,
+                 "[26] ninguna rama del grafo de map:write compara las huellas "
+                 "esperadas contra None, así que la afirmación probaría cero")
+for _n in IFS_EXPECT:
+    # La rama que se toma cuando el valor ES None: el body de un `is None`, el orelse
+    # de un `is not None`.
+    _rama = _n.body if isinstance(_n.test.ops[0], ast.Is) else _n.orelse
+    if any(isinstance(x, ast.Call) and invocado(x.func) == "die"
+           for st in _rama for x in ast.walk(st)):
+        fail("[26] la rama que se toma cuando --expect-sections es None, en la línea "
+             "%d, llama a die" % _n.lineno)
+
+# --- afirmación 27: el único acceso a disco es la lectura de la credencial ---------
+
+ABIERTOS = [n for n in ast.walk(ARBOL)
+            if isinstance(n, ast.Call) and invocado(n.func) == "open"]
+require_nonempty(ABIERTOS,
+                 "[27] el conjunto de llamadas a open dio vacío, y eso significa que la "
+                 "extracción se rompió y no que el archivo sea limpio")
+if len(ABIERTOS) != 1:
+    fail("[27] hay %d llamadas a open y tiene que haber exactamente una"
+         % len(ABIERTOS))
+_EN_KEY = [n for n in ast.walk(FUNCS["leer_key"])
+           if isinstance(n, ast.Call) and invocado(n.func) == "open"] \
+    if "leer_key" in FUNCS else []
+if len(_EN_KEY) != len(ABIERTOS):
+    fail("[27] %d de las %d llamadas a open viven fuera de leer_key"
+         % (len(ABIERTOS) - len(_EN_KEY), len(ABIERTOS)))
+
+_OS_PROHIBIDOS = ("makedirs", "mkdir", "remove", "unlink", "rename", "replace", "rmdir")
+_OS_PATH_PERMITIDOS = ("isfile", "join", "expanduser")
+_DISCO = []
+for _n in ast.walk(ARBOL):
+    if not (isinstance(_n, ast.Call) and isinstance(_n.func, ast.Attribute)):
+        continue
+    _base = _n.func.value
+    if isinstance(_base, ast.Name) and _base.id == "os" \
+            and _n.func.attr in _OS_PROHIBIDOS:
+        _DISCO.append("os." + _n.func.attr)
+    if isinstance(_base, ast.Name) and _base.id == "shutil":
+        _DISCO.append("shutil." + _n.func.attr)
+    if (isinstance(_base, ast.Attribute) and _base.attr == "path"
+            and getattr(_base.value, "id", None) == "os"
+            and _n.func.attr not in _OS_PATH_PERMITIDOS):
+        _DISCO.append("os.path." + _n.func.attr)
+if _DISCO:
+    fail("[27] estas llamadas tocan el disco fuera de la lectura de la credencial: %s"
+         % sorted(set(_DISCO)))
+if "pathlib" in IMPORTADOS or "pathlib" in DESDE:
+    fail("[27] pathlib está importado, y su superficie de disco no la ve el resto de "
+         "esta afirmación")
+
+# --- afirmación 28: un reintento por handler, y ningún mecanismo expuesto ----------
+
+_ASIGNA_MAX = [n for n in ARBOL.body if isinstance(n, ast.Assign)
+               and any(isinstance(t, ast.Name) and t.id == "MAX_INTENTOS"
+                       for t in n.targets)]
+if len(_ASIGNA_MAX) != 1:
+    fail("[28] MAX_INTENTOS se asigna %d veces a nivel de módulo y tiene que asignarse "
+         "exactamente una" % len(_ASIGNA_MAX))
+    VALOR_MAX = None
+elif not (isinstance(_ASIGNA_MAX[0].value, ast.Constant)
+          and isinstance(_ASIGNA_MAX[0].value.value, int)
+          and not isinstance(_ASIGNA_MAX[0].value.value, bool)):
+    fail("[28] el valor de MAX_INTENTOS no es un entero literal")
+    VALOR_MAX = None
+else:
+    VALOR_MAX = _ASIGNA_MAX[0].value.value
+
+HANDLERS_CON_REINTENTO = ("map:write", "map:create")
+_NOMBRES_HANDLER = [handler.get(op) for op in HANDLERS_CON_REINTENTO]
+require_nonempty([h for h in _NOMBRES_HANDLER if h],
+                 "[28] ningún handler de map:write o map:create resuelve por "
+                 "set_defaults, así que la forma del reintento no se puede mirar")
+
+_REFS_MAX = [n for n in ast.walk(ARBOL) if isinstance(n, ast.Name)
+             and n.id == "MAX_INTENTOS" and isinstance(n.ctx, ast.Load)]
+if len(_REFS_MAX) != 2:
+    fail("[28] MAX_INTENTOS se referencia por nombre %d veces y tiene que "
+         "referenciarse exactamente dos, una por handler" % len(_REFS_MAX))
+
+_ADENTRO = 0
+for _op in HANDLERS_CON_REINTENTO:
+    _h = handler.get(_op)
+    if _h is None or _h not in FUNCS:
+        fail("[28] el handler de %s no resuelve a una función del módulo" % _op)
+        continue
+    _fn = FUNCS[_h]
+    _fors = [n for n in ast.walk(_fn) if isinstance(n, ast.For)]
+    _refs = [n for n in ast.walk(_fn) if isinstance(n, ast.Name)
+             and n.id == "MAX_INTENTOS" and isinstance(n.ctx, ast.Load)]
+    _ADENTRO += len(_refs)
+    if len(_fors) != 1:
+        fail("[28] %s tiene %d For y tiene que tener exactamente uno" % (_h, len(_fors)))
+    elif len(_refs) != 1:
+        fail("[28] %s referencia a MAX_INTENTOS %d veces y tiene que referenciarla una"
+             % (_h, len(_refs)))
+    elif not (isinstance(_fors[0].iter, ast.Call)
+              and invocado(_fors[0].iter.func) == "range"
+              and any(x is _refs[0]
+                      for a in _fors[0].iter.args for x in ast.walk(a))):
+        fail("[28] la referencia a MAX_INTENTOS de %s no es el argumento de un range en "
+             "el iter de su For, así que la constante no gobierna el bucle" % _h)
+    if VALOR_MAX is not None:
+        _desnudos = [n for n in ast.walk(_fn) if isinstance(n, ast.Constant)
+                     and isinstance(n.value, int) and not isinstance(n.value, bool)
+                     and n.value == VALOR_MAX]
+        if _desnudos:
+            fail("[28] %s lleva %d entero literal igual al valor de MAX_INTENTOS, así "
+                 "que el contador puede quedar desnudo" % (_h, len(_desnudos)))
+if _ADENTRO != len(_REFS_MAX):
+    fail("[28] %d referencias a MAX_INTENTOS viven fuera de los dos handlers"
+         % (len(_REFS_MAX) - _ADENTRO))
+
+# La asimetría, que es lo único de ella que el AST puede ver: el For de map:create
+# cuelga del If que pregunta por args.project, y el orelse no tiene ni For ni constante.
+_HC = handler.get("map:create")
+if _HC in FUNCS:
+    _IFS_PROJECT = [n for n in ast.walk(FUNCS[_HC]) if isinstance(n, ast.If)
+                    and any(isinstance(x, ast.Attribute) and x.attr == "project"
+                            for x in ast.walk(n.test))]
+    require_nonempty(_IFS_PROJECT,
+                     "[28] el handler de map:create no ramifica sobre el atributo "
+                     "project de los args, así que su asimetría no se puede mirar")
+    _bien = False
+    for _if in _IFS_PROJECT:
+        _en_cuerpo = [n for st in _if.body for n in ast.walk(st)
+                      if isinstance(n, ast.For)]
+        _en_orelse = [n for st in _if.orelse for n in ast.walk(st)
+                      if isinstance(n, ast.For)]
+        _max_orelse = [n for st in _if.orelse for n in ast.walk(st)
+                       if isinstance(n, ast.Name) and n.id == "MAX_INTENTOS"]
+        if len(_en_cuerpo) == 1 and not _en_orelse and not _max_orelse:
+            _bien = True
+    if not _bien:
+        fail("[28] en el handler de map:create la rama que adopta tiene que llevar el "
+             "único For y la rama que crea no puede llevar ni For ni referencia a "
+             "MAX_INTENTOS: la asimetría del reintento no está en el árbol")
+
+_CON_DEFAULT_FALSO = []
+for _nm in sorted(RUTA_ESCRITURA):
+    _a = FUNCS[_nm].args
+    _conteo = sum(1 for d in _a.defaults
+                  if isinstance(d, ast.Constant) and d.value is False)
+    if _conteo:
+        _CON_DEFAULT_FALSO.append(_nm)
+if len(_CON_DEFAULT_FALSO) != 1:
+    fail("[28] el booleano de idempotencia invertida tiene que ser un parámetro con "
+         "default False de exactamente una función del grafo de map:write, y lo llevan "
+         "%s" % _CON_DEFAULT_FALSO)
+
+_EXPUESTOS = []
+for _n in ast.walk(ARBOL):
+    if not (isinstance(_n, ast.Call) and isinstance(_n.func, ast.Attribute)
+            and _n.func.attr == "add_argument" and _n.args):
+        continue
+    if not isinstance(_n.args[0], ast.Constant):
+        continue
+    _lit = str(_n.args[0].value)
+    if any(p in _lit for p in ("intento", "retry", "idempot")):
+        _EXPUESTOS.append(_lit)
+if _EXPUESTOS:
+    fail("[28] estos add_argument exponen un mecanismo interno del reintento: %s"
+         % _EXPUESTOS)
+
+# --- afirmación 29: ninguna rama sobre updatedAt ----------------------------------
+
+RAMAS = [n for n in ast.walk(ARBOL) if isinstance(n, (ast.If, ast.Compare))]
+require_nonempty(RAMAS,
+                 "[29] el archivo no tiene ningún If ni Compare, y una aserción de "
+                 "ausencia sobre un conjunto vacío no aserta nada")
+_SOBRE_UPDATED = [n for n in RAMAS
+                  if "updatedAt" in ast.dump(n.test if isinstance(n, ast.If) else n)]
+if _SOBRE_UPDATED:
+    fail("[29] updatedAt aparece en %d If.test o Compare, y está coalescido, así que "
+         "ramificar sobre él da un resultado falso" % len(_SOBRE_UPDATED))
+
+# --- afirmación 30: ninguna query pide el estado interno del editor ---------------
+
+_OCURRENCIAS = FUENTE.count("contentState")
+if _OCURRENCIAS != 0:
+    fail("[30] contentState aparece %d veces en el texto de %s, y tiene que aparecer "
+         "cero: es la única de estas afirmaciones donde el archivo entero es más fuerte "
+         "que la ruta, porque un comentario que lo nombra es una invitación a pedirlo"
+         % (_OCURRENCIAS, ADAPTER))
+
+# --- afirmación 31: cero verificación posterior, cero sueño -----------------------
+
+_FLAG_VERIFY = [n for n in ast.walk(ARBOL)
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                and n.func.attr == "add_argument" and n.args
+                and isinstance(n.args[0], ast.Constant)
+                and n.args[0].value == "--verify"]
+if _FLAG_VERIFY:
+    fail("[31] hay un add_argument(\"--verify\"): un --verify apagado por defecto "
+         "sigue siendo código muerto de verificación posterior")
+if "time" in IMPORTADOS or "time" in DESDE:
+    fail("[31] time está importado")
+_DORMIDAS = [n for n in ast.walk(ARBOL)
+             if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+             and getattr(n.func.value, "id", None) == "time"]
+if _DORMIDAS:
+    fail("[31] hay %d llamadas a un atributo de time" % len(_DORMIDAS))
+
+# La mitad acotada a RUTA_ESCRITURA: adentro de ese grafo la función que emite el
+# projectUpdate es una sola, así que la extracción no es ambigua. La rama de map:create
+# queda fuera a propósito, igual que en la 24, y su ausencia de relectura la mide el
+# conteo de transporte de la afirmación 60.
+if len(ESCRIBEN) != 1:
+    fail("[31] en el grafo de map:write tiene que haber exactamente una función que "
+         "emita el projectUpdate, y son %s" % sorted(ESCRIBEN))
+else:
+    _cuerpo = FUNCS[sorted(ESCRIBEN)[0]].body
+    _esc = [i for i, st in enumerate(_cuerpo) if _post_con(st, "projectUpdate")]
+    _posteriores = _cuerpo[_esc[0] + 1:]
+    _releen = [st for st in _posteriores
+               if any(isinstance(x, ast.Call) and invocado(x.func) == "_post"
+                      for x in ast.walk(st))
+               or any(isinstance(x, ast.Name) and "project(id:" in STRCONSTS.get(x.id, "")
+                      for x in ast.walk(st))]
+    if _releen:
+        fail("[31] %d sentencias posteriores al projectUpdate vuelven a llamar a _post "
+             "o referencian la constante de lectura" % len(_releen))
+
+# --- afirmación 44: el adapter no envuelve texto ----------------------------------
+
+if "textwrap" in IMPORTADOS or "textwrap" in DESDE:
+    fail("[44] textwrap está importado")
+JOINS = [n for nm in sorted(RUTA_ESCRITURA) for n in ast.walk(FUNCS[nm])
+         if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+         and n.func.attr == "join"]
+require_nonempty(JOINS,
+                 "[44] el grafo de map:write no llama a ningún join, y hay al menos uno "
+                 "—el que rearma el contenido—, así que la extracción se rompió")
+_CORTADAS = [n for n in JOINS for a in n.args for s in ast.walk(a)
+             if isinstance(s, ast.Subscript) and isinstance(s.slice, ast.Slice)]
+if _CORTADAS:
+    fail("[44] %d join del grafo de map:write reciben una rebanada, que es la forma de "
+         "un envoltorio de texto" % len(_CORTADAS))
+
+# --- afirmación 45: el gist es un token propio y tiene tope de 120 ----------------
+
+_DEC = ARGS_DE["map:write"].get("--append-decision")
+if _DEC is None:
+    fail("[45] map:write no declara --append-decision")
+elif not any(kw.arg == "nargs" and isinstance(kw.value, ast.Constant)
+             and kw.value.value == 2 for kw in _DEC.keywords):
+    fail("[45] --append-decision no lleva nargs=2, así que el gist no llega como su "
+         "propio token de argv y el tope no se le puede aplicar solo a él")
+
+_CMP120 = [n for nm in sorted(RUTA_ESCRITURA) for n in ast.walk(FUNCS[nm])
+           if isinstance(n, ast.Compare)
+           and any(isinstance(c, ast.Constant) and not isinstance(c.value, bool)
+                   and c.value == 120 for c in n.comparators)]
+if len(_CMP120) != 1:
+    fail("[45] en el grafo de map:write hay %d comparaciones contra el literal 120 y "
+         "tiene que haber exactamente una" % len(_CMP120))
+else:
+    _LLEVA_DIE = False
+    for _nm in sorted(RUTA_ESCRITURA):
+        for _n in ast.walk(FUNCS[_nm]):
+            if not isinstance(_n, ast.If):
+                continue
+            if not any(x is _CMP120[0] for x in ast.walk(_n.test)):
+                continue
+            if any(isinstance(x, ast.Call) and invocado(x.func) == "die"
+                   for x in ast.walk(_n)):
+                _LLEVA_DIE = True
+    if not _LLEVA_DIE:
+        fail("[45] la comparación contra 120 no está adentro de un If que lleve un die, "
+             "así que un gist demasiado largo no sale con código no cero")
+
+_LIT120 = [n for n in ast.walk(ARBOL) if isinstance(n, ast.Constant)
+           and isinstance(n.value, int) and not isinstance(n.value, bool)
+           and n.value == 120]
+if len(_LIT120) != 1:
+    fail("[45] el literal 120 aparece %d veces en el archivo y tiene que vivir en un "
+         "solo lugar" % len(_LIT120))
+
 report()
-print("%s: OK - las once afirmaciones de AST sobre %s cierran, bajo Python "
+print("%s: OK - las veinte afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))
