@@ -47,7 +47,7 @@ genérica pasaría las cuatro sin distinguirlas. Reformular una marca sin tocar 
 mensaje, o al revés, deja el contrato y el script en desacuerdo.
 
 Los otros tres códigos que el adapter puede devolver no son fallas duras del preflight.
-El **9** es el de los stubs, los nueve subcomandos que todavía no tienen cuerpo. El
+El **9** es el de los stubs, los siete subcomandos que todavía no tienen cuerpo. El
 **2** lo emite `argparse`, y cubre tres casos: falta el subcomando, falta un argumento
 requerido, o el subcomando no existe. El **1** queda reservado para lo que el script no
 pudo decidir.

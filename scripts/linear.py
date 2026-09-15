@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import socket
 import sys
 import urllib.error
 import urllib.request
@@ -29,11 +30,29 @@ LABEL_MAPA = "map"
 ANCLAS = ["Destino", "Notas", "Decisiones hasta ahora", "Aún no especificado",
           "Fuera de alcance", "El colapso"]
 
+# El séptimo encabezado, y a propósito FUERA de ANCLAS: no es un ancla de lectura, no
+# lleva huella, y cortar_secciones tiene que seguir sin devolverle un cuerpo. Vive acá,
+# junto a la otra lista que la primitiva de rangos mira, y no con quien escribe el
+# esqueleto, porque desde que corta el recorrido la primitiva es su consumidora.
+ANTES_DEL_MAPA = "Antes del mapa"
+
+# Las tres anclas que map:write edita, tomadas de ANCLAS por posición y nunca
+# reescritas: una segunda copia del texto del encabezado se desincroniza en el primer
+# rename, y el orden de ANCLAS ya es contrato.
+ANCLA_DECISIONES = ANCLAS[2]
+ANCLA_NIEBLA = ANCLAS[3]
+ANCLA_FUERA = ANCLAS[4]
+
 SIN_KEY = 3
 SIN_TEAM = 4
 SIN_CERRADOS = 5
 SIN_LABEL_MAP = 6
 NO_IMPLEMENTADO = 9
+
+# El tope de intentos del read-modify-write, y NO un código de salida: va en su propio
+# bloque para que nadie lo lea como el quinto. Es el único literal del contador en todo
+# el archivo, y el handler que reintenta lo referencia por nombre en el iter de su For.
+MAX_INTENTOS = 2
 
 
 def die(codigo, mensaje, remediacion):
@@ -130,6 +149,34 @@ query($project: String!) {
 """
 
 
+# No pide project { content } de vuelta: releer lo que se acaba de escribir es
+# verificación posterior a la escritura, y está prohibida. Y tampoco pide el estado
+# interno del editor de Linear, que no se nombra en ninguna parte de este archivo: no es
+# contrato, y escribirlo de vuelta corrompe el documento.
+PROJECT_UPDATE = """
+mutation($project: String!, $content: String!) {
+  projectUpdate(id: $project, input: { content: $content }) {
+    success
+  }
+}
+"""
+
+
+# Pide success y el id y la url del Project recién nacido, y eso NO es verificación
+# posterior a la escritura: es el payload de la propia mutation, en el mismo round trip,
+# y es el único camino para que quien la invoque sepa qué Project acaba de nacer. No pide
+# content de vuelta ni el estado interno del editor. Que el contenido viaje en el mismo
+# POST es lo que hace que crear cueste uno solo, y también lo que vuelve ambigua su falla.
+PROJECT_CREATE = """
+mutation($team: String!, $name: String!, $content: String!) {
+  projectCreate(input: { teamId: $team, name: $name, content: $content }) {
+    success
+    project { id url }
+  }
+}
+"""
+
+
 def _post(query, variables, key):
     """La ÚNICA función que toca la red. El check de runtime la rebindea desde
     afuera para ejercitar los desenlaces del preflight sin red y sin credencial."""
@@ -145,6 +192,14 @@ def _post(query, variables, key):
             return json.loads(exc.read().decode("utf-8"))
         except ValueError:
             return {"errors": [{"message": "HTTP %s" % exc.code}]}
+    # HTTPError va arriba porque es subclase de URLError: invertir el orden se come la
+    # rama que ya existía. Y socket.timeout va aparte porque bajo 3.9 no deriva de
+    # URLError, así que la cláusula de arriba no lo atrapa.
+    except urllib.error.URLError as exc:
+        return {"errors": [{"message": "no se pudo alcanzar %s: %s"
+                                       % (ENDPOINT, exc.reason)}]}
+    except socket.timeout:
+        return {"errors": [{"message": "%s no respondió a tiempo" % ENDPOINT}]}
 
 
 def resolver_ctx(payload, bootstrap, team):
@@ -219,35 +274,78 @@ def resolver_datos(payload):
     return (payload.get("data") or {}).get("project")
 
 
-def cortar_secciones(texto):
-    """Pura: del overview a los seis cuerpos. Solo rstrip al buscar el ancla y nunca
-    lstrip, para que una línea indentada no se dispute la sección con la de verdad.
-    Normaliza por su cuenta, así que sirve sola sobre un texto que todavía trae CRLF."""
-    lineas = texto.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+def es_frontera_del_mapa(linea):
+    """True si la línea es el encabezado que cierra el mapa. Un solo sitio de
+    definición porque tiene dos consumidores: rangos_de_anclas, para saber dónde dejar
+    de mirar, y la guarda de adopción de map:create, para saber que este Project ya
+    pasó por acá."""
+    return linea.rstrip() == "## " + ANTES_DEL_MAPA
+
+
+def normalizar(texto):
+    """El array de líneas sobre el que trabajan la lectura y la escritura. Es función
+    y no una línea repetida porque tiene dos consumidores: cortar_secciones y el paso
+    uno del read-modify-write."""
+    return texto.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+
+
+def rangos_de_anclas(lineas):
+    """La única función que parsea encabezados de ancla. Pura: no imprime y no termina.
+    Devuelve (rangos, duplicadas). rangos es {ancla: (i_inicio, i_fin)} sobre el array
+    original, con i_inicio la línea siguiente al encabezado de su PRIMERA aparición e
+    i_fin la primera línea que vuelve a ser un encabezado de nivel uno o dos, o el fin
+    del recorrido. duplicadas son las anclas cuyo encabezado aparece más de una vez, en
+    orden de documento y una sola vez cada una. El recorrido TERMINA en el encabezado
+    de la frontera: el mapa se acaba ahí y lo de abajo es zona inerte. Solo rstrip al
+    buscar el ancla y nunca lstrip, para que una línea indentada no se dispute la
+    sección con la de verdad."""
+    fin = len(lineas)
+    for indice, linea in enumerate(lineas):
+        if es_frontera_del_mapa(linea):
+            fin = indice
+            break
     encabezados = dict(("## " + ancla, ancla) for ancla in ANCLAS)
+    primera = {}
+    duplicadas = []
+    for indice in range(fin):
+        ancla = encabezados.get(lineas[indice].rstrip())
+        if ancla is None:
+            continue
+        if ancla not in primera:
+            primera[ancla] = indice
+        elif ancla not in duplicadas:
+            duplicadas.append(ancla)
+    rangos = {}
+    for ancla in primera:
+        inicio = primera[ancla]
+        corte = fin
+        for indice in range(inicio + 1, fin):
+            limpia = lineas[indice].rstrip()
+            # Un encabezado de nivel tres o más profundo no matchea ninguno de los dos
+            # prefijos, así que pertenece al cuerpo.
+            if limpia.startswith("## ") or limpia.startswith("# "):
+                corte = indice
+                break
+        rangos[ancla] = (inicio + 1, corte)
+    return rangos, duplicadas
+
+
+def cortar_secciones(texto):
+    """Pura salvo por el aviso: del overview a los seis cuerpos. El aviso de ancla
+    duplicada vive acá y no en la primitiva porque avisar y seguir es regla de LECTURA:
+    la primitiva reporta el hecho y cada llamador elige su política."""
+    lineas = normalizar(texto)
+    rangos, duplicadas = rangos_de_anclas(lineas)
+    for ancla in duplicadas:
+        # Se hashea la primera aparición y map:read sale en cero igual: abortar
+        # por ancla ambigua es regla de escritura, no de lectura.
+        print("aviso: el ancla %s aparece más de una vez: se hashea la "
+              "primera" % ancla, file=sys.stderr)
     cuerpos = dict((ancla, None) for ancla in ANCLAS)
-    actual = None
-    for linea in lineas:
-        limpia = linea.rstrip()
-        ancla = encabezados.get(limpia)
-        if ancla is not None:
-            if cuerpos[ancla] is None:
-                cuerpos[ancla] = []
-                actual = ancla
-            else:
-                # Se hashea la primera aparición y map:read sale en cero igual: abortar
-                # por ancla ambigua es regla de escritura, no de lectura.
-                print("aviso: el ancla %s aparece más de una vez: se hashea la "
-                      "primera" % ancla, file=sys.stderr)
-                actual = None
-            continue
-        # Un encabezado de nivel tres o más profundo no matchea ninguno de los dos
-        # prefijos, así que pertenece al cuerpo.
-        if limpia.startswith("## ") or limpia.startswith("# "):
-            actual = None
-            continue
-        if actual is not None:
-            cuerpos[actual].append(linea)
+    for ancla in ANCLAS:
+        if ancla in rangos:
+            inicio, corte = rangos[ancla]
+            cuerpos[ancla] = lineas[inicio:corte]
     return cuerpos
 
 
@@ -265,6 +363,425 @@ def huellas(cuerpos):
         cuerpo = "\n".join(linea.rstrip() for linea in lineas).strip("\n")
         salida[ancla] = hashlib.sha256(cuerpo.encode("utf-8")).hexdigest()
     return salida
+
+
+def _sin_marcador(linea):
+    """La línea sin su marcador de viñeta ni su indentación. El despojo no es cosmética:
+    el serializador de Linear reescribe el guion como asterisco al guardar, así que un
+    matcher anclado en el guion dejaría de encontrar sus propias viñetas después de la
+    primera escritura."""
+    resto = linea.strip()
+    if len(resto) > 1 and resto[0] in ("-", "*", "+") and resto[1] == " ":
+        resto = resto[1:].lstrip(" ")
+    return resto
+
+
+def titulo_en_negrita(linea):
+    """El título de una viñeta de niebla, o None. Es la subcadena entre el primer par de
+    ** de la línea, verbatim, con su punto final si lo tiene: es la misma cadena que
+    --remove-fog recibe como argumento, así que las dos mitades no pueden divergir. Que
+    el cierre se busque desde el índice dos es lo que garantiza que el título no
+    contenga otro par de asteriscos."""
+    resto = _sin_marcador(linea)
+    if not resto.startswith("**"):
+        return None
+    cierre = resto.find("**", 2)
+    if cierre < 0:
+        return None
+    return resto[2:cierre] or None
+
+
+def _es_continuacion(linea):
+    """Una línea que pertenece a la viñeta de arriba: no vacía, indentada, y que no
+    arranca una viñeta nueva."""
+    if not linea.strip() or not linea.startswith(" "):
+        return False
+    marca = linea.strip()
+    return not (len(marca) > 1 and marca[0] in ("-", "*", "+") and marca[1] == " ")
+
+
+def _clave_de_unicidad(linea):
+    """Con qué se compara si una línea ya está. El título en negrita cuando la línea lo
+    tiene, porque una viñeta con el mismo título es la misma entrada aunque el cuerpo
+    haya cambiado, y la línea despojada de su marcador cuando no lo tiene, que es el
+    caso de una decisión."""
+    return titulo_en_negrita(linea) or _sin_marcador(linea)
+
+
+def _sin_saltos(etiqueta, valor):
+    """Un valor de una sola línea física. El adapter no envuelve texto, así que un salto
+    adentro de un argumento produciría markdown que nadie escribió."""
+    if "\n" in valor or "\r" in valor:
+        die(SIN_KEY,
+            "%s recibió un valor con un salto de línea y tiene que ser una sola "
+            "línea: %r" % (etiqueta, valor),
+            "sacá el salto de línea del argumento y volvé a correr")
+
+
+def _no_es_encabezado(etiqueta, valor):
+    """La guarda de la frontera. Mira el VALOR que llegó por argumento y no la línea
+    renderizada: la línea lleva el marcador de viñeta adelante, así que nunca empezaría
+    con una almohadilla y la guarda no mordería nunca. Un valor que es un encabezado de
+    nivel uno o dos parte en dos la sección donde cae, y si además es el de la frontera
+    corta el mapa entero de ahí para abajo en toda lectura futura."""
+    limpio = valor.rstrip()
+    if limpio.startswith("## ") or limpio.startswith("# "):
+        die(SIN_KEY,
+            "%s recibió %r, y una línea del mapa no puede ser un encabezado"
+            % (etiqueta, valor),
+            "sacale las almohadillas del principio y volvé a correr")
+
+
+def _validar_niebla(valor):
+    """Las cinco reglas de forma de una viñeta de niebla, sobre el valor que llegó por
+    argumento. Devuelve el título, que es además su clave de unicidad. La guarda del
+    encabezado no hace falta acá: la regla de que el valor empieza con ** ya impide que
+    una viñeta de niebla pueda ser un encabezado."""
+    _sin_saltos("--append-fog", valor)
+    titulo = titulo_en_negrita(valor) if valor.startswith("**") else None
+    if titulo is None:
+        die(SIN_KEY,
+            "--append-fog recibió %r, y una viñeta de niebla tiene que empezar con su "
+            "título entre dobles asteriscos" % valor,
+            'escribila como "**Título.** cuerpo" y volvé a correr')
+    cuerpo = valor[valor.find("**", 2) + 2:]
+    if cuerpo[:1] != " " or cuerpo[1:2] == " " or not cuerpo.strip():
+        die(SIN_KEY,
+            "--append-fog recibió %r, y después del título cerrado tiene que venir "
+            "exactamente un espacio y un cuerpo no vacío" % valor,
+            'escribila como "**Título.** cuerpo" y volvé a correr')
+    return titulo
+
+
+def _ediciones_de(args):
+    """Las ediciones agrupadas por ancla, ya validadas: acá se rompe todo lo que se pueda
+    romper sin haber tocado la red, que es lo que hace que una invocación mal formada no
+    gaste un round trip. Devuelve {ancla: (removes, appends)}, con el orden de la línea
+    de comandos preservado adentro de cada lista."""
+    ediciones = {}
+
+    def anotar(ancla, indice, dato):
+        ediciones.setdefault(ancla, ([], []))[indice].append(dato)
+
+    for enlace, gist in args.append_decision:
+        _sin_saltos("--append-decision", enlace)
+        _sin_saltos("--append-decision", gist)
+        if not enlace or any(c.isspace() for c in enlace):
+            die(SIN_KEY,
+                "el enlace de --append-decision está vacío o tiene espacios: %r"
+                % enlace,
+                "pasá la URL del ticket como un solo token, sin espacios")
+        if len(gist) > 120:
+            die(SIN_KEY,
+                "el gist de --append-decision tiene %s caracteres y el tope es de 120: "
+                "%r" % (len(gist), gist),
+                "acortá el gist; el detalle va en el comentario de resolución del "
+                "ticket y el mapa nunca lo repite")
+        _no_es_encabezado("--append-decision", enlace)
+        _no_es_encabezado("--append-decision", gist)
+        anotar(ANCLA_DECISIONES, 1, "- %s: %s" % (enlace, gist))
+
+    for valor in args.append_fog:
+        _validar_niebla(valor)
+        anotar(ANCLA_NIEBLA, 1, "- %s" % valor)
+
+    for titulo in args.remove_fog:
+        _sin_saltos("--remove-fog", titulo)
+        if not titulo.strip():
+            die(SIN_KEY, "--remove-fog recibió un título vacío",
+                "pasá el título de la viñeta, sin los asteriscos")
+        anotar(ANCLA_NIEBLA, 0, titulo)
+
+    for valor in args.append_out_of_scope:
+        _sin_saltos("--append-out-of-scope", valor)
+        if not valor.strip():
+            die(SIN_KEY, "--append-out-of-scope recibió una línea vacía",
+                "pasá la línea que querés dejar fuera de alcance")
+        _no_es_encabezado("--append-out-of-scope", valor)
+        anotar(ANCLA_FUERA, 1, "- %s" % valor)
+
+    if not ediciones:
+        die(SIN_KEY,
+            "map:write no recibió ninguna edición, y escribir cero ediciones es un "
+            "error de invocación y no un no-op silencioso",
+            "pasá al menos uno de --append-decision, --append-fog, --remove-fog o "
+            "--append-out-of-scope")
+    return ediciones
+
+
+def _esperadas_de(args):
+    """Las huellas que el llamador declaró, o None cuando --expect-sections no vino. El
+    único die de esta rama vive adentro de la comparación contra None, que es lo que
+    hace que la ausencia del flag no pueda producir una salida no cero."""
+    if args.expect_sections is None:
+        return None
+    try:
+        return json.loads(args.expect_sections)
+    except ValueError:
+        die(SIN_KEY,
+            "--expect-sections no parsea como JSON: %r" % args.expect_sections,
+            "pasá el JSON que map:read emitió en su clave sections, sin editarlo")
+
+
+def _sin_la_vineta(cuerpo, titulo):
+    """El cuerpo sin la viñeta de ese título, y cuántas se borraron. Se lleva la viñeta
+    entera y no solo su primera línea: una viñeta de niebla real ocupa varias líneas
+    físicas."""
+    salida = []
+    borradas = 0
+    indice = 0
+    while indice < len(cuerpo):
+        if titulo_en_negrita(cuerpo[indice]) != titulo:
+            salida.append(cuerpo[indice])
+            indice += 1
+            continue
+        borradas += 1
+        indice += 1
+        while indice < len(cuerpo) and _es_continuacion(cuerpo[indice]):
+            indice += 1
+    return salida, borradas
+
+
+def _con_la_linea(cuerpo, linea, reintento):
+    """El cuerpo con la línea agregada después de su última línea no vacía, así que la
+    línea en blanco que separa la sección del encabezado siguiente se conserva. Una línea
+    que ya está es abort duro, porque agregarla de nuevo la contaría dos veces; en la
+    rama del reintento se invierte a no-op con reporte, y esa es la única excepción."""
+    clave = _clave_de_unicidad(linea)
+    if any(_clave_de_unicidad(vieja) == clave for vieja in cuerpo):
+        if not reintento:
+            die(SIN_KEY,
+                "esta línea ya está en el mapa y agregarla nuevo la contaría dos "
+                "veces: %s" % linea,
+                "sacá esa edición de la invocación, o leé el mapa antes de escribir")
+        print("aviso: la línea ya estaba aplicada, así que este intento no la "
+              "repite: %s" % linea, file=sys.stderr)
+        return cuerpo
+    ultima = 0
+    for indice, texto in enumerate(cuerpo):
+        if texto.strip():
+            ultima = indice + 1
+    return cuerpo[:ultima] + [linea] + cuerpo[ultima:]
+
+
+def aplicar_ediciones(lineas, ediciones, reintento=False):
+    """Aplica las ediciones sección por sección sobre el array original y devuelve
+    (nuevas, noop). Todo lo que queda fuera de los rangos editados sobrevive byte a byte
+    y en su posición, la zona inerte de abajo de la frontera incluida. reintento invierte
+    la idempotencia de append: en la rama del reintento, 'esta línea ya está' pasa de
+    abort duro a no-op con reporte. Lo pone el script y nunca un argumento, así que la
+    excepción no se puede invocar desde afuera."""
+    rangos, duplicadas = rangos_de_anclas(lineas)
+    if duplicadas:
+        die(SIN_KEY,
+            "estas anclas aparecen más de una vez en el overview y una escritura no "
+            "puede elegir cuál: %s" % ", ".join(duplicadas),
+            "dejá una sola aparición de cada encabezado y volvé a correr")
+    for ancla in ANCLAS:
+        if ancla not in ediciones or ancla in rangos:
+            continue
+        removes, appends = ediciones[ancla]
+        die(SIN_KEY,
+            "el overview no tiene el encabezado %s, así que no hay dónde escribir "
+            "esto: %s" % (ancla, "; ".join(removes + appends)),
+            "agregá ese encabezado al overview, o trazá el mapa con map:create; "
+            "map:write nunca escribe al final del documento como reemplazo")
+    noop = []
+    nuevas = list(lineas)
+    # Descendente por índice de inicio: un splice corre los índices de todo lo que está
+    # más abajo, así que las secciones que faltan tienen que estar más arriba.
+    for ancla in sorted(ediciones, key=lambda a: rangos[a][0], reverse=True):
+        inicio, corte = rangos[ancla]
+        removes, appends = ediciones[ancla]
+        cuerpo = list(lineas[inicio:corte])
+        # Los remove antes que los append: es lo que le da sentido a graduar una niebla
+        # y abrir otra con el mismo título en una sola invocación.
+        for titulo in removes:
+            cuerpo, borradas = _sin_la_vineta(cuerpo, titulo)
+            if borradas > 1:
+                die(SIN_KEY,
+                    "el título %s matchea %s viñetas y una escritura no puede elegir "
+                    "cuál borrar" % (titulo, borradas),
+                    "dejá una sola viñeta con ese título y volvé a correr")
+            if borradas == 0:
+                noop.append(titulo)
+                print("aviso: no hay ninguna viñeta titulada %s, así que no se borró "
+                      "nada" % titulo, file=sys.stderr)
+        for linea in appends:
+            cuerpo = _con_la_linea(cuerpo, linea, reintento)
+        nuevas[inicio:corte] = cuerpo
+    return nuevas, noop
+
+
+def _errores_de(payload):
+    """Los mensajes de error de una respuesta, o la lista vacía. NO muere: la ruta de
+    escritura necesita decidir si reintenta, y resolver_datos no le sirve porque muere.
+    Duplica a propósito el extractor de resolver_datos, que este change tiene prohibido
+    tocar para que resolver_ctx lo siga tratando igual."""
+    textos = []
+    for error in (payload.get("errors") or []):
+        mensaje = error.get("message") if isinstance(error, dict) else None
+        textos.append(str(mensaje) if mensaje is not None else str(error))
+    return textos
+
+
+def _resolver_escritura(payload):
+    """La única puerta de projectUpdate. Un projectUpdate rechazado puede venir con
+    success: false y SIN errors de nivel superior, así que mirar solo errors reportaría
+    éxito sobre una escritura que Linear rechazó. Devuelve (ok, detalle)."""
+    errores = _errores_de(payload)
+    if errores:
+        return (False, "; ".join(errores))
+    datos = (payload.get("data") or {}).get("projectUpdate") or {}
+    # is not True y no un not pelado: la clave ausente y el false explícito son los dos
+    # casos que importan, y los dos caen del lado del fracaso.
+    if datos.get("success") is not True:
+        return (False, "projectUpdate devolvió success=%s" % datos.get("success"))
+    return (True, "")
+
+
+def _reportar_deriva(texto, esperadas):
+    """El único uso de --expect-sections: nombra por stderr las anclas cuya huella se
+    movió desde la lectura del llamador. Nunca aborta y nunca cambia el código de salida,
+    porque la escritura ya se re-deriva del texto recién leído: la deriva es información
+    para la persona y no un motivo para no escribir. Reusa huellas y cortar_secciones sin
+    tocarlas, así que las dos puntas comparan lo mismo."""
+    ahora = huellas(cortar_secciones(texto))
+    for ancla in ANCLAS:
+        if ancla in esperadas and esperadas[ancla] != ahora[ancla]:
+            print("aviso: la sección %s se movió desde tu lectura" % ancla,
+                  file=sys.stderr)
+
+
+def _intentar_escribir(project, ediciones, esperadas, reintento, key):
+    """Un intento entero del read-modify-write: relee tarde, re-deriva y escribe. Las dos
+    sentencias de red viven en esta función y en ninguna otra del grafo de map:write, y
+    el bucle vive en el handler: con el bucle acá, el salto del reintento se metería entre
+    las dos. Devuelve (ok, detalle) y NUNCA termina el proceso por una falla de
+    transporte, para que el llamador pueda reintentar."""
+    lectura = _post(MAP_READ_QUERY, {"project": project}, key)
+    errores = _errores_de(lectura)
+    if errores:
+        return (False, "; ".join(errores))
+    proyecto = (lectura.get("data") or {}).get("project")
+    if proyecto is None:
+        die(SIN_KEY,
+            "el Project %s no resolvió, así que no hay overview que reescribir"
+            % project,
+            "revisá el identificador que le pasaste a --project")
+    texto = proyecto.get("content") or ""
+    if esperadas is not None:
+        _reportar_deriva(texto, esperadas)
+    nuevas, noop = aplicar_ediciones(normalizar(texto), ediciones, reintento)
+    escritura = _post(PROJECT_UPDATE,
+                      {"project": project, "content": "\n".join(nuevas)}, key)
+    ok, detalle = _resolver_escritura(escritura)
+    return (ok, detalle if not ok else noop)
+
+
+def esqueleto(destino, previo):
+    """El mapa recién nacido: los seis encabezados en el orden de contrato de ANCLAS,
+    Destino con el texto que la persona dictó, y el array de líneas del overview que ya
+    estaba preservado VERBATIM al final, bajo la frontera. Nunca lo reescribe ni lo
+    reordena. La frontera va ÚLTIMA y eso es un requisito del parser y no una preferencia
+    de lectura: la primitiva corta el recorrido ahí, así que ponerla antes dejaría a los
+    seis encabezados en la zona inerte."""
+    lineas = ["## " + ANCLAS[0], "", destino, ""]
+    for ancla in ANCLAS[1:]:
+        lineas.extend(["## " + ancla, ""])
+    if any(linea.strip() for linea in previo):
+        lineas.extend(["## " + ANTES_DEL_MAPA, ""])
+        lineas.extend(previo)
+    return lineas
+
+
+def _destino_de(args):
+    """El destino ya validado: acá se rompe todo lo que se pueda romper sin haber tocado
+    la red. Es LA exposición de la guarda del encabezado, porque el esqueleto lo escribe
+    crudo bajo su ancla y sin marcador de viñeta: al revés de los appends de map:write,
+    acá el valor ES la línea, y un encabezado metido por este argumento corta el mapa
+    entero para toda lectura futura."""
+    _sin_saltos("--destino", args.destino)
+    if not args.destino.strip():
+        die(SIN_KEY, "--destino recibió un texto vacío",
+            "pasá la frase que nombra a dónde va este mapa")
+    _no_es_encabezado("--destino", args.destino)
+    return args.destino
+
+
+def _resolver_creacion(payload):
+    """La puerta de projectCreate. La misma regla que _resolver_escritura —errors
+    primero, después 'is not True'— sobre la otra clave del payload, y además saca el id
+    y la url del mismo round trip. Es una función aparte y no un parámetro de
+    _resolver_escritura para no reabrir su cuerpo ni su clave. Devuelve
+    (ok, detalle, proyecto)."""
+    errores = _errores_de(payload)
+    if errores:
+        return (False, "; ".join(errores), {})
+    datos = (payload.get("data") or {}).get("projectCreate") or {}
+    if datos.get("success") is not True:
+        return (False, "projectCreate devolvió success=%s" % datos.get("success"), {})
+    return (True, "", datos.get("project") or {})
+
+
+def tiene_las_seis(rangos):
+    """True si el overview lleva las seis anclas, que es la forma que esqueleto produce.
+    Un solo sitio de definición porque tiene dos consumidores que TIENEN que coincidir:
+    la guarda de adopción, que decide si este Project ya tiene un mapa, y
+    _ya_es_este_mapa, que decide si ese mapa es el que este intento iba a escribir. Las
+    dos nociones vivieron separadas y no coincidían —una contaba cualquier ancla suelta
+    como un mapa y la otra exigía las seis, a tres líneas de distancia—, así que ahora
+    viven juntas y no pueden volver a divergir."""
+    return sorted(rangos) == sorted(ANCLAS)
+
+
+def _ya_es_este_mapa(rangos, lineas, destino):
+    """True si el overview que acabamos de releer es exactamente el mapa que este intento
+    iba a escribir: las seis anclas presentes y el cuerpo de Destino, sin líneas vacías,
+    igual al destino recibido. Es la guarda que acota la inversión de idempotencia del
+    reintento de la adopción a 'mi escritura anterior aterrizó' y no a 'hay un mapa':
+    entre los dos intentos alguien pudo escribir OTRO mapa, y ese no es el nuestro."""
+    if not tiene_las_seis(rangos):
+        return False
+    inicio, corte = rangos[ANCLAS[0]]
+    return [l for l in lineas[inicio:corte] if l.strip()] == [destino]
+
+
+def _intentar_adoptar(project, destino, reintento, key):
+    """Un intento entero de la adopción: relee tarde, decide y escribe. Devuelve
+    (ok, detalle) y NUNCA termina el proceso por una falla de transporte, para que el
+    llamador pueda reintentar. Sí termina, y con razón, cuando el Project no resuelve o
+    cuando ya tiene un mapa que no es el nuestro: eso no lo arregla reintentar."""
+    lectura = _post(MAP_READ_QUERY, {"project": project}, key)
+    errores = _errores_de(lectura)
+    if errores:
+        return (False, "; ".join(errores))
+    proyecto = (lectura.get("data") or {}).get("project")
+    if proyecto is None:
+        die(SIN_KEY,
+            "el Project %s no resolvió, así que no hay overview que adoptar" % project,
+            "revisá el identificador que le pasaste a --project")
+    lineas = normalizar(proyecto.get("content") or "")
+    rangos, _duplicadas = rangos_de_anclas(lineas)
+    # "Ya tiene mapa" es la frontera presente —seña inequívoca de que este plugin ya
+    # escribió acá— o las seis anclas juntas, que es la forma que esqueleto produce. Un
+    # subconjunto suelto NO es un mapa: un encabezado con el nombre de un ancla en la
+    # prosa de un Project real es del todo plausible, y negarse a adoptarlo sería pedirle
+    # a la persona que renombre su propia prosa. Las dos condiciones juntas cubren el
+    # documento entero pese al corte de la primitiva: si la frontera está, la segunda
+    # aborta y no hace falta mirar debajo; si no está, no hay corte y la primera ve todo.
+    if tiene_las_seis(rangos) or any(es_frontera_del_mapa(l) for l in lineas):
+        if reintento and _ya_es_este_mapa(rangos, lineas, destino):
+            return (True, "")
+        die(SIN_KEY,
+            "el Project %s ya tiene un mapa: encontré %s"
+            % (project, ", ".join(sorted(rangos)) or ANTES_DEL_MAPA),
+            "si querés trazar otro mapa, usá otro Project; si querés editar este, "
+            "es map:write y no map:create")
+    escritura = _post(PROJECT_UPDATE,
+                      {"project": project,
+                       "content": "\n".join(esqueleto(destino, lineas))}, key)
+    return _resolver_escritura(escritura)
 
 
 def bloqueantes_abiertos(nodo, cerrados):
@@ -354,6 +871,71 @@ def cmd_map_read(args):
     print(json.dumps(salida, separators=(",", ":")))
 
 
+def cmd_map_create(args):
+    destino = _destino_de(args)      # valida la línea única antes de tocar la red
+    key = leer_key()
+    # La asimetría, y es deliberada: adoptar relee en cada intento, así que repetirlo es
+    # seguro porque la guarda de arriba re-evalúa sobre la relectura. Crear es un POST
+    # único cuyo fracaso de transporte no distingue "no llegó" de "llegó y se perdió la
+    # respuesta", así que reintentarlo puede dejar dos Projects hermanos con el mismo
+    # nombre, y el plugin no tiene ninguna operación para deshacerlo.
+    if args.project:
+        detalle = ""
+        for intento in range(MAX_INTENTOS):
+            ok, detalle = _intentar_adoptar(args.project, destino, intento > 0, key)
+            if ok:
+                print(json.dumps({"created": False, "project": args.project,
+                                  "url": None}, separators=(",", ":")))
+                return
+            print("aviso: el intento %s falló: %s" % (intento + 1, detalle),
+                  file=sys.stderr)
+        die(SIN_KEY,
+            "no se pudo adoptar el Project %s; el último intento dijo: %s"
+            % (args.project, detalle),
+            "volvé a correr el mismo comando: adoptar es seguro de repetir, porque una "
+            "segunda corrida sobre un Project que ya tiene mapa aborta sin escribir")
+    else:
+        # json.loads y no resolver_ctx: esa función transforma la respuesta del
+        # preflight en el ctx y lleva adentro tres de las cuatro fallas duras, así que
+        # llamarla acá le daría a map:create códigos de salida que D6 le prohíbe. El ctx
+        # ya viene resuelto en el blob, igual que lo consume frontier:query.
+        equipo = json.loads(args.ctx)["team"]
+        creacion = _post(PROJECT_CREATE,
+                         {"team": equipo, "name": args.name,
+                          "content": "\n".join(esqueleto(destino, []))}, key)
+        ok, detalle, proyecto = _resolver_creacion(creacion)
+        if not ok:
+            die(SIN_KEY,
+                "el projectCreate de %s no confirmó y NO SE SABE si el Project quedó "
+                "hecho: %s" % (args.name, detalle),
+                "abrí Linear y buscá un Project llamado %s ANTES de volver a correr: "
+                "si aparece, seguí con map:create --project sobre él; si no aparece, "
+                "volvé a correr este mismo comando. Esta rama no reintenta sola "
+                "justamente para no dejarte dos Projects con el mismo nombre"
+                % args.name)
+        print(json.dumps({"created": True, "project": proyecto.get("id"),
+                          "url": proyecto.get("url")}, separators=(",", ":")))
+
+
+def cmd_map_write(args):
+    ediciones = _ediciones_de(args)      # valida todo antes de tocar la red
+    esperadas = _esperadas_de(args)      # None cuando --expect-sections no vino
+    key = leer_key()
+    detalle = ""
+    for intento in range(MAX_INTENTOS):
+        ok, detalle = _intentar_escribir(args.project, ediciones, esperadas,
+                                         intento > 0, key)
+        if ok:
+            print(json.dumps({"written": True, "attempts": intento + 1,
+                              "noop": detalle}, separators=(",", ":")))
+            return
+        print("aviso: el intento %s falló: %s" % (intento + 1, detalle),
+              file=sys.stderr)
+    die(SIN_KEY,
+        "no se pudo escribir el mapa; el último intento dijo: %s" % detalle,
+        "mirá el mensaje de arriba y volvé a correr el comando")
+
+
 def cmd_frontier_query(args):
     ctx = json.loads(args.ctx)
     cerrados = {ctx["done"], ctx["canceled"]}
@@ -416,16 +998,37 @@ def construir_parser():
     p_preflight.add_argument("--bootstrap", action="store_true")
     p_preflight.set_defaults(func=cmd_preflight)
 
+    # Los dos flags del grupo mutuamente excluyente son INVISIBLES para el extractor de
+    # check-adapter.py, que solo ata variables asignadas desde add_parser: ninguna
+    # afirmación puede depender de --project ni de --name. El --ctx sí cuelga directo del
+    # subparser, así que la afirmación de los siete consumidores lo sigue viendo.
     p_map_create = subs.add_parser("map:create")
     p_map_create.add_argument("--ctx", required=True)
-    p_map_create.set_defaults(func=cmd_stub)
+    p_map_create.add_argument("--destino", required=True)
+    _origen_del_project = p_map_create.add_mutually_exclusive_group(required=True)
+    _origen_del_project.add_argument("--project")
+    _origen_del_project.add_argument("--name")
+    p_map_create.set_defaults(func=cmd_map_create)
 
     p_map_read = subs.add_parser("map:read")
     p_map_read.add_argument("--project", required=True)
     p_map_read.set_defaults(func=cmd_map_read)
 
+    # Sin --ctx a propósito: map:write es una de las cuatro operaciones que no lo
+    # consumen. El gist va como su propio token de argv y nunca empaquetado con el
+    # enlace, que es lo que permite aplicarle el tope al gist solo.
     p_map_write = subs.add_parser("map:write")
-    p_map_write.set_defaults(func=cmd_stub)
+    p_map_write.add_argument("--project", required=True)
+    p_map_write.add_argument("--append-decision", nargs=2, action="append",
+                             default=[], metavar=("ENLACE", "GIST"))
+    p_map_write.add_argument("--append-fog", action="append", default=[],
+                             metavar="VINETA")
+    p_map_write.add_argument("--remove-fog", action="append", default=[],
+                             metavar="TITULO")
+    p_map_write.add_argument("--append-out-of-scope", action="append", default=[],
+                             metavar="LINEA")
+    p_map_write.add_argument("--expect-sections")
+    p_map_write.set_defaults(func=cmd_map_write)
 
     p_ticket_create = subs.add_parser("ticket:create")
     p_ticket_create.add_argument("--ctx", required=True)

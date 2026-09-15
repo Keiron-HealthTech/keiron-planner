@@ -19,3 +19,7 @@ __pycache__/
 # Por si algún día el plugin necesita el SDK de Linear, que el ticket 01 dejó
 # como plan B
 node_modules/
+
+# El índice de CodeGraph es por checkout: su raíz y sus bytes son los de esta
+# copia, así que no se comparte ni se commitea
+.codegraph/
