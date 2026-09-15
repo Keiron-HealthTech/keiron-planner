@@ -724,13 +724,24 @@ def _resolver_creacion(payload):
     return (True, "", datos.get("project") or {})
 
 
+def tiene_las_seis(rangos):
+    """True si el overview lleva las seis anclas, que es la forma que esqueleto produce.
+    Un solo sitio de definición porque tiene dos consumidores que TIENEN que coincidir:
+    la guarda de adopción, que decide si este Project ya tiene un mapa, y
+    _ya_es_este_mapa, que decide si ese mapa es el que este intento iba a escribir. Las
+    dos nociones vivieron separadas y no coincidían —una contaba cualquier ancla suelta
+    como un mapa y la otra exigía las seis, a tres líneas de distancia—, así que ahora
+    viven juntas y no pueden volver a divergir."""
+    return sorted(rangos) == sorted(ANCLAS)
+
+
 def _ya_es_este_mapa(rangos, lineas, destino):
     """True si el overview que acabamos de releer es exactamente el mapa que este intento
     iba a escribir: las seis anclas presentes y el cuerpo de Destino, sin líneas vacías,
     igual al destino recibido. Es la guarda que acota la inversión de idempotencia del
     reintento de la adopción a 'mi escritura anterior aterrizó' y no a 'hay un mapa':
     entre los dos intentos alguien pudo escribir OTRO mapa, y ese no es el nuestro."""
-    if sorted(rangos) != sorted(ANCLAS):
+    if not tiene_las_seis(rangos):
         return False
     inicio, corte = rangos[ANCLAS[0]]
     return [l for l in lineas[inicio:corte] if l.strip()] == [destino]
@@ -752,10 +763,14 @@ def _intentar_adoptar(project, destino, reintento, key):
             "revisá el identificador que le pasaste a --project")
     lineas = normalizar(proyecto.get("content") or "")
     rangos, _duplicadas = rangos_de_anclas(lineas)
-    # Las dos condiciones juntas cubren el documento entero pese al corte de la
-    # primitiva: si la frontera está, la segunda aborta y no hace falta mirar debajo; si
-    # no está, no hay corte y la primera ve todo.
-    if rangos or any(es_frontera_del_mapa(l) for l in lineas):
+    # "Ya tiene mapa" es la frontera presente —seña inequívoca de que este plugin ya
+    # escribió acá— o las seis anclas juntas, que es la forma que esqueleto produce. Un
+    # subconjunto suelto NO es un mapa: un encabezado con el nombre de un ancla en la
+    # prosa de un Project real es del todo plausible, y negarse a adoptarlo sería pedirle
+    # a la persona que renombre su propia prosa. Las dos condiciones juntas cubren el
+    # documento entero pese al corte de la primitiva: si la frontera está, la segunda
+    # aborta y no hace falta mirar debajo; si no está, no hay corte y la primera ve todo.
+    if tiene_las_seis(rangos) or any(es_frontera_del_mapa(l) for l in lineas):
         if reintento and _ya_es_este_mapa(rangos, lineas, destino):
             return (True, "")
         die(SIN_KEY,
