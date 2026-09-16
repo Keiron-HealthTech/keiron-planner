@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 . scripts/_common.sh
 
-# Afirmación 60.
+# Afirmaciones 60 y 47.
 
 adapter=scripts/linear.py
 
@@ -152,13 +152,21 @@ CTX = json.dumps({"viewer": "v1", "team": "t1", "done": "s1", "canceled": "s2",
 ESCRIBIR = ["map:write", "--project", "kp-falso"]
 CREAR = ["map:create", "--ctx", CTX, "--destino", DESTINO]
 
-fallas = []
+# Dos acumuladores y no uno: este harness lleva los desenlaces de dos afirmaciones, y
+# un [N] que no distinga cuál falló manda a leer el script equivocado. La afirmación en
+# curso la fija el bucle del final, así que ningún caso puede anotar en el balde ajeno.
+FALLAS = {"60": [], "47": []}
+AFIRMACION = ["60"]
+
+
+def anotar(texto):
+    FALLAS[AFIRMACION[0]].append(texto)
 
 
 def chequear(caso, que, obtenido, esperado):
     if obtenido != esperado:
-        fallas.append("%s / %s: obtuve %s y esperaba %s"
-                      % (caso, que, plano(obtenido), plano(esperado)))
+        anotar("%s / %s: obtuve %s y esperaba %s"
+               % (caso, que, plano(obtenido), plano(esperado)))
 
 
 def correr(nombre, argv, secuencia):
@@ -182,7 +190,7 @@ def json_de(caso, texto):
     try:
         return json.loads(texto)
     except ValueError:
-        fallas.append("%s: stdout no parsea como JSON" % caso)
+        anotar("%s: stdout no parsea como JSON" % caso)
         return {}
 
 
@@ -215,7 +223,7 @@ def caso_1():
         chequear(n, "la prosa heredada sobrevive byte a byte y en su posicion",
                  nuevas[-2:], ["prosa heredada que no se toca", ""])
     else:
-        fallas.append("%s: no viajo ningun content" % n)
+        anotar("%s: no viajo ningun content" % n)
 
     # Una sola invocación con las cuatro clases de edición. Mismo desenlace —éxito en el
     # primer intento— y es donde se ven el reparto por sección, el remove antes que el
@@ -406,7 +414,7 @@ def caso_6():
         chequear(n, "la prosa previa entera, verbatim y en su orden, bajo la frontera",
                  nuevas[corte + 2:], previo.split("\n"))
     else:
-        fallas.append("%s: no viajo ningun content" % n)
+        anotar("%s: no viajo ningun content" % n)
 
     # Un overview vacío no hace nacer la frontera: sin prosa previa no hay nada que
     # preservar, y el documento queda con seis encabezados y ninguno más.
@@ -503,7 +511,7 @@ def caso_8():
                               [leido(previo), ESCRITO_OK])
     chequear(n, "el map:create sale en cero", rc, 0)
     if not tr.contents:
-        fallas.append("%s: el map:create no escribio nada" % n)
+        anotar("%s: el map:create no escribio nada" % n)
         return
     producido = tr.contents[0]
     chequear(n, "el ancla heredada aparece dos veces en el content producido",
@@ -571,29 +579,151 @@ def caso_9():
         chequear(o, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
 
 
-CASOS = [caso_1, caso_2, caso_3, caso_4, caso_5, caso_6, caso_7, caso_8, caso_9]
-for _caso in CASOS:
+# --- los tres desenlaces de ticket:create que cierran la brecha de la 47 ------------
+# La fila decía "prueba que el código está, no que rechace bien", y un AST no puede
+# cerrar eso: hace falta runtime. El bloque no es nuevo, es éste, porque la naturaleza
+# del método —runtime con el transporte mockeado— ya tiene casa y un bloque se paga
+# solo cuando el método cambia de naturaleza.
+
+LABELS_RESUELTOS = dict((n, "l-" + n) for n in mod.LABELS)
+CTX_TICKET = json.dumps({"viewer": "v1", "team": "t1", "done": "s1", "canceled": "s2",
+                         "default": "s3", "discovery": "l-d",
+                         "labels": LABELS_RESUELTOS})
+CREAR_TICKET = ["ticket:create", "--ctx", CTX_TICKET, "--project", "p-1"]
+TICKETS_OK = {"data": {"issueBatchCreate": {
+    "success": True,
+    "issues": [{"id": "i-1", "identifier": "CRM-10", "title": "la pregunta",
+                "url": "https://linear.app/keiron/issue/CRM-10"}]}}}
+
+
+def _label_ids(transporte):
+    """Los labelIds de la primera entrada que viajó al issueBatchCreate."""
+    if not transporte.variables:
+        return None
+    issues = transporte.variables[0].get("issues") or []
+    return issues[0].get("labelIds") if issues else None
+
+
+def caso_10():
+    """Dos tipos a la vez, rechazados ANTES del primer POST. Vale por el cero y no por
+    el código de salida: un rc no cero lo daría igual una implementación que valida
+    después de leer, y ésa ya gastó un round trip sobre una invocación que nunca iba a
+    poder escribir. La secuencia va vacía, así que cualquier llamada revienta."""
+    n = "10-dos-tipos-rechazados-antes-de-la-red"
+    argv = CREAR_TICKET + ["--ticket", "la pregunta", "el cuerpo",
+                           "map:research,map:grilling"]
+    rc, out, err, tr = correr(n, argv, [])
+    chequear(n, "rc", rc, mod.SIN_KEY)
+    chequear(n, "stdout vacio", out, "")
+    chequear(n, "stderr nombra el primer tipo", "map:research" in err, True)
+    chequear(n, "stderr nombra el segundo tipo", "map:grilling" in err, True)
+    chequear(n, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+    # La familia que comparte desenlace: todo lo que _tickets_de rompe antes de la red.
+    otros = [
+        ("sin-ningun-ticket", CREAR_TICKET),
+        ("titulo-vacio", CREAR_TICKET + ["--ticket", "   ", "el cuerpo", ""]),
+        ("cuerpo-vacio", CREAR_TICKET + ["--ticket", "la pregunta", "   ", ""]),
+        ("titulo-con-salto", CREAR_TICKET + ["--ticket", "con\nsalto", "cuerpo", ""]),
+        ("label-que-no-es-tipo-ni-rol",
+         CREAR_TICKET + ["--ticket", "la pregunta", "el cuerpo", "map"]),
+        ("map-no-landing-no-se-pide",
+         CREAR_TICKET + ["--ticket", "la pregunta", "el cuerpo", "map:no-landing"]),
+        ("ctx-que-no-parsea",
+         ["ticket:create", "--ctx", "{no es json", "--project", "p-1",
+          "--ticket", "la pregunta", "el cuerpo", ""]),
+    ]
+    for etiqueta, argv in otros:
+        o = n + "-" + etiqueta
+        rc, out, err, tr = correr(o, argv, [])
+        chequear(o, "rc", rc, mod.SIN_KEY)
+        chequear(o, "stdout vacio", out, "")
+        chequear(o, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+
+def caso_11():
+    """El control con UN solo tipo. Sin él, "rechaza siempre" y "rechaza bien" son
+    indistinguibles, que es la misma lección del control obligatorio del caso 5."""
+    n = "11-un-solo-tipo-se-crea"
+    argv = CREAR_TICKET + ["--ticket", "la pregunta", "el cuerpo",
+                           "map:grilling,hitl:pm"]
+    rc, out, err, tr = correr(n, argv, [TICKETS_OK])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "UNA sola llamada: el ctx ya trae los nueve ids", tr.llamadas, 1)
+    q = tr.queries[0] if tr.queries else ""
+    chequear(n, "la query contiene issueBatchCreate", "issueBatchCreate" in q, True)
+    ids = _label_ids(tr)
+    chequear(n, "el labelIds lleva map", "l-map" in (ids or []), True)
+    chequear(n, "y el tipo declarado", "l-map:grilling" in (ids or []), True)
+    chequear(n, "y el rol declarado", "l-hitl:pm" in (ids or []), True)
+    chequear(n, "y Discovery, que existe en este workspace",
+             "l-d" in (ids or []), True)
+    chequear(n, "y NINGUN otro tipo",
+             [t for t in mod.TIPOS if t != "map:grilling"
+              and ("l-" + t) in (ids or [])], [])
+    d = json_de(n, out)
+    chequear(n, "el identifier del ticket creado",
+             [t.get("identifier") for t in d.get("tickets") or []], ["CRM-10"])
+    chequear(n, "createdLabels vacio: no faltaba ninguno", d.get("createdLabels"), [])
+
+
+def caso_12():
+    """Cero tipos es legítimo y es la señal de AFK, no un error. El otro control: sin
+    él, una guarda escrita como "exactamente uno" pasaría el caso 10 y el 11 y estaría
+    rechazando algo que el glosario declara válido."""
+    n = "12-cero-tipos-es-AFK-y-no-un-error"
+    argv = CREAR_TICKET + ["--ticket", "la pregunta", "el cuerpo", ""]
+    rc, out, err, tr = correr(n, argv, [TICKETS_OK])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "UNA sola llamada", tr.llamadas, 1)
+    ids = _label_ids(tr)
+    chequear(n, "el labelIds lleva map", "l-map" in (ids or []), True)
+    chequear(n, "y NINGUN tipo",
+             [t for t in mod.TIPOS if ("l-" + t) in (ids or [])], [])
+
+
+CASOS = [("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
+         ("60", caso_5), ("60", caso_6), ("60", caso_7), ("60", caso_8),
+         ("60", caso_9), ("47", caso_10), ("47", caso_11), ("47", caso_12)]
+for _afirmacion, _caso in CASOS:
+    AFIRMACION[0] = _afirmacion
     _caso()
 
-print("casos=%d" % len(CASOS))
-print("fallas=%s" % (plano(fallas) if fallas else "ninguna"))
-sys.exit(1 if fallas else 0)
+for _afirmacion in ("60", "47"):
+    print("casos%s=%d" % (_afirmacion,
+                          len([c for c in CASOS if c[0] == _afirmacion])))
+    print("fallas%s=%s" % (_afirmacion, plano(FALLAS[_afirmacion])
+                           if FALLAS[_afirmacion] else "ninguna"))
+sys.exit(1 if FALLAS["60"] or FALLAS["47"] else 0)
 PY
 )"
 
-if printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas=ninguna'; then
+# La corrida entera se vuelca una sola vez, y solo si algo falló: el balde que falló lo
+# nombra el [N] de abajo. Cada fail lleva su número embebido en el string y escrito a
+# mano, nunca interpolado: un "[$var]" no lo extrae la afirmación 50.
+if printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas60=ninguna' \
+   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas47=ninguna'; then
   :
 else
   printf '%s\n' "$salida" | sed 's/^/  /' >&2
+fi
+
+if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas60=ninguna'; then
   fail "[60] las operaciones que escriben no distinguen sus desenlaces de runtime con el transporte mockeado"
+fi
+
+if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas47=ninguna'; then
+  fail "[47] ticket:create no rechaza dos labels de tipo antes de tocar la red, o rechaza de más: cero tipos es AFK y uno solo se crea"
 fi
 
 report
 
-# El cardinal sale de la corrida y no de una palabra escrita a mano: un conteo tipeado
-# acá sería una segunda casa que nadie compara contra la primera.
-casos="$(printf '%s\n' "$salida" | sed -n 's/^casos=//p')"
+# Los cardinales salen de la corrida y no de una palabra escrita a mano: un conteo
+# tipeado acá sería una segunda casa que nadie compara contra la primera.
+casos="$(printf '%s\n' "$salida" | sed -n 's/^casos60=//p')"
 require_nonempty "$casos" "[60] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
+casos47="$(printf '%s\n' "$salida" | sed -n 's/^casos47=//p')"
+require_nonempty "$casos47" "[47] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 plural=""
 [ "$casos" = 1 ] || plural="s"
-echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
+echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa, y $casos47 de ticket:create, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
