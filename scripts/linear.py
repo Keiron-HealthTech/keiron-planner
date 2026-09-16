@@ -12,9 +12,10 @@ import urllib.request
 
 ENDPOINT = "https://api.linear.app/graphql"
 
-# Los ocho del ctx. Su segunda copia es la tabla Tipos de ticket de CONTEXT.md.
+# Los nueve del ctx. Su segunda copia es la tabla Tipos de ticket de CONTEXT.md.
+# El orden es contrato: TIPOS y HITL salen de acá por posición.
 LABELS = ["map", "map:research", "map:prototype", "map:grilling", "map:task",
-          "hitl:pm", "hitl:design", "hitl:dev"]
+          "hitl:pm", "hitl:design", "hitl:dev", "map:no-landing"]
 
 # Aparte de LABELS a propósito: Discovery es del equipo, se busca y nunca se crea.
 DISCOVERY = "Discovery"

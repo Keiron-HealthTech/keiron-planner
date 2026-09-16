@@ -67,6 +67,16 @@ vivo: el agente nunca contesta por el humano.
 
 Un ticket sin ninguno de esos labels es AFK, y esa ausencia es la señal.
 
+### El label que no es un tipo de ticket
+
+| Label | Qué es |
+| --- | --- |
+| `map:no-landing` | El marcador que `work:write` aplica cuando un aterrizaje no produjo trabajo. No es un tipo de ticket y por eso no tiene modo: ningún ticket de decisión lo lleva. |
+
+Vive acá, y no en la tabla de arriba, porque el preflight lo resuelve como a los
+otros ocho y `ticket:create` lo crea cuando falta, igual que a los demás. Es la
+única razón por la que comparte casa con ellos.
+
 ## Las disciplinas
 
 Lo que una sesión conduce cuando trabaja un ticket. Cada una vive en un archivo

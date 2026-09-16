@@ -310,7 +310,7 @@ else:
             and invocado(n.args[0].func) == "json.dumps"):
         fail("[36] el argumento del único print a stdout no es un json.dumps")
 
-# --- afirmación 37: las ocho claves y discovery separado ----------------------
+# --- afirmación 37: las nueve claves y discovery separado ---------------------
 etiquetas = []
 for n in ARBOL.body:
     if isinstance(n, ast.Assign) and any(getattr(x, "id", None) == "LABELS"
