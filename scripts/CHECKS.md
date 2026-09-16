@@ -39,11 +39,11 @@ una segunda copia.
 ### `check-templates.sh`
 | Nº | Afirmación | Cómo | Brecha | Estado | Origen |
 | --- | --- | --- | --- | --- | --- |
-| 9 | `map-templates.md` tiene los seis encabezados del DD con texto exacto y las tres secciones del cuerpo de la issue de ejecución | secuencia exacta de `## ` en cada bloque de plantilla, contra las anclas que el adapter escribe | ninguna | pendiente | 06, parcialmente reemplazada por la 43 |
-| 25 | No hay dos viñetas de niebla con el mismo título en negrita, y `map-templates.md` dice que el título es una clave única | unicidad de los títulos en negrita del bloque de niebla, más un grep de la frase en las plantillas | la segunda mitad es un grep de prosa: reescribir la frase falla el check sin que la regla cambie. Se acepta, se arregla en un commit | pendiente | 09 |
-| 42 | La entrada de Decisiones hasta ahora es una línea: enlace, dos puntos y gist | cada viñeta del bloque de ejemplo ocupa exactamente una línea física | ninguna | pendiente | 04 |
-| 43 | Las seis secciones del comentario de resolución con texto exacto, con `## Lo que se cayó` tercera, entre `## Por qué` y `## Niebla graduada` | secuencia **ordenada**, no conjunto: la posición es parte de la afirmación | ninguna | pendiente | 04 |
-| 46 | Ninguna plantilla ni ningún comando contiene `<details>` ni `<summary>` | grep sobre `commands/*.md` y `map-templates.md`: cero | ninguna | pendiente | 04 |
+| 9 | `map-templates.md` tiene los seis encabezados del DD con texto exacto y las tres secciones del cuerpo de la issue de ejecución | secuencia exacta de `## ` en cada bloque de plantilla, contra las anclas que el adapter escribe | ninguna | viva | 06, parcialmente reemplazada por la 43 |
+| 25 | No hay dos viñetas de niebla con el mismo título en negrita, y `map-templates.md` dice que el título es una clave única | unicidad de los títulos en negrita del bloque de niebla, más un grep de la frase en las plantillas | la segunda mitad es un grep de prosa: reescribir la frase falla el check sin que la regla cambie. Se acepta, se arregla en un commit | viva | 09 |
+| 42 | La entrada de Decisiones hasta ahora es una línea: enlace, dos puntos y gist | cada viñeta del bloque de ejemplo ocupa exactamente una línea física | ninguna | viva | 04 |
+| 43 | Las seis secciones del comentario de resolución con texto exacto, con `## Lo que se cayó` tercera, entre `## Por qué` y `## Niebla graduada` | secuencia **ordenada**, no conjunto: la posición es parte de la afirmación | ninguna | viva | 04 |
+| 46 | Ninguna plantilla ni ningún comando contiene `<details>` ni `<summary>` | grep sobre `commands/*.md` y `map-templates.md`: cero | ninguna | viva | 04 |
 
 ### `check-adapter.py`
 | Nº | Afirmación | Cómo | Brecha | Estado | Origen |
