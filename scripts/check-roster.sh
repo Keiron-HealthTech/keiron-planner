@@ -87,10 +87,73 @@ if [ -n "$solo_contrato" ] || [ -n "$solo_comandos" ]; then
   fail "[7] los tokens de $CONTRATO y las citaciones de commands/ no son el mismo conjunto: solo en el contrato $solo_contrato, solo en los comandos $solo_comandos"
 fi
 
+# --- afirmaciones 8 y 16: el recorrido de commands/ parte los ROUTE: en dos conjuntos ---
+
+# Reusa $lista y no vuelve a extraerla: una segunda extracción sería una segunda copia
+# del alcance del recorrido, y las dos podrían divergir.
+
+# Los dos acumuladores sobreviven al while porque el heredoc lo corre en el shell actual:
+# alimentado por un pipe correría en un subshell y morirían con él. Es el mismo motivo por
+# el que check-language.sh alimenta su while igual.
+rutean=""
+no_rutean=""
+
+while IFS= read -r archivo; do
+  if [ -z "$archivo" ]; then continue; fi
+  base="${archivo##*/}"
+
+  # Sin head, igual que la afirmación 3: quedarse con la primera de dos líneas en silencio
+  # es parte de lo que esta afirmación tiene que ver.
+  ruta="$(sed -n 's/^ROUTE: //p' "$archivo" || true)"
+  if [ -z "$ruta" ]; then
+    fail "[8] $archivo no declara ninguna línea ROUTE:"
+    continue
+  fi
+  primera="${ruta%%$'\n'*}"
+  if [ "$primera" != "$ruta" ]; then
+    fail "[8] $archivo declara más de una línea ROUTE:, y la extracción tiene que ser de una sola; la primera dice '$primera'"
+    continue
+  fi
+
+  case "$ruta" in
+    skills/*/SKILL.md)
+      rutean="${rutean}${rutean:+$'\n'}$base"
+      if [ ! -f "$ruta" ]; then
+        fail "[16] el ROUTE: de $archivo nombra $ruta, que no existe"
+      fi
+      ;;
+    *)
+      no_rutean="${no_rutean}${no_rutean:+$'\n'}$base"
+      # Vuelve a mirar lo que la afirmación 3 ya mira para map-status.md, y a propósito: la 3
+      # lo mira porque ese ROUTE: es el literal read-only, y acá se mira porque ese archivo
+      # cayó del lado de los que no rutean a skill. Si una de las dos se rompe, la otra sigue.
+      if [ -d "skills/${base%.md}" ]; then
+        fail "[16] $archivo no rutea a ninguna skill y existe skills/${base%.md}"
+      fi
+      ;;
+  esac
+done <<EOF
+$lista
+EOF
+
+# La única guarda anti vacuidad del recorrido: hasta hoy este conjunto era vacío y la
+# cláusula de existencia probaba cero. El otro conjunto no la lleva porque la igualdad de
+# abajo ya falla cuando queda vacío.
+require_nonempty "$rutean" "[16] ningún archivo de commands/ rutea a una skill; la cláusula de existencia probaría sobre el conjunto vacío"
+
+# El par literal es lo que la celda Afirmación de la fila dice, palabra por palabra, y no
+# el cardinal, que no puede vivir en este archivo.
+esperado="$(printf 'map-status.md\nplanner-setup.md\n' | sort)"
+obtenido="$(printf '%s\n' "$no_rutean" | sort)"
+if [ "$esperado" != "$obtenido" ]; then
+  fail "[16] los archivos de commands/ que no rutean a una skill tienen que ser map-status.md y planner-setup.md, y son: $(printf '%s\n' "$obtenido" | tr '\n' ' ')"
+fi
+
 report
 
 # Conteos derivados y no escritos, igual que los que imprime check-language: el cardinal
 # del conjunto no vive en este archivo, se calcula acá y se muestra.
 tokens="$(printf '%s\n' "$del_contrato" | grep -c . || true)"
 archivos="$(printf '%s\n' "$lista" | grep -c . || true)"
-echo "$CHECK_NAME: OK - el ROUTE: de $COMANDO es read-only y no tiene skill, y los $tokens tokens de $CONTRATO son exactamente los que citan los $archivos archivos de commands/"
+ruteadores="$(printf '%s\n' "$rutean" | grep -c . || true)"
+echo "$CHECK_NAME: OK - el ROUTE: de $COMANDO es read-only y no tiene skill, los $tokens tokens de $CONTRATO son exactamente los que citan los $archivos archivos de commands/, y el ROUTE: de cada archivo de commands/ que rutea a una skill apunta a una que existe, $ruteadores en total"
