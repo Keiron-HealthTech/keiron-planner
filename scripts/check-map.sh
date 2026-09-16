@@ -233,7 +233,7 @@ def caso_1():
     rc, out, err, tr = correr(v, ESCRIBIR + DECISION_NUEVA + [
         "--append-fog", "**Una niebla previa.** redactada de nuevo",
         "--remove-fog", "Una niebla previa.",
-        "--append-out-of-scope", "algo que queda afuera"],
+        "--append-out-of-scope", "**Algo que queda afuera.** con su cuerpo"],
         [leido(conasterisco), ESCRITO_OK])
     chequear(v, "rc", rc, 0)
     chequear(v, "llamadas al transporte", tr.llamadas, 2)
@@ -246,14 +246,15 @@ def caso_1():
         chequear(v, "la niebla nueva aterrizo en su ancla",
                  any("redactada de nuevo" in l for l in cuerpos[mod.ANCLAS[3]]), True)
         chequear(v, "el fuera de alcance aterrizo en su ancla",
-                 any("algo que queda afuera" in l for l in cuerpos[mod.ANCLAS[4]]), True)
+                 any("Algo que queda afuera." in l for l in cuerpos[mod.ANCLAS[4]]),
+                 True)
         chequear(v, "la vineta con marcador de asterisco se borro",
                  any("con su cuerpo" in l for l in cuerpos[mod.ANCLAS[3]]), False)
         chequear(v, "y su continuacion indentada tambien",
                  any("continuacion indentada" in l for l in cuerpos[mod.ANCLAS[3]]),
                  False)
         nuevas = tr.contents[0].split("\n")
-        i = nuevas.index("- algo que queda afuera")
+        i = nuevas.index("- **Algo que queda afuera.** con su cuerpo")
         chequear(v, "la linea en blanco antes del encabezado siguiente sobrevive",
                  nuevas[i + 1], "")
 
@@ -361,18 +362,19 @@ def caso_5():
     f = n + "-ABORTO-ancla-ausente"
     sinfuera = overview().replace(
         "## " + mod.ANCLAS[4] + "\n\n- **Algo ruled out.** con cuerpo\n\n", "")
-    rc, out, err, tr = correr(f, ESCRIBIR + ["--append-out-of-scope", "una linea"],
+    rc, out, err, tr = correr(f, ESCRIBIR + ["--append-out-of-scope", "**Una linea.** con su cuerpo"],
                               [leido(sinfuera), ESCRITO_OK])
     chequear(f, "rc no cero", rc != 0, True)
     chequear(f, "stderr nombra el ancla", mod.ANCLAS[4] in err, True)
-    chequear(f, "stderr muestra el texto que iba a escribir", "una linea" in err, True)
+    chequear(f, "stderr muestra el texto que iba a escribir", "Una linea." in err,
+             True)
     chequear(f, "no hubo projectUpdate", len(tr.contents), 0)
 
     b = n + "-ABORTO-ancla-solo-debajo-de-la-frontera"
     soloabajo = sinfuera.replace(
         "prosa heredada que no se toca\n",
         "prosa heredada que no se toca\n\n## " + mod.ANCLAS[4] + "\n\n- heredado\n")
-    rc, out, err, tr = correr(b, ESCRIBIR + ["--append-out-of-scope", "una linea"],
+    rc, out, err, tr = correr(b, ESCRIBIR + ["--append-out-of-scope", "**Una linea.** con su cuerpo"],
                               [leido(soloabajo), ESCRITO_OK])
     chequear(b, "rc no cero: un ancla solo debajo de la frontera cuenta como ausente",
              rc != 0, True)
@@ -564,6 +566,11 @@ def caso_9():
         ("sin-ninguna-edicion", ESCRIBIR, mod.SIN_KEY),
         ("append-out-of-scope-que-es-encabezado",
          ESCRIBIR + ["--append-out-of-scope", "## " + mod.ANTES_DEL_MAPA],
+         mod.SIN_KEY),
+        # Sin título en negrita la clave de unicidad de fuera de alcance dependía de
+        # cómo se hubiera escrito la línea, y era el único de los tres flags así.
+        ("append-out-of-scope-sin-titulo-en-negrita",
+         ESCRIBIR + ["--append-out-of-scope", "texto suelto sin negrita"],
          mod.SIN_KEY),
         ("expect-sections-que-no-parsea",
          ESCRIBIR + DECISION_NUEVA + ["--expect-sections", "{no es json"],

@@ -473,23 +473,25 @@ def _no_es_encabezado(etiqueta, valor):
             "sacale las almohadillas del principio y volvé a correr")
 
 
-def _validar_niebla(valor):
-    """Las cinco reglas de forma de una viñeta de niebla, sobre el valor que llegó por
-    argumento. Devuelve el título, que es además su clave de unicidad. La guarda del
-    encabezado no hace falta acá: la regla de que el valor empieza con ** ya impide que
-    una viñeta de niebla pueda ser un encabezado."""
-    _sin_saltos("--append-fog", valor)
+def _validar_vineta(etiqueta, valor):
+    """Las cinco reglas de forma de una viñeta con título en negrita, sobre el valor que
+    llegó por argumento. La comparten los dos flags que agregan una viñeta, y la etiqueta
+    es un parámetro para que el mensaje nombre el flag que la persona escribió. Devuelve
+    el título, que es además su clave de unicidad. La guarda del encabezado no hace falta
+    acá: la regla de que el valor empieza con ** ya impide que la viñeta sea un
+    encabezado."""
+    _sin_saltos(etiqueta, valor)
     titulo = titulo_en_negrita(valor) if valor.startswith("**") else None
     if titulo is None:
         die(SIN_KEY,
-            "--append-fog recibió %r, y una viñeta de niebla tiene que empezar con su "
-            "título entre dobles asteriscos" % valor,
+            "%s recibió %r, y la viñeta tiene que empezar con su título entre dobles "
+            "asteriscos" % (etiqueta, valor),
             'escribila como "**Título.** cuerpo" y volvé a correr')
     cuerpo = valor[valor.find("**", 2) + 2:]
     if cuerpo[:1] != " " or cuerpo[1:2] == " " or not cuerpo.strip():
         die(SIN_KEY,
-            "--append-fog recibió %r, y después del título cerrado tiene que venir "
-            "exactamente un espacio y un cuerpo no vacío" % valor,
+            "%s recibió %r, y después del título cerrado tiene que venir exactamente "
+            "un espacio y un cuerpo no vacío" % (etiqueta, valor),
             'escribila como "**Título.** cuerpo" y volvé a correr')
     return titulo
 
@@ -523,7 +525,7 @@ def _ediciones_de(args):
         anotar(ANCLA_DECISIONES, 1, "- %s: %s" % (enlace, gist))
 
     for valor in args.append_fog:
-        _validar_niebla(valor)
+        _validar_vineta("--append-fog", valor)
         anotar(ANCLA_NIEBLA, 1, "- %s" % valor)
 
     for titulo in args.remove_fog:
@@ -534,11 +536,11 @@ def _ediciones_de(args):
         anotar(ANCLA_NIEBLA, 0, titulo)
 
     for valor in args.append_out_of_scope:
-        _sin_saltos("--append-out-of-scope", valor)
-        if not valor.strip():
-            die(SIN_KEY, "--append-out-of-scope recibió una línea vacía",
-                "pasá la línea que querés dejar fuera de alcance")
-        _no_es_encabezado("--append-out-of-scope", valor)
+        # La misma guarda que la niebla, y es lo que vuelve determinista la clave de
+        # unicidad de esta sección: sin título en negrita la clave era la línea entera,
+        # así que la idempotencia funcionaba o no según cómo la persona hubiera escrito
+        # el texto. Era el único de los tres flags con esa dependencia silenciosa.
+        _validar_vineta("--append-out-of-scope", valor)
         anotar(ANCLA_FUERA, 1, "- %s" % valor)
 
     if not ediciones:
