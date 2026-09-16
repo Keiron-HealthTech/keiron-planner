@@ -12,12 +12,20 @@ import urllib.request
 
 ENDPOINT = "https://api.linear.app/graphql"
 
-# Los ocho del ctx. Su segunda copia es la tabla Tipos de ticket de CONTEXT.md.
+# Los nueve del ctx. Su segunda copia es la tabla Tipos de ticket de CONTEXT.md.
+# El orden es contrato: TIPOS y HITL salen de acá por posición.
 LABELS = ["map", "map:research", "map:prototype", "map:grilling", "map:task",
-          "hitl:pm", "hitl:design", "hitl:dev"]
+          "hitl:pm", "hitl:design", "hitl:dev", "map:no-landing"]
 
 # Aparte de LABELS a propósito: Discovery es del equipo, se busca y nunca se crea.
 DISCOVERY = "Discovery"
+
+# Los cuatro tipos y los tres roles, tomados de LABELS por posición y nunca reescritos:
+# una segunda copia de esos nombres se desincroniza en el primer rename, y el orden de
+# LABELS ya es contrato. El primero de la lista, map, no es un tipo, y el noveno,
+# map:no-landing, lo aplica work:write y nunca un ticket de decisión.
+TIPOS = LABELS[1:5]
+HITL = LABELS[5:8]
 
 # El nombre del label del mapa, no su id: el ctx que cierra /map-new todavía dice
 # map: null porque el label nació después del preflight. Constante y no argumento,
@@ -172,6 +180,39 @@ mutation($team: String!, $name: String!, $content: String!) {
   projectCreate(input: { teamId: $team, name: $name, content: $content }) {
     success
     project { id url }
+  }
+}
+"""
+
+
+ISSUE_LABEL_CREATE = """
+mutation($nombre: String!) {
+  issueLabelCreate(input: { name: $nombre }) {
+    success
+    issueLabel { id name }
+  }
+}
+"""
+
+ISSUE_BATCH_CREATE = """
+mutation($issues: [IssueCreateInput!]!) {
+  issueBatchCreate(input: { issues: $issues }) {
+    success
+    issues { id identifier title url }
+  }
+}
+"""
+
+# El nombre de las variables es lo que hace legible la orientación en el sitio de
+# llamada, y es deliberado: un issueId: $a se puede leer mal, un issueId: $bloqueante
+# no. El bloqueante SIEMPRE del lado issue.
+ISSUE_RELATION_CREATE = """
+mutation($bloqueante: String!, $bloqueado: String!) {
+  issueRelationCreate(input: {
+    type: blocks, issueId: $bloqueante, relatedIssueId: $bloqueado
+  }) {
+    success
+    issueRelation { id }
   }
 }
 """
@@ -432,23 +473,25 @@ def _no_es_encabezado(etiqueta, valor):
             "sacale las almohadillas del principio y volvé a correr")
 
 
-def _validar_niebla(valor):
-    """Las cinco reglas de forma de una viñeta de niebla, sobre el valor que llegó por
-    argumento. Devuelve el título, que es además su clave de unicidad. La guarda del
-    encabezado no hace falta acá: la regla de que el valor empieza con ** ya impide que
-    una viñeta de niebla pueda ser un encabezado."""
-    _sin_saltos("--append-fog", valor)
+def _validar_vineta(etiqueta, valor):
+    """Las cinco reglas de forma de una viñeta con título en negrita, sobre el valor que
+    llegó por argumento. La comparten los dos flags que agregan una viñeta, y la etiqueta
+    es un parámetro para que el mensaje nombre el flag que la persona escribió. Devuelve
+    el título, que es además su clave de unicidad. La guarda del encabezado no hace falta
+    acá: la regla de que el valor empieza con ** ya impide que la viñeta sea un
+    encabezado."""
+    _sin_saltos(etiqueta, valor)
     titulo = titulo_en_negrita(valor) if valor.startswith("**") else None
     if titulo is None:
         die(SIN_KEY,
-            "--append-fog recibió %r, y una viñeta de niebla tiene que empezar con su "
-            "título entre dobles asteriscos" % valor,
+            "%s recibió %r, y la viñeta tiene que empezar con su título entre dobles "
+            "asteriscos" % (etiqueta, valor),
             'escribila como "**Título.** cuerpo" y volvé a correr')
     cuerpo = valor[valor.find("**", 2) + 2:]
     if cuerpo[:1] != " " or cuerpo[1:2] == " " or not cuerpo.strip():
         die(SIN_KEY,
-            "--append-fog recibió %r, y después del título cerrado tiene que venir "
-            "exactamente un espacio y un cuerpo no vacío" % valor,
+            "%s recibió %r, y después del título cerrado tiene que venir exactamente "
+            "un espacio y un cuerpo no vacío" % (etiqueta, valor),
             'escribila como "**Título.** cuerpo" y volvé a correr')
     return titulo
 
@@ -482,7 +525,7 @@ def _ediciones_de(args):
         anotar(ANCLA_DECISIONES, 1, "- %s: %s" % (enlace, gist))
 
     for valor in args.append_fog:
-        _validar_niebla(valor)
+        _validar_vineta("--append-fog", valor)
         anotar(ANCLA_NIEBLA, 1, "- %s" % valor)
 
     for titulo in args.remove_fog:
@@ -493,11 +536,11 @@ def _ediciones_de(args):
         anotar(ANCLA_NIEBLA, 0, titulo)
 
     for valor in args.append_out_of_scope:
-        _sin_saltos("--append-out-of-scope", valor)
-        if not valor.strip():
-            die(SIN_KEY, "--append-out-of-scope recibió una línea vacía",
-                "pasá la línea que querés dejar fuera de alcance")
-        _no_es_encabezado("--append-out-of-scope", valor)
+        # La misma guarda que la niebla, y es lo que vuelve determinista la clave de
+        # unicidad de esta sección: sin título en negrita la clave era la línea entera,
+        # así que la idempotencia funcionaba o no según cómo la persona hubiera escrito
+        # el texto. Era el único de los tres flags con esa dependencia silenciosa.
+        _validar_vineta("--append-out-of-scope", valor)
         anotar(ANCLA_FUERA, 1, "- %s" % valor)
 
     if not ediciones:
@@ -849,6 +892,171 @@ def truncadas(proyecto):
     return cortadas
 
 
+def _tickets_de(args):
+    """El ctx parseado y los tickets ya validados: acá se rompe todo lo que se pueda
+    romper sin haber tocado la red, que es lo que hace que una invocación mal formada
+    no gaste un round trip. Devuelve (ctx, tickets) con cada ticket como
+    (titulo, cuerpo, nombres) y el orden de la línea de comandos preservado.
+
+    La guarda del encabezado NO se aplica acá, y es deliberado: su propósito declarado
+    es la línea del mapa, y el cuerpo de una issue no es una línea del mapa."""
+    try:
+        ctx = json.loads(args.ctx)
+    except ValueError:
+        die(SIN_KEY, "--ctx no parsea como JSON: %r" % args.ctx,
+            "pasá el blob que emitió el preflight, sin editarlo")
+    if not args.ticket:
+        die(SIN_KEY,
+            "ticket:create no recibió ningún --ticket, y crear cero tickets es un "
+            "error de invocación y no un no-op silencioso",
+            "pasá al menos un --ticket con su título, su cuerpo y sus labels")
+    permitidos = TIPOS + HITL
+    tickets = []
+    for titulo, cuerpo, etiquetas in args.ticket:
+        _sin_saltos("--ticket", titulo)
+        _sin_saltos("--ticket", cuerpo)
+        if not titulo.strip() or not cuerpo.strip():
+            die(SIN_KEY,
+                "--ticket recibió un título o un cuerpo vacío: %r" % titulo,
+                "el título es la pregunta en prosa y el cuerpo es esa pregunta y nada "
+                "más; ninguno de los dos puede ir vacío")
+        nombres = [n for n in etiquetas.split(",") if n]
+        ajenos = [n for n in nombres if n not in permitidos]
+        if ajenos:
+            die(SIN_KEY,
+                "--ticket %r recibió labels que no son ni un tipo ni un rol: %s"
+                % (titulo, ", ".join(ajenos)),
+                "pasá a lo sumo un tipo de %s y los roles de %s; map y map:no-landing "
+                "no se piden acá" % (", ".join(TIPOS), ", ".join(HITL)))
+        del_tipo = [n for n in nombres if n in TIPOS]
+        if len(del_tipo) > 1:
+            die(SIN_KEY,
+                "--ticket %r lleva más de un tipo a la vez y un ticket tiene a lo "
+                "sumo uno: %s" % (titulo, ", ".join(del_tipo)),
+                "dejá un solo tipo, o ninguno si el ticket es AFK, y volvé a correr")
+        tickets.append((titulo, cuerpo, nombres))
+    return ctx, tickets
+
+
+def _resolver_label(payload):
+    """La puerta de issueLabelCreate: la misma regla de tres casos que
+    _resolver_escritura y _resolver_creacion, sobre su propia clave del payload.
+    Devuelve (ok, detalle, etiqueta)."""
+    errores = _errores_de(payload)
+    if errores:
+        return (False, "; ".join(errores), {})
+    datos = (payload.get("data") or {}).get("issueLabelCreate") or {}
+    if datos.get("success") is not True:
+        return (False, "issueLabelCreate devolvió success=%s" % datos.get("success"),
+                {})
+    return (True, "", datos.get("issueLabel") or {})
+
+
+def _resolver_tickets(payload):
+    """La puerta de issueBatchCreate, con la misma regla de tres casos y sobre la otra
+    clave del payload. Es una función aparte y no un parámetro de las otras dos, que es
+    la decisión que ya se tomó para _resolver_creacion. Devuelve (ok, detalle,
+    issues)."""
+    errores = _errores_de(payload)
+    if errores:
+        return (False, "; ".join(errores), [])
+    datos = (payload.get("data") or {}).get("issueBatchCreate") or {}
+    if datos.get("success") is not True:
+        return (False, "issueBatchCreate devolvió success=%s" % datos.get("success"),
+                [])
+    return (True, "", datos.get("issues") or [])
+
+
+def _crear_labels_faltantes(ctx, key):
+    """La ÚNICA casa que crea labels en todo el archivo, y por eso el recorrido es de
+    LABELS y no de una lista propia. teamId va omitido a propósito: los labels del
+    plugin son workspace-level y planos, nunca label groups, porque un grupo no se
+    puede aplicar a un issue y partiría el nombre canónico map:research en la UI.
+
+    Discovery no puede caer acá y eso es gratis de verificar: vive fuera de LABELS y
+    fuera de ctx["labels"], y esa forma es lo que vuelve chequeable la prohibición de
+    crearlo. Devuelve (labels, creados)."""
+    labels = dict(ctx.get("labels") or {})
+    creados = []
+    for nombre in LABELS:
+        if labels.get(nombre) is not None:
+            continue
+        ok, detalle, etiqueta = _resolver_label(
+            _post(ISSUE_LABEL_CREATE, {"nombre": nombre}, key))
+        if not ok:
+            die(SIN_KEY,
+                "el label %s no se pudo crear: %s. Labels que SÍ quedaron creados en "
+                "esta corrida: %s" % (nombre, detalle, ", ".join(creados) or "ninguno"),
+                "corré el preflight de nuevo ANTES de reintentar: el ctx que tenés ya "
+                "no describe el workspace")
+        labels[nombre] = etiqueta.get("id")
+        creados.append(nombre)
+    return labels, creados
+
+
+def _bloqueos_de(args):
+    """Los pares ya validados: acá se rompe todo lo que se pueda romper sin haber
+    tocado la red. Un par cuyos dos ids son iguales aborta, y eso no es celo: un ticket
+    que se bloquea a sí mismo no vuelve a ser tomable nunca, y no hay ninguna operación
+    en el plugin para deshacerlo.
+
+    El mismo criterio corre contra los pares que ya pasaron por acá en esta misma
+    invocación: un --block exacto repetido, o su recíproco (A bloqueado por B junto
+    con B bloqueado por A), también abortan, porque las dos formas terminan en dos
+    issueRelationCreate independientes y ningún guard de más abajo las nota. Esto NO
+    es un detector de ciclos: A→B, B→C y C→A en la misma corrida pasa entero, porque
+    cada par se compara solo contra los que ya vinieron antes y no contra la cadena
+    completa. Tampoco cubre B bloqueado por A escrito en una invocación aparte de la
+    que trajo A bloqueado por B: acá nunca se leen las relaciones que ya existen en
+    Linear, así que ese caso cruzado de invocaciones no tiene cómo detectarse acá."""
+    if not args.block:
+        die(SIN_KEY,
+            "ticket:block no recibió ningún --block, y escribir cero relaciones es un "
+            "error de invocación y no un no-op silencioso",
+            "pasá al menos un --block con el id del bloqueante y el del bloqueado")
+    pares = []
+    for bloqueante, bloqueado in args.block:
+        _sin_saltos("--block", bloqueante)
+        _sin_saltos("--block", bloqueado)
+        if not bloqueante.strip() or not bloqueado.strip():
+            die(SIN_KEY,
+                "--block recibió un id vacío: %r y %r" % (bloqueante, bloqueado),
+                "pasá los dos ids, el del bloqueante primero y el del bloqueado "
+                "después")
+        if bloqueante == bloqueado:
+            die(SIN_KEY,
+                "--block recibió el mismo id de los dos lados: %r" % bloqueante,
+                "un ticket que se bloquea a sí mismo no vuelve a ser tomable, y no hay "
+                "operación en el plugin para deshacerlo")
+        if (bloqueante, bloqueado) in pares:
+            die(SIN_KEY,
+                "--block repitió el mismo par dos veces: %r bloqueado por %r" %
+                (bloqueado, bloqueante),
+                "sacá el --block duplicado, escribir la misma relación dos veces no "
+                "aporta nada")
+        if (bloqueado, bloqueante) in pares:
+            die(SIN_KEY,
+                "--block recibió %r bloqueado por %r y también %r bloqueado por %r "
+                "en la misma corrida" % (bloqueado, bloqueante, bloqueante, bloqueado),
+                "elegí un solo sentido: dos tickets bloqueándose mutuamente no vuelven "
+                "a ser tomables nunca")
+        pares.append((bloqueante, bloqueado))
+    return pares
+
+
+def _resolver_relaciones(payload):
+    """La puerta de issueRelationCreate, con la misma regla de tres casos que las otras
+    tres. Devuelve (ok, detalle)."""
+    errores = _errores_de(payload)
+    if errores:
+        return (False, "; ".join(errores))
+    datos = (payload.get("data") or {}).get("issueRelationCreate") or {}
+    if datos.get("success") is not True:
+        return (False,
+                "issueRelationCreate devolvió success=%s" % datos.get("success"))
+    return (True, "")
+
+
 def cmd_map_read(args):
     key = leer_key()
     payload = _post(MAP_READ_QUERY, {"project": args.project}, key)
@@ -934,6 +1142,69 @@ def cmd_map_write(args):
     die(SIN_KEY,
         "no se pudo escribir el mapa; el último intento dijo: %s" % detalle,
         "mirá el mensaje de arriba y volvé a correr el comando")
+
+
+def cmd_ticket_create(args):
+    ctx, tickets = _tickets_de(args)     # valida todo antes de tocar la red
+    key = leer_key()
+    # Los labels que faltan se crean UNA vez por corrida, y por eso la invocación crea
+    # todos los tickets de la pasada: el preflight corre una vez por conductor y el ctx
+    # es inmutable, así que una segunda invocación leería los mismos null y volvería a
+    # crearlos. No reintenta: _post traga la falla de transporte, así que ninguna rama
+    # puede distinguir "no llegó" de "llegó y se perdió la respuesta", y un
+    # issueBatchCreate repetido deja N tickets hermanos que nada sabe deshacer.
+    labels, creados = _crear_labels_faltantes(ctx, key)
+    # Discovery se usa cuando está y se saltea en silencio cuando no. Nunca se crea.
+    comunes = [labels[LABEL_MAPA]]
+    if ctx.get("discovery") is not None:
+        comunes.append(ctx["discovery"])
+    entradas = []
+    for titulo, cuerpo, nombres in tickets:
+        # stateId explícito: sin él la issue nace en Triage. estimate en cero: un
+        # ticket de decisión no se estima.
+        entradas.append({"teamId": ctx["team"], "projectId": args.project,
+                         "title": titulo, "description": cuerpo,
+                         "stateId": ctx["default"], "estimate": 0,
+                         "labelIds": comunes + [labels[n] for n in nombres]})
+    ok, detalle, issues = _resolver_tickets(
+        _post(ISSUE_BATCH_CREATE, {"issues": entradas}, key))
+    if not ok:
+        die(SIN_KEY,
+            "el issueBatchCreate no confirmó: %s. Labels que SÍ quedaron creados en "
+            "esta corrida: %s" % (detalle, ", ".join(creados) or "ninguno"),
+            "corré el preflight de nuevo ANTES de reintentar: el ctx que tenés ya no "
+            "describe el workspace, porque esos labels ahora existen")
+    print(json.dumps(
+        {"tickets": [{"identifier": i.get("identifier"), "id": i.get("id"),
+                      "title": i.get("title"), "url": i.get("url")} for i in issues],
+         "createdLabels": creados}, separators=(",", ":")))
+
+
+def cmd_ticket_block(args):
+    pares = _bloqueos_de(args)      # valida todo antes de tocar la red
+    key = leer_key()
+    # El bloqueante siempre del lado issue, y esta orientación es el espejo exacto de
+    # la lectura de la frontera, que saca el bloqueante de inverseRelations.issue. Si
+    # esta punta escribiera invertido, un ticket bloqueado aparecería como tomable.
+    # No reintenta, por la misma razón que ticket:create: _post traga la falla de
+    # transporte y una relación repetida no se puede deshacer desde acá.
+    escritos = []
+    for bloqueante, bloqueado in pares:
+        ok, detalle = _resolver_relaciones(
+            _post(ISSUE_RELATION_CREATE,
+                  {"bloqueante": bloqueante, "bloqueado": bloqueado}, key))
+        if not ok:
+            die(SIN_KEY,
+                "el bloqueo de %s por %s no confirmó: %s. Bloqueos que SÍ quedaron "
+                "escritos en esta corrida: %s"
+                % (bloqueado, bloqueante, detalle,
+                   ", ".join("%s bloquea a %s" % par for par in escritos) or "ninguno"),
+                "volvé a correr solo los pares que faltan: esta rama no reintenta "
+                "sola, y repetir un par que ya entró duplicaría la relación")
+        escritos.append((bloqueante, bloqueado))
+    print(json.dumps(
+        {"blocks": [{"blocker": b, "blocked": d} for b, d in escritos]},
+        separators=(",", ":")))
 
 
 def cmd_frontier_query(args):
@@ -1030,12 +1301,25 @@ def construir_parser():
     p_map_write.add_argument("--expect-sections")
     p_map_write.set_defaults(func=cmd_map_write)
 
+    # --ticket copia la forma de --append-decision: nargs fijo, repetible y con el
+    # default explícito. Repetible por la misma razón por la que map:write tiene sus
+    # cuatro flags repetibles: la pasada entera entra en una sola invocación. LABELS es
+    # una lista separada por comas, y cero labels se pasa como "".
     p_ticket_create = subs.add_parser("ticket:create")
     p_ticket_create.add_argument("--ctx", required=True)
-    p_ticket_create.set_defaults(func=cmd_stub)
+    p_ticket_create.add_argument("--project", required=True)
+    p_ticket_create.add_argument("--ticket", nargs=3, action="append", default=[],
+                                 metavar=("TITULO", "CUERPO", "LABELS"))
+    p_ticket_create.set_defaults(func=cmd_ticket_create)
 
+    # Sin --ctx a propósito: ticket:block es una de las cuatro operaciones que no lo
+    # consumen. Sus dos operandos son ids de tickets creados en la misma corrida, y
+    # pasar ids adentro de una corrida es el mecanismo declarado. Repetible por la
+    # misma razón que --ticket: la segunda pasada entera entra en una invocación.
     p_ticket_block = subs.add_parser("ticket:block")
-    p_ticket_block.set_defaults(func=cmd_stub)
+    p_ticket_block.add_argument("--block", nargs=2, action="append", default=[],
+                                metavar=("BLOQUEANTE", "BLOQUEADO"))
+    p_ticket_block.set_defaults(func=cmd_ticket_block)
 
     p_frontier_query = subs.add_parser("frontier:query")
     p_frontier_query.add_argument("--ctx", required=True)

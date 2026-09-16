@@ -194,8 +194,8 @@ for nombre, resp, bootstrap, con_key, esperado_ok, constante in CASOS:
             try:
                 d = json.loads(out)
                 detalle = "claves=%d labels=%d" % (len(d), len(d.get("labels", {})))
-                if len(d) != 7 or len(d.get("labels", {})) != 8:
-                    fallas.append(nombre + ": el ctx no tiene siete claves y ocho labels")
+                if len(d) != 7 or len(d.get("labels", {})) != len(mod.LABELS):
+                    fallas.append(nombre + ": el ctx no tiene siete claves y un label por cada nombre de LABELS")
                 esperado = ESPERADO.get(nombre)
                 if esperado is not None and d != esperado:
                     fallas.append("%s: ctx=%s, esperado %s" % (nombre, d, esperado))

@@ -310,7 +310,7 @@ else:
             and invocado(n.args[0].func) == "json.dumps"):
         fail("[36] el argumento del único print a stdout no es un json.dumps")
 
-# --- afirmación 37: las ocho claves y discovery separado ----------------------
+# --- afirmación 37: las nueve claves y discovery separado ---------------------
 etiquetas = []
 for n in ARBOL.body:
     if isinstance(n, ast.Assign) and any(getattr(x, "id", None) == "LABELS"
@@ -1026,7 +1026,120 @@ if len(_LIT120) != 1:
     fail("[45] el literal 120 aparece %d veces en el archivo y tiene que vivir en un "
          "solo lugar" % len(_LIT120))
 
+# --- la ruta de ticket:create, raíz compartida por las cuatro de este change ------
+
+# Misma resolución que la 23, la 24, la 53 y la 59: el handler real sale de
+# set_defaults y el grafo de alcanzable(). Se define una sola vez y las cuatro la citan.
+RUTA_TICKET = alcanzable(handler.get("ticket:create"))
+require_nonempty(RUTA_TICKET,
+                 "[11] el grafo alcanzable desde el handler de ticket:create dio "
+                 "vacío; el handler volvió a ser un stub y las cuatro afirmaciones "
+                 "probarían cero")
+
+# Las rutas de creación de issues del archivo: las funciones que le pasan a _post una
+# constante de string del módulo que contiene una de las dos mutations de creación.
+CREADORAS = sorted(nm for nm in FUNCS if _post_con(FUNCS[nm], "issueCreate")
+                   or _post_con(FUNCS[nm], "issueBatchCreate"))
+require_nonempty(CREADORAS,
+                 "[11] ninguna función le pasa a _post una constante que contenga "
+                 "issueCreate ni issueBatchCreate; la afirmación probaría sobre el "
+                 "conjunto vacío")
+
+
+def _valores_de_clave(nombre, clave):
+    """Los valores que una clave literal toma en los dicts del cuerpo de una función."""
+    valores = []
+    for n in ast.walk(FUNCS[nombre]):
+        if not isinstance(n, ast.Dict):
+            continue
+        for k, v in zip(n.keys, n.values):
+            if isinstance(k, ast.Constant) and k.value == clave:
+                valores.append(v)
+    return valores
+
+
+# --- afirmación 11: toda ruta de creación de issues pasa stateId ------------------
+
+_SIN_ESTADO = [nm for nm in CREADORAS if not _valores_de_clave(nm, "stateId")]
+if _SIN_ESTADO:
+    fail("[11] estas funciones emiten una creación de issues y ningún dict de su "
+         "alcance lleva stateId, así que la issue nace en Triage: %s" % _SIN_ESTADO)
+
+# --- afirmación 12: estimate en cero, y en ninguna otra ruta de creación ----------
+
+_ESTIMATES = [v for nm in sorted(RUTA_TICKET)
+              for v in _valores_de_clave(nm, "estimate")]
+if len(_ESTIMATES) != 1:
+    fail("[12] en el grafo de ticket:create la clave estimate aparece %d veces y "
+         "tiene que aparecer exactamente una" % len(_ESTIMATES))
+elif not (isinstance(_ESTIMATES[0], ast.Constant)
+          and isinstance(_ESTIMATES[0].value, int)
+          and not isinstance(_ESTIMATES[0].value, bool)
+          and _ESTIMATES[0].value == 0):
+    fail("[12] el estimate del grafo de ticket:create no es el entero literal 0; un "
+         "False también compara igual a cero y no es lo mismo")
+
+# La segunda mitad cuantifica sobre las OTRAS rutas de creación, que hoy es el conjunto
+# vacío porque work:write sigue stub. El require_nonempty de arriba es sobre el conjunto
+# de rutas, que sí tiene un elemento: sin él la mitad sería vacua sin que se note.
+_OTRAS_CREADORAS = [nm for nm in CREADORAS if nm not in RUTA_TICKET]
+_CON_ESTIMATE = [nm for nm in _OTRAS_CREADORAS if _valores_de_clave(nm, "estimate")]
+if _CON_ESTIMATE:
+    fail("[12] estas rutas de creación de issues que no son ticket:create pasan "
+         "estimate: %s" % _CON_ESTIMATE)
+
+# --- afirmación 38: una sola casa crea labels, y nunca crea Discovery -------------
+
+_CREAN_LABEL = sorted(nm for nm in FUNCS if _post_con(FUNCS[nm], "issueLabelCreate"))
+require_nonempty(_CREAN_LABEL,
+                 "[38] ninguna función le pasa a _post una constante que contenga "
+                 "issueLabelCreate; la afirmación probaría sobre el conjunto vacío")
+if len(_CREAN_LABEL) != 1:
+    fail("[38] issueLabelCreate tiene que salir de una sola función y sale de %s"
+         % _CREAN_LABEL)
+else:
+    _CASA_LABEL = _CREAN_LABEL[0]
+    if _CASA_LABEL not in RUTA_TICKET:
+        fail("[38] la función que crea labels, %s, no es alcanzable desde el handler "
+             "de ticket:create" % _CASA_LABEL)
+    _OTROS_DUENOS = sorted(op for op in handler if op != "ticket:create"
+                           and _CASA_LABEL in alcanzable(handler[op]))
+    if _OTROS_DUENOS:
+        fail("[38] la función que crea labels es alcanzable desde estos otros "
+             "subcomandos: %s" % _OTROS_DUENOS)
+    _NOMBRA_DISCOVERY = [n for n in ast.walk(FUNCS[_CASA_LABEL])
+                         if (isinstance(n, ast.Name) and n.id == "DISCOVERY")
+                         or (isinstance(n, ast.Constant) and n.value == "Discovery")]
+    if _NOMBRA_DISCOVERY:
+        fail("[38] la función que crea labels nombra Discovery %d veces; Discovery es "
+             "del equipo, se busca y nunca se crea" % len(_NOMBRA_DISCOVERY))
+    # La mitad del null: sin una comparación contra None el bucle no distingue el
+    # label que falta del que ya está, y los crearía todos en cada corrida.
+    if not [n for n in ast.walk(FUNCS[_CASA_LABEL]) if isinstance(n, ast.Compare)
+            and any(isinstance(c, ast.Constant) and c.value is None
+                    for c in n.comparators)]:
+        fail("[38] la función que crea labels no compara nada contra None, así que no "
+             "distingue el que falta del que ya está")
+
+# --- afirmación 54: lo que crea son los nueve de LABELS, map:no-landing incluido --
+
+# El cardinal NO se escribe acá y es a propósito: su casa es la celda Afirmación de la
+# fila 54, y la 37 ya ata LABELS a la tabla del glosario por igualdad de conjuntos, así
+# que un décimo elemento la pone roja. Lo que esta afirmación agrega es que la función
+# que crea recorra esa constante y no una copia propia, y que map:no-landing esté.
+if len(_CREAN_LABEL) == 1:
+    _RECORRIDAS = [n.iter.id for n in ast.walk(FUNCS[_CREAN_LABEL[0]])
+                   if isinstance(n, ast.For) and isinstance(n.iter, ast.Name)]
+    if "LABELS" not in _RECORRIDAS:
+        fail("[54] la función que crea labels no recorre LABELS, así que el conjunto "
+             "que crea es una copia que nada compara: recorre %s" % _RECORRIDAS)
+elif len(_CREAN_LABEL) > 1:
+    fail("[54] más de una función de %s crea labels: %s" % (ADAPTER, _CREAN_LABEL))
+if "map:no-landing" not in etiquetas:
+    fail("[54] map:no-landing no está en LABELS, así que ticket:create no lo crea "
+         "cuando falta y un aterrizaje sin trabajo se queda sin su marcador")
+
 report()
-print("%s: OK - las veinte afirmaciones de AST sobre %s cierran, bajo Python "
+print("%s: OK - las veinticuatro afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))
