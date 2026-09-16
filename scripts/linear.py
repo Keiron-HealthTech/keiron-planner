@@ -209,7 +209,7 @@ mutation($issues: [IssueCreateInput!]!) {
 ISSUE_RELATION_CREATE = """
 mutation($bloqueante: String!, $bloqueado: String!) {
   issueRelationCreate(input: {
-    type: "blocks", issueId: $bloqueante, relatedIssueId: $bloqueado
+    type: blocks, issueId: $bloqueante, relatedIssueId: $bloqueado
   }) {
     success
     issueRelation { id }
