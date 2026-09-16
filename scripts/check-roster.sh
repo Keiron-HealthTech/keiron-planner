@@ -149,6 +149,33 @@ if [ "$esperado" != "$obtenido" ]; then
   fail "[16] los archivos de commands/ que no rutean a una skill tienen que ser map-status.md y planner-setup.md, y son: $(printf '%s\n' "$obtenido" | tr '\n' ' ')"
 fi
 
+# --- afirmación 39a: el flag de bootstrap vive en un solo comando ---
+
+# Reusa $lista por la misma regla que el recorrido de arriba: una segunda extracción sería
+# una segunda copia del alcance del roster, y las dos podrían divergir.
+con_bootstrap=""
+while IFS= read -r archivo; do
+  if [ -z "$archivo" ]; then continue; fi
+  if grep -q -- "--bootstrap" "$archivo"; then
+    base="${archivo##*/}"
+    con_bootstrap="${con_bootstrap}${con_bootstrap:+$'\n'}$base"
+  fi
+done <<EOF
+$lista
+EOF
+
+# Igualdad y no pertenencia, y ahí está la mitad que importa: un check que solo mirara que
+# el literal está en map-new.md pasaría en verde con el flag copiado en otro comando, y la
+# afirmación probaría la mitad de lo que enuncia. El nombre literal es lo que la celda
+# Afirmación dice, palabra por palabra, y no el cardinal, que no puede vivir en este
+# archivo. La igualdad cubre además el conjunto vacío, así que no lleva guarda propia.
+esperado_flag="map-new.md"
+obtenido_flag="$(printf '%s\n' "$con_bootstrap" | sort | tr '\n' ' ' || true)"
+obtenido_flag="${obtenido_flag% }"
+if [ "$esperado_flag" != "$obtenido_flag" ]; then
+  fail "[39] el literal --bootstrap tiene que aparecer en map-new.md y en ningún otro archivo de commands/, y los que lo llevan son: ${obtenido_flag:-ninguno}"
+fi
+
 report
 
 # Conteos derivados y no escritos, igual que los que imprime check-language: el cardinal
@@ -156,4 +183,4 @@ report
 tokens="$(printf '%s\n' "$del_contrato" | grep -c . || true)"
 archivos="$(printf '%s\n' "$lista" | grep -c . || true)"
 ruteadores="$(printf '%s\n' "$rutean" | grep -c . || true)"
-echo "$CHECK_NAME: OK - el ROUTE: de $COMANDO es read-only y no tiene skill, los $tokens tokens de $CONTRATO son exactamente los que citan los $archivos archivos de commands/, y el ROUTE: de cada archivo de commands/ que rutea a una skill apunta a una que existe, $ruteadores en total"
+echo "$CHECK_NAME: OK - el ROUTE: de $COMANDO es read-only y no tiene skill, los $tokens tokens de $CONTRATO son exactamente los que citan los $archivos archivos de commands/, el ROUTE: de cada archivo de commands/ que rutea a una skill apunta a una que existe, $ruteadores en total, y el flag de bootstrap vive solo en $esperado_flag"
