@@ -67,6 +67,29 @@ vivo: el agente nunca contesta por el humano.
 
 Un ticket sin ninguno de esos labels es AFK, y esa ausencia es la señal.
 
+## Las disciplinas
+
+Lo que una sesión conduce cuando trabaja un ticket. Cada una vive en un archivo
+del árbol, y ese archivo es su única casa.
+
+| Canónico | Archivo | Qué es |
+| --- | --- | --- |
+| Grilling | `skills/grilling/SKILL.md` | Entrevistar a la persona en rondas sobre un design tree, hasta que no queda ninguna pregunta formulable. |
+| Domain modeling | `skills/domain-modeling/SKILL.md` | Afilar el vocabulario del dominio mientras se decide, desafiando los términos y estresándolos con escenarios. |
+| Prototype | `skills/prototype/SKILL.md` | Construir código descartable que contesta una pregunta de diseño. |
+
+Todas son model-invoked: se llega a ellas desde `/map-new` y desde `/map-work`. La
+única puerta user-invoked es `/grill`, y abre grilling y ninguna otra.
+
+Los nombres canónicos se usan también en prosa, porque no tienen traducción
+asentada en el equipo. Es la misma decisión que la regla de idioma ya toma con los
+anglicismos que el equipo ya usa.
+
+Qué tipo de ticket invoca a cuál, y la regla que no se negocia de cada una, viven
+en la tabla de `skills/_shared/map-contract.md`. El procedimiento de cada una vive
+en su `SKILL.md`. Acá no se copian: una copia que ninguna afirmación compare es una
+futura contradicción.
+
 ## Terminos de Keiron que se conservan
 
 - **DD**: el documento de discovery de un proyecto. El mapa es su versión viva.
@@ -103,11 +126,12 @@ Un ticket sin ninguno de esos labels es AFK, y esa ausencia es la señal.
 | `/map-work` | Resuelve un ticket. Nunca más de uno por sesión, salvo research. Sobre un Project que ya tiene milestones agrega el aterrizaje, después de resolver. |
 | `/map-collapse` | Colapsa el mapa en milestones e issues de ejecucion. |
 | `/map-status` | Lee el mapa y la frontera. No escribe. |
+| `/grill` | Grilla una idea, un plan o una decisión, sin mapa de por medio. Carga grilling y para. No es una operación del mapa. |
 | `/planner-setup` | Pide la API key de Linear, la valida contra la API y la guarda. Por máquina, una vez. No es una operación del mapa. |
 
-Cada comando cierra con un **next recommended**: un token de un conjunto cerrado
-de seis que dice qué correr después. Es la costura entre comandos y lo único del
-flujo que se puede verificar mecánicamente. El conjunto vive en
+Cada comando del mapa cierra con un **next recommended**: un token de un conjunto
+cerrado de seis que dice qué correr después. Es la costura entre comandos y lo único
+del flujo que se puede verificar mecánicamente. El conjunto vive en
 `skills/_shared/map-contract.md`, y esa es su única casa: acá no se enumera, porque
 una tercera copia que ninguna afirmación compare es una futura contradicción. El
 sexto, `sdd-new`, es además la costura con el plugin hermano: se emite cuando el
@@ -135,7 +159,7 @@ comando. Es un conjunto cerrado:
 
 | Valor | Qué significa | Uso |
 | --- | --- | --- |
-| `skills/{name}/SKILL.md` | El comando rutea a una skill que conduce una disciplina. | Ninguno en este plugin todavía. |
+| `skills/{name}/SKILL.md` | El comando rutea a una skill que conduce una disciplina. | `grill.md`, desde CRM-3399. |
 | `orchestrator meta-command` | El comando lo atiende el orchestrator y no una skill. | Ninguno en este plugin todavía. |
 | `read-only` | El comando lee y reporta, y no escribe nada. | `map-status.md`, desde CRM-3395. |
 | Una ruta relativa al repo, a un archivo que existe | El comando corre un script. | `planner-setup.md`, con `scripts/install.sh`. |
