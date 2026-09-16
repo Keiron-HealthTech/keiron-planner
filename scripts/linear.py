@@ -203,6 +203,20 @@ mutation($issues: [IssueCreateInput!]!) {
 }
 """
 
+# El nombre de las variables es lo que hace legible la orientación en el sitio de
+# llamada, y es deliberado: un issueId: $a se puede leer mal, un issueId: $bloqueante
+# no. El bloqueante SIEMPRE del lado issue.
+ISSUE_RELATION_CREATE = """
+mutation($bloqueante: String!, $bloqueado: String!) {
+  issueRelationCreate(input: {
+    type: "blocks", issueId: $bloqueante, relatedIssueId: $bloqueado
+  }) {
+    success
+    issueRelation { id }
+  }
+}
+"""
+
 
 def _post(query, variables, key):
     """La ÚNICA función que toca la red. El check de runtime la rebindea desde
@@ -978,6 +992,47 @@ def _crear_labels_faltantes(ctx, key):
     return labels, creados
 
 
+def _bloqueos_de(args):
+    """Los pares ya validados: acá se rompe todo lo que se pueda romper sin haber
+    tocado la red. Un par cuyos dos ids son iguales aborta, y eso no es celo: un ticket
+    que se bloquea a sí mismo no vuelve a ser tomable nunca, y no hay ninguna operación
+    en el plugin para deshacerlo."""
+    if not args.block:
+        die(SIN_KEY,
+            "ticket:block no recibió ningún --block, y escribir cero relaciones es un "
+            "error de invocación y no un no-op silencioso",
+            "pasá al menos un --block con el id del bloqueante y el del bloqueado")
+    pares = []
+    for bloqueante, bloqueado in args.block:
+        _sin_saltos("--block", bloqueante)
+        _sin_saltos("--block", bloqueado)
+        if not bloqueante.strip() or not bloqueado.strip():
+            die(SIN_KEY,
+                "--block recibió un id vacío: %r y %r" % (bloqueante, bloqueado),
+                "pasá los dos ids, el del bloqueante primero y el del bloqueado "
+                "después")
+        if bloqueante == bloqueado:
+            die(SIN_KEY,
+                "--block recibió el mismo id de los dos lados: %r" % bloqueante,
+                "un ticket que se bloquea a sí mismo no vuelve a ser tomable, y no hay "
+                "operación en el plugin para deshacerlo")
+        pares.append((bloqueante, bloqueado))
+    return pares
+
+
+def _resolver_relaciones(payload):
+    """La puerta de issueRelationCreate, con la misma regla de tres casos que las otras
+    tres. Devuelve (ok, detalle)."""
+    errores = _errores_de(payload)
+    if errores:
+        return (False, "; ".join(errores))
+    datos = (payload.get("data") or {}).get("issueRelationCreate") or {}
+    if datos.get("success") is not True:
+        return (False,
+                "issueRelationCreate devolvió success=%s" % datos.get("success"))
+    return (True, "")
+
+
 def cmd_map_read(args):
     key = leer_key()
     payload = _post(MAP_READ_QUERY, {"project": args.project}, key)
@@ -1101,6 +1156,33 @@ def cmd_ticket_create(args):
          "createdLabels": creados}, separators=(",", ":")))
 
 
+def cmd_ticket_block(args):
+    pares = _bloqueos_de(args)      # valida todo antes de tocar la red
+    key = leer_key()
+    # El bloqueante siempre del lado issue, y esta orientación es el espejo exacto de
+    # la lectura de la frontera, que saca el bloqueante de inverseRelations.issue. Si
+    # esta punta escribiera invertido, un ticket bloqueado aparecería como tomable.
+    # No reintenta, por la misma razón que ticket:create: _post traga la falla de
+    # transporte y una relación repetida no se puede deshacer desde acá.
+    escritos = []
+    for bloqueante, bloqueado in pares:
+        ok, detalle = _resolver_relaciones(
+            _post(ISSUE_RELATION_CREATE,
+                  {"bloqueante": bloqueante, "bloqueado": bloqueado}, key))
+        if not ok:
+            die(SIN_KEY,
+                "el bloqueo de %s por %s no confirmó: %s. Bloqueos que SÍ quedaron "
+                "escritos en esta corrida: %s"
+                % (bloqueado, bloqueante, detalle,
+                   ", ".join("%s bloquea a %s" % par for par in escritos) or "ninguno"),
+                "volvé a correr solo los pares que faltan: esta rama no reintenta "
+                "sola, y repetir un par que ya entró duplicaría la relación")
+        escritos.append((bloqueante, bloqueado))
+    print(json.dumps(
+        {"blocks": [{"blocker": b, "blocked": d} for b, d in escritos]},
+        separators=(",", ":")))
+
+
 def cmd_frontier_query(args):
     ctx = json.loads(args.ctx)
     cerrados = {ctx["done"], ctx["canceled"]}
@@ -1206,8 +1288,14 @@ def construir_parser():
                                  metavar=("TITULO", "CUERPO", "LABELS"))
     p_ticket_create.set_defaults(func=cmd_ticket_create)
 
+    # Sin --ctx a propósito: ticket:block es una de las cuatro operaciones que no lo
+    # consumen. Sus dos operandos son ids de tickets creados en la misma corrida, y
+    # pasar ids adentro de una corrida es el mecanismo declarado. Repetible por la
+    # misma razón que --ticket: la segunda pasada entera entra en una invocación.
     p_ticket_block = subs.add_parser("ticket:block")
-    p_ticket_block.set_defaults(func=cmd_stub)
+    p_ticket_block.add_argument("--block", nargs=2, action="append", default=[],
+                                metavar=("BLOQUEANTE", "BLOQUEADO"))
+    p_ticket_block.set_defaults(func=cmd_ticket_block)
 
     p_frontier_query = subs.add_parser("frontier:query")
     p_frontier_query.add_argument("--ctx", required=True)
