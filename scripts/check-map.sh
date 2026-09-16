@@ -708,10 +708,15 @@ PY
 # La corrida entera se vuelca una sola vez, y solo si algo falló: el balde que falló lo
 # nombra el [N] de abajo. Cada fail lleva su número embebido en el string y escrito a
 # mano, nunca interpolado: un "[$var]" no lo extrae la afirmación 50.
+#
+# El volcado va detrás de una línea que empieza con el nombre del check, y no pelado: el
+# volcado sale por stderr ANTES que report, así que sin esa línea la primera de stderr es
+# una línea del protocolo del harness y el lector no sabe qué check abrió el archivo.
 if printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas60=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas47=ninguna'; then
   :
 else
+  echo "$CHECK_NAME: la corrida del harness dijo:" >&2
   printf '%s\n' "$salida" | sed 's/^/  /' >&2
 fi
 
