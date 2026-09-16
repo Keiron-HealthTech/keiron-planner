@@ -689,9 +689,64 @@ def caso_12():
              [t for t in mod.TIPOS if ("l-" + t) in (ids or [])], [])
 
 
+# --- el desenlace de ticket:block que cierra la brecha del enum citado -------------
+# El defecto real fue exactamente esto: la query de issueRelationCreate llevaba el
+# enum citado, type: "blocks", y GraphQL rechaza ese documento por validación antes de
+# escribir nada. Ni el AST ni este mismo harness lo agarraban antes: el AST no tiene
+# esquema contra el cual validar un enum, y un transporte mockeado que solo mira el rc
+# acepta cualquier texto de query. Este caso lee la query real que sale al POST.
+
+TICKET_BLOCK = ["ticket:block"]
+RELACION_OK = {"data": {"issueRelationCreate": {"success": True,
+                                                "issueRelation": {"id": "r-1"}}}}
+
+
+def caso_13():
+    """El enum sin comillas y la orientación issueId/relatedIssueId, más la guarda que
+    los protege: el par recíproco aborta con el transporte en cero. Los tres son el
+    defecto real: la query citada no habría validado nunca contra el esquema, y una
+    orientación invertida haría que un ticket bloqueado se leyera como tomable, porque
+    bloqueantes_abiertos lee el bloqueante del lado issueId a través de
+    inverseRelations."""
+    n = "13-ticket-block-query-real-y-orientacion"
+    rc, out, err, tr = correr(n, TICKET_BLOCK + ["--block", "CRM-1", "CRM-2"],
+                              [RELACION_OK])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "UNA sola llamada al transporte", tr.llamadas, 1)
+    q = tr.queries[0] if tr.queries else ""
+    chequear(n, "la query contiene issueRelationCreate", "issueRelationCreate" in q,
+             True)
+    chequear(n, "el enum va sin comillas", "type: blocks" in q, True)
+    chequear(n, "el enum NUNCA va citado", 'type: "blocks"' in q, False)
+    chequear(n, "issueId mapea a la variable del bloqueante",
+             "issueId: $bloqueante" in q, True)
+    chequear(n, "relatedIssueId mapea a la variable del bloqueado",
+             "relatedIssueId: $bloqueado" in q, True)
+    variables = tr.variables[0] if tr.variables else {}
+    chequear(n, "el bloqueante viajo con el id que se paso primero",
+             variables.get("bloqueante"), "CRM-1")
+    chequear(n, "el bloqueado viajo con el id que se paso segundo",
+             variables.get("bloqueado"), "CRM-2")
+    d = json_de(n, out)
+    chequear(n, "el stdout preserva la orientacion",
+             d.get("blocks"), [{"blocker": "CRM-1", "blocked": "CRM-2"}])
+
+    # Sin esta guarda, --block A B seguido de --block B A escribe dos
+    # issueRelationCreate independientes y dos tickets se bloquean mutuamente para
+    # siempre. La secuencia va vacía, así que cualquier llamada al transporte revienta
+    # con un mensaje que nombra el caso: eso es lo que hace asertable el cero.
+    r = n + "-CONTROL-par-reciproco-aborta-antes-de-la-red"
+    rc, out, err, tr = correr(r, TICKET_BLOCK + ["--block", "CRM-1", "CRM-2",
+                                                 "--block", "CRM-2", "CRM-1"], [])
+    chequear(r, "rc", rc, mod.SIN_KEY)
+    chequear(r, "stdout vacio", out, "")
+    chequear(r, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+
 CASOS = [("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("60", caso_5), ("60", caso_6), ("60", caso_7), ("60", caso_8),
-         ("60", caso_9), ("47", caso_10), ("47", caso_11), ("47", caso_12)]
+         ("60", caso_9), ("47", caso_10), ("47", caso_11), ("47", caso_12),
+         ("60", caso_13)]
 for _afirmacion, _caso in CASOS:
     AFIRMACION[0] = _afirmacion
     _caso()
@@ -738,4 +793,4 @@ casos47="$(printf '%s\n' "$salida" | sed -n 's/^casos47=//p')"
 require_nonempty "$casos47" "[47] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 plural=""
 [ "$casos" = 1 ] || plural="s"
-echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa, y $casos47 de ticket:create, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
+echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
