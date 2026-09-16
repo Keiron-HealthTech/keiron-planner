@@ -67,6 +67,29 @@ vivo: el agente nunca contesta por el humano.
 
 Un ticket sin ninguno de esos labels es AFK, y esa ausencia es la señal.
 
+## Las disciplinas
+
+Lo que una sesión conduce cuando trabaja un ticket. Cada una vive en un archivo
+del árbol, y ese archivo es su única casa.
+
+| Canónico | Archivo | Qué es |
+| --- | --- | --- |
+| Grilling | `skills/grilling/SKILL.md` | Entrevistar a la persona en rondas sobre un design tree, hasta que no queda ninguna pregunta formulable. |
+| Domain modeling | `skills/domain-modeling/SKILL.md` | Afilar el vocabulario del dominio mientras se decide, desafiando los términos y estresándolos con escenarios. |
+| Prototype | `skills/prototype/SKILL.md` | Construir código descartable que contesta una pregunta de diseño. |
+
+Todas son model-invoked: se llega a ellas desde `/map-new` y desde `/map-work`. La
+única puerta user-invoked es `/grill`, y abre grilling y ninguna otra.
+
+Los nombres canónicos se usan también en prosa, porque no tienen traducción
+asentada en el equipo. Es la misma decisión que la regla de idioma ya toma con los
+anglicismos que el equipo ya usa.
+
+Qué tipo de ticket invoca a cuál, y la regla que no se negocia de cada una, viven
+en la tabla de `skills/_shared/map-contract.md`. El procedimiento de cada una vive
+en su `SKILL.md`. Acá no se copian: una copia que ninguna afirmación compare es una
+futura contradicción.
+
 ## Terminos de Keiron que se conservan
 
 - **DD**: el documento de discovery de un proyecto. El mapa es su versión viva.
