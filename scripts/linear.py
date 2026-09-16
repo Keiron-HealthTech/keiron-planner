@@ -998,7 +998,17 @@ def _bloqueos_de(args):
     """Los pares ya validados: acá se rompe todo lo que se pueda romper sin haber
     tocado la red. Un par cuyos dos ids son iguales aborta, y eso no es celo: un ticket
     que se bloquea a sí mismo no vuelve a ser tomable nunca, y no hay ninguna operación
-    en el plugin para deshacerlo."""
+    en el plugin para deshacerlo.
+
+    El mismo criterio corre contra los pares que ya pasaron por acá en esta misma
+    invocación: un --block exacto repetido, o su recíproco (A bloqueado por B junto
+    con B bloqueado por A), también abortan, porque las dos formas terminan en dos
+    issueRelationCreate independientes y ningún guard de más abajo las nota. Esto NO
+    es un detector de ciclos: A→B, B→C y C→A en la misma corrida pasa entero, porque
+    cada par se compara solo contra los que ya vinieron antes y no contra la cadena
+    completa. Tampoco cubre B bloqueado por A escrito en una invocación aparte de la
+    que trajo A bloqueado por B: acá nunca se leen las relaciones que ya existen en
+    Linear, así que ese caso cruzado de invocaciones no tiene cómo detectarse acá."""
     if not args.block:
         die(SIN_KEY,
             "ticket:block no recibió ningún --block, y escribir cero relaciones es un "
@@ -1018,6 +1028,18 @@ def _bloqueos_de(args):
                 "--block recibió el mismo id de los dos lados: %r" % bloqueante,
                 "un ticket que se bloquea a sí mismo no vuelve a ser tomable, y no hay "
                 "operación en el plugin para deshacerlo")
+        if (bloqueante, bloqueado) in pares:
+            die(SIN_KEY,
+                "--block repitió el mismo par dos veces: %r bloqueado por %r" %
+                (bloqueado, bloqueante),
+                "sacá el --block duplicado, escribir la misma relación dos veces no "
+                "aporta nada")
+        if (bloqueado, bloqueante) in pares:
+            die(SIN_KEY,
+                "--block recibió %r bloqueado por %r y también %r bloqueado por %r "
+                "en la misma corrida" % (bloqueado, bloqueante, bloqueante, bloqueado),
+                "elegí un solo sentido: dos tickets bloqueándose mutuamente no vuelven "
+                "a ser tomables nunca")
         pares.append((bloqueante, bloqueado))
     return pares
 
