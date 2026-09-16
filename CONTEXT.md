@@ -126,11 +126,12 @@ futura contradicción.
 | `/map-work` | Resuelve un ticket. Nunca más de uno por sesión, salvo research. Sobre un Project que ya tiene milestones agrega el aterrizaje, después de resolver. |
 | `/map-collapse` | Colapsa el mapa en milestones e issues de ejecucion. |
 | `/map-status` | Lee el mapa y la frontera. No escribe. |
+| `/grill` | Grilla una idea, un plan o una decisión, sin mapa de por medio. Carga grilling y para. No es una operación del mapa. |
 | `/planner-setup` | Pide la API key de Linear, la valida contra la API y la guarda. Por máquina, una vez. No es una operación del mapa. |
 
-Cada comando cierra con un **next recommended**: un token de un conjunto cerrado
-de seis que dice qué correr después. Es la costura entre comandos y lo único del
-flujo que se puede verificar mecánicamente. El conjunto vive en
+Cada comando del mapa cierra con un **next recommended**: un token de un conjunto
+cerrado de seis que dice qué correr después. Es la costura entre comandos y lo único
+del flujo que se puede verificar mecánicamente. El conjunto vive en
 `skills/_shared/map-contract.md`, y esa es su única casa: acá no se enumera, porque
 una tercera copia que ninguna afirmación compare es una futura contradicción. El
 sexto, `sdd-new`, es además la costura con el plugin hermano: se emite cuando el
@@ -158,7 +159,7 @@ comando. Es un conjunto cerrado:
 
 | Valor | Qué significa | Uso |
 | --- | --- | --- |
-| `skills/{name}/SKILL.md` | El comando rutea a una skill que conduce una disciplina. | Ninguno en este plugin todavía. |
+| `skills/{name}/SKILL.md` | El comando rutea a una skill que conduce una disciplina. | `grill.md`, desde CRM-3399. |
 | `orchestrator meta-command` | El comando lo atiende el orchestrator y no una skill. | Ninguno en este plugin todavía. |
 | `read-only` | El comando lee y reporta, y no escribe nada. | `map-status.md`, desde CRM-3395. |
 | Una ruta relativa al repo, a un archivo que existe | El comando corre un script. | `planner-setup.md`, con `scripts/install.sh`. |
