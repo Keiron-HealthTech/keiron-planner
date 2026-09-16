@@ -169,7 +169,7 @@ comando. Es un conjunto cerrado:
 
 | Valor | Qué significa | Uso |
 | --- | --- | --- |
-| `skills/{name}/SKILL.md` | El comando rutea a una skill que conduce una disciplina. | `grill.md`, desde CRM-3399. |
+| `skills/{name}/SKILL.md` | El comando rutea a una skill que lleva su cuerpo: una disciplina, o el procedimiento del comando. | `grill.md`, desde CRM-3399, y `map-new.md`, desde CRM-3400. |
 | `orchestrator meta-command` | El comando lo atiende el orchestrator y no una skill. | Ninguno en este plugin todavía. |
 | `read-only` | El comando lee y reporta, y no escribe nada. | `map-status.md`, desde CRM-3395. |
 | Una ruta relativa al repo, a un archivo que existe | El comando corre un script. | `planner-setup.md`, con `scripts/install.sh`. |
