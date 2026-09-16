@@ -21,7 +21,7 @@ para que el adapter tenga su contrato a mano.
 | `map:create` | Adopta o crea el Project y escribe el mapa en su overview. |
 | `map:read` | Solo lectura. Devuelve el contenido y una huella por encabezado. |
 | `map:write` | Un read-modify-write entero adentro de una sola invocación. |
-| `ticket:create` | Un issue del Project cuyo cuerpo es la pregunta y nada más. |
+| `ticket:create` | Los tickets de decisión de una pasada, en una sola invocación, cada uno con un cuerpo que es la pregunta y nada más. |
 | `ticket:block` | La relación nativa de bloqueo, en una segunda pasada. |
 | `frontier:query` | Los tickets abiertos, sin bloqueantes abiertos y sin assignee. |
 | `ticket:claim` | Tomar. El primer write de la sesión. |

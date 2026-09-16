@@ -20,6 +20,13 @@ LABELS = ["map", "map:research", "map:prototype", "map:grilling", "map:task",
 # Aparte de LABELS a propósito: Discovery es del equipo, se busca y nunca se crea.
 DISCOVERY = "Discovery"
 
+# Los cuatro tipos y los tres roles, tomados de LABELS por posición y nunca reescritos:
+# una segunda copia de esos nombres se desincroniza en el primer rename, y el orden de
+# LABELS ya es contrato. El primero de la lista, map, no es un tipo, y el noveno,
+# map:no-landing, lo aplica work:write y nunca un ticket de decisión.
+TIPOS = LABELS[1:5]
+HITL = LABELS[5:8]
+
 # El nombre del label del mapa, no su id: el ctx que cierra /map-new todavía dice
 # map: null porque el label nació después del preflight. Constante y no argumento,
 # para que no se pueda pasar el equivocado.
@@ -173,6 +180,25 @@ mutation($team: String!, $name: String!, $content: String!) {
   projectCreate(input: { teamId: $team, name: $name, content: $content }) {
     success
     project { id url }
+  }
+}
+"""
+
+
+ISSUE_LABEL_CREATE = """
+mutation($nombre: String!) {
+  issueLabelCreate(input: { name: $nombre }) {
+    success
+    issueLabel { id name }
+  }
+}
+"""
+
+ISSUE_BATCH_CREATE = """
+mutation($issues: [IssueCreateInput!]!) {
+  issueBatchCreate(input: { issues: $issues }) {
+    success
+    issues { id identifier title url }
   }
 }
 """
@@ -850,6 +876,108 @@ def truncadas(proyecto):
     return cortadas
 
 
+def _tickets_de(args):
+    """El ctx parseado y los tickets ya validados: acá se rompe todo lo que se pueda
+    romper sin haber tocado la red, que es lo que hace que una invocación mal formada
+    no gaste un round trip. Devuelve (ctx, tickets) con cada ticket como
+    (titulo, cuerpo, nombres) y el orden de la línea de comandos preservado.
+
+    La guarda del encabezado NO se aplica acá, y es deliberado: su propósito declarado
+    es la línea del mapa, y el cuerpo de una issue no es una línea del mapa."""
+    try:
+        ctx = json.loads(args.ctx)
+    except ValueError:
+        die(SIN_KEY, "--ctx no parsea como JSON: %r" % args.ctx,
+            "pasá el blob que emitió el preflight, sin editarlo")
+    if not args.ticket:
+        die(SIN_KEY,
+            "ticket:create no recibió ningún --ticket, y crear cero tickets es un "
+            "error de invocación y no un no-op silencioso",
+            "pasá al menos un --ticket con su título, su cuerpo y sus labels")
+    permitidos = TIPOS + HITL
+    tickets = []
+    for titulo, cuerpo, etiquetas in args.ticket:
+        _sin_saltos("--ticket", titulo)
+        _sin_saltos("--ticket", cuerpo)
+        if not titulo.strip() or not cuerpo.strip():
+            die(SIN_KEY,
+                "--ticket recibió un título o un cuerpo vacío: %r" % titulo,
+                "el título es la pregunta en prosa y el cuerpo es esa pregunta y nada "
+                "más; ninguno de los dos puede ir vacío")
+        nombres = [n for n in etiquetas.split(",") if n]
+        ajenos = [n for n in nombres if n not in permitidos]
+        if ajenos:
+            die(SIN_KEY,
+                "--ticket %r recibió labels que no son ni un tipo ni un rol: %s"
+                % (titulo, ", ".join(ajenos)),
+                "pasá a lo sumo un tipo de %s y los roles de %s; map y map:no-landing "
+                "no se piden acá" % (", ".join(TIPOS), ", ".join(HITL)))
+        del_tipo = [n for n in nombres if n in TIPOS]
+        if len(del_tipo) > 1:
+            die(SIN_KEY,
+                "--ticket %r lleva más de un tipo a la vez y un ticket tiene a lo "
+                "sumo uno: %s" % (titulo, ", ".join(del_tipo)),
+                "dejá un solo tipo, o ninguno si el ticket es AFK, y volvé a correr")
+        tickets.append((titulo, cuerpo, nombres))
+    return ctx, tickets
+
+
+def _resolver_label(payload):
+    """La puerta de issueLabelCreate: la misma regla de tres casos que
+    _resolver_escritura y _resolver_creacion, sobre su propia clave del payload.
+    Devuelve (ok, detalle, etiqueta)."""
+    errores = _errores_de(payload)
+    if errores:
+        return (False, "; ".join(errores), {})
+    datos = (payload.get("data") or {}).get("issueLabelCreate") or {}
+    if datos.get("success") is not True:
+        return (False, "issueLabelCreate devolvió success=%s" % datos.get("success"),
+                {})
+    return (True, "", datos.get("issueLabel") or {})
+
+
+def _resolver_tickets(payload):
+    """La puerta de issueBatchCreate, con la misma regla de tres casos y sobre la otra
+    clave del payload. Es una función aparte y no un parámetro de las otras dos, que es
+    la decisión que ya se tomó para _resolver_creacion. Devuelve (ok, detalle,
+    issues)."""
+    errores = _errores_de(payload)
+    if errores:
+        return (False, "; ".join(errores), [])
+    datos = (payload.get("data") or {}).get("issueBatchCreate") or {}
+    if datos.get("success") is not True:
+        return (False, "issueBatchCreate devolvió success=%s" % datos.get("success"),
+                [])
+    return (True, "", datos.get("issues") or [])
+
+
+def _crear_labels_faltantes(ctx, key):
+    """La ÚNICA casa que crea labels en todo el archivo, y por eso el recorrido es de
+    LABELS y no de una lista propia. teamId va omitido a propósito: los labels del
+    plugin son workspace-level y planos, nunca label groups, porque un grupo no se
+    puede aplicar a un issue y partiría el nombre canónico map:research en la UI.
+
+    Discovery no puede caer acá y eso es gratis de verificar: vive fuera de LABELS y
+    fuera de ctx["labels"], y esa forma es lo que vuelve chequeable la prohibición de
+    crearlo. Devuelve (labels, creados)."""
+    labels = dict(ctx.get("labels") or {})
+    creados = []
+    for nombre in LABELS:
+        if labels.get(nombre) is not None:
+            continue
+        ok, detalle, etiqueta = _resolver_label(
+            _post(ISSUE_LABEL_CREATE, {"nombre": nombre}, key))
+        if not ok:
+            die(SIN_KEY,
+                "el label %s no se pudo crear: %s. Labels que SÍ quedaron creados en "
+                "esta corrida: %s" % (nombre, detalle, ", ".join(creados) or "ninguno"),
+                "corré el preflight de nuevo ANTES de reintentar: el ctx que tenés ya "
+                "no describe el workspace")
+        labels[nombre] = etiqueta.get("id")
+        creados.append(nombre)
+    return labels, creados
+
+
 def cmd_map_read(args):
     key = leer_key()
     payload = _post(MAP_READ_QUERY, {"project": args.project}, key)
@@ -935,6 +1063,42 @@ def cmd_map_write(args):
     die(SIN_KEY,
         "no se pudo escribir el mapa; el último intento dijo: %s" % detalle,
         "mirá el mensaje de arriba y volvé a correr el comando")
+
+
+def cmd_ticket_create(args):
+    ctx, tickets = _tickets_de(args)     # valida todo antes de tocar la red
+    key = leer_key()
+    # Los labels que faltan se crean UNA vez por corrida, y por eso la invocación crea
+    # todos los tickets de la pasada: el preflight corre una vez por conductor y el ctx
+    # es inmutable, así que una segunda invocación leería los mismos null y volvería a
+    # crearlos. No reintenta: _post traga la falla de transporte, así que ninguna rama
+    # puede distinguir "no llegó" de "llegó y se perdió la respuesta", y un
+    # issueBatchCreate repetido deja N tickets hermanos que nada sabe deshacer.
+    labels, creados = _crear_labels_faltantes(ctx, key)
+    # Discovery se usa cuando está y se saltea en silencio cuando no. Nunca se crea.
+    comunes = [labels[LABEL_MAPA]]
+    if ctx.get("discovery") is not None:
+        comunes.append(ctx["discovery"])
+    entradas = []
+    for titulo, cuerpo, nombres in tickets:
+        # stateId explícito: sin él la issue nace en Triage. estimate en cero: un
+        # ticket de decisión no se estima.
+        entradas.append({"teamId": ctx["team"], "projectId": args.project,
+                         "title": titulo, "description": cuerpo,
+                         "stateId": ctx["default"], "estimate": 0,
+                         "labelIds": comunes + [labels[n] for n in nombres]})
+    ok, detalle, issues = _resolver_tickets(
+        _post(ISSUE_BATCH_CREATE, {"issues": entradas}, key))
+    if not ok:
+        die(SIN_KEY,
+            "el issueBatchCreate no confirmó: %s. Labels que SÍ quedaron creados en "
+            "esta corrida: %s" % (detalle, ", ".join(creados) or "ninguno"),
+            "corré el preflight de nuevo ANTES de reintentar: el ctx que tenés ya no "
+            "describe el workspace, porque esos labels ahora existen")
+    print(json.dumps(
+        {"tickets": [{"identifier": i.get("identifier"), "id": i.get("id"),
+                      "title": i.get("title"), "url": i.get("url")} for i in issues],
+         "createdLabels": creados}, separators=(",", ":")))
 
 
 def cmd_frontier_query(args):
@@ -1031,9 +1195,16 @@ def construir_parser():
     p_map_write.add_argument("--expect-sections")
     p_map_write.set_defaults(func=cmd_map_write)
 
+    # --ticket copia la forma de --append-decision: nargs fijo, repetible y con el
+    # default explícito. Repetible por la misma razón por la que map:write tiene sus
+    # cuatro flags repetibles: la pasada entera entra en una sola invocación. LABELS es
+    # una lista separada por comas, y cero labels se pasa como "".
     p_ticket_create = subs.add_parser("ticket:create")
     p_ticket_create.add_argument("--ctx", required=True)
-    p_ticket_create.set_defaults(func=cmd_stub)
+    p_ticket_create.add_argument("--project", required=True)
+    p_ticket_create.add_argument("--ticket", nargs=3, action="append", default=[],
+                                 metavar=("TITULO", "CUERPO", "LABELS"))
+    p_ticket_create.set_defaults(func=cmd_ticket_create)
 
     p_ticket_block = subs.add_parser("ticket:block")
     p_ticket_block.set_defaults(func=cmd_stub)
