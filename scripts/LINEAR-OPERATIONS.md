@@ -306,8 +306,15 @@ distingue a cada uno es qué dice que aterrizó y cómo terminar a mano:
 | 1, `issueBatchCreate` | nada | volver a correr la misma invocación entera |
 | 2, `issueRelationCreate` | los tickets nuevos, y cuántos bloqueos entraron | `ticket:block` con los pares que faltan, y después esta misma invocación sin `--new-ticket` ni `--block` |
 | 3, `commentCreate` | los tickets y su cableado | esta misma invocación sin `--new-ticket` ni `--block` |
-| 4, `issueUpdate` | los tickets, el cableado y **el comentario** | cerrar el ticket a mano y correr `map:write`: repetir la invocación duplicaría el comentario |
+| 4, `issueUpdate` | los tickets, el cableado y **el comentario**; el estado en sí queda incierto, porque un timeout no distingue que el `issueUpdate` no haya llegado de que haya llegado y se perdió la respuesta | fijarse en Linear si el ticket ya cambió de estado antes de tocarlo a mano, y después correr `map:write`: repetir la invocación duplicaría el comentario. Nombra además los `--remove-fog`/`--append-fog` pendientes, para que la niebla ya validada contra el comentario no se pierda en silencio |
 | 5, `projectUpdate` | todo menos la línea del mapa | **la invocación exacta de `map:write` que falta**, impresa con su `--project`, la url real, el gist y los `--remove-fog` que correspondan |
+
+La fila 4 no tiene la misma suerte que la 5: en el punto de la falla, la url que
+`--append-decision` necesita la devolvería el mismo `issueUpdate` que acaba de fallar,
+así que su remediación no puede imprimir la invocación completa. `ticket:rule-out` no
+carga esa restricción: `--append-out-of-scope` lleva la viñeta que ya está en el plan y
+no depende de ninguna url, así que ahí la fila 4 sí imprime la invocación entera, igual
+que la 5.
 
 La última fila es la mejor remediación del archivo y es gratis: en ese punto el adapter
 ya tiene el project, la url que le devolvió el `issueUpdate` y el gist. Es también la
@@ -338,9 +345,12 @@ primeras escrituras casi siempre están vacías, pero casi siempre no es siempre
 la misma forma cuesta cero: sacar un ticket de alcance puede abrir preguntas nuevas.
 
 Las cinco escrituras van en el mismo orden y con las mismas condiciones que las de
-`ticket:resolve`, y las seis fallas dicen lo mismo con dos diferencias: la escritura 4
-manda el `canceled` del ctx en vez del `done`, y la remediación de la escritura 5
-imprime un `map:write --append-out-of-scope` en vez de un `--append-decision`.
+`ticket:resolve`, y las seis fallas dicen lo mismo con tres diferencias: la escritura 4
+manda el `canceled` del ctx en vez del `done`; la remediación de la escritura 4, a
+diferencia de la de `ticket:resolve`, sí imprime la invocación entera de `map:write`,
+porque `--append-out-of-scope` no depende de ninguna url; y la remediación de la
+escritura 5 imprime un `map:write --append-out-of-scope` en vez de un
+`--append-decision`.
 
 Es la **única operación destructiva del adapter**: cierra un ticket sin resolverlo. El
 comentario se escribe igual, con sus seis secciones, así que la decisión de sacarlo de

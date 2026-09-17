@@ -744,10 +744,10 @@ def caso_13():
 
 
 
-# --- los diez desenlaces de las tres operaciones que cierran un ticket -------------
+# --- los once desenlaces de las tres operaciones que cierran un ticket -------------
 # Mismo aparato que la 60 y la 47, en el mismo harness: el seam es
 # mod.urllib.request.urlopen y nunca mod._post, así que el endurecimiento del transporte
-# corre de verdad. Lo que estos diez agregan sobre el AST es todo lo que el AST no puede
+# corre de verdad. Lo que estos once agregan sobre el AST es todo lo que el AST no puede
 # ver: el ORDEN real en que salen las queries, el markdown que el adapter renderiza, el
 # content que viaja al mapa, y el cero del transporte en las abortadas antes de la red.
 
@@ -802,6 +802,7 @@ NUEVOS_OK = {"data": {"issueBatchCreate": {"success": True, "issues": [
 COMENTADO = {"data": {"commentCreate": {"success": True, "comment": {
     "id": "c-1", "url": URL_CERRADO + "#comment-c-1"}}}}
 COMENTADO_FALSO = {"data": {"commentCreate": {"success": False, "comment": None}}}
+CIERRE_FALSO = {"data": {"issueUpdate": {"success": False, "issue": None}}}
 
 
 def caso_14():
@@ -1047,12 +1048,39 @@ def caso_23():
     chequear(r, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
 
 
+def caso_24():
+    """La cuarta escritura falla, antes de llegar a la quinta: CUATRO POSTs, sin afirmar
+    que el estado no cambio (un timeout no distingue eso de que haya cambiado y se haya
+    perdido la respuesta), y nombrando los flags de niebla pendientes, porque a esta
+    altura todavia no hay url para imprimir la invocacion entera de map:write. Mismo
+    desenlace que el caso 20 mide para la quinta escritura, ahora para la cuarta."""
+    n = "24-el-issueupdate-falla-antes-del-mapa"
+    rc, out, err, tr = correr(
+        n, RESOLVER + secciones(**{SEIS[3]: ["se graduo " + GRADUADA]}) + GIST +
+        NUEVOS + CABLE + ["--remove-fog", GRADUADA,
+                          "--append-fog",
+                          "**Una niebla nueva.** que abre esta resolucion"],
+        [NUEVOS_OK, RELACION_OK, COMENTADO, CIERRE_FALSO])
+    chequear(n, "rc", rc, mod.SIN_KEY)
+    chequear(n, "CUATRO llamadas al transporte", tr.llamadas, 4)
+    chequear(n, "stderr NO afirma que el estado no cambio",
+             "no se pudo cambiar" in err, False)
+    chequear(n, "stderr admite que puede haber cambiado igual",
+             "puede que" in err, True)
+    chequear(n, "stderr nombra el remove-fog pendiente",
+             "--remove-fog" in err and GRADUADA in err, True)
+    chequear(n, "stderr nombra el append-fog pendiente",
+             "--append-fog" in err and "Una niebla nueva." in err, True)
+    chequear(n, "y dice que el comentario ya esta escrito", "comentario" in err, True)
+    chequear(n, "NUNCA sugiere repetir ticket:resolve", "ticket:resolve" in err, False)
+
+
 CASOS = [("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("60", caso_5), ("60", caso_6), ("60", caso_7), ("60", caso_8),
          ("60", caso_9), ("47", caso_10), ("47", caso_11), ("47", caso_12),
          ("60", caso_13), ("61", caso_14), ("61", caso_15), ("61", caso_16),
          ("61", caso_17), ("61", caso_18), ("61", caso_19), ("61", caso_20),
-         ("61", caso_21), ("61", caso_22), ("61", caso_23)]
+         ("61", caso_21), ("61", caso_22), ("61", caso_23), ("61", caso_24)]
 for _afirmacion, _caso in CASOS:
     AFIRMACION[0] = _afirmacion
     _caso()

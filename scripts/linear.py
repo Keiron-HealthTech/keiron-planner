@@ -1643,13 +1643,28 @@ def cmd_ticket_resolve(args):
             "estado y el mapa todavía no se escribieron")
     ok, detalle, issue = _cambiar_estado(plan["issue"], {"stateId": ctx["done"]}, key)
     if not ok:
+        # _post traga la falla de transporte, así que un timeout acá no distingue "el
+        # issueUpdate no llegó" de "llegó y se perdió la respuesta": el estado puede
+        # haber cambiado igual. Nombrar los --remove-fog/--append-fog pendientes es lo
+        # único posible en este punto, porque la url que --append-decision necesita
+        # todavía no existe: la devuelve el mismo issueUpdate que acaba de fallar.
+        pendiente = []
+        for titulo in plan["graduadas"]:
+            pendiente += ["--remove-fog", titulo]
+        for vineta in plan["niebla"]:
+            pendiente += ["--append-fog", vineta[2:]]
+        niebla = (" Sumale estos flags de niebla al map:write de más abajo, que si no "
+                  "se pierden para siempre: %s."
+                  % " ".join(_citar(t) for t in pendiente)) if pendiente else ""
         die(SIN_KEY,
-            "el estado no se pudo cambiar: %s. El comentario de resolución YA está "
-            "escrito en el ticket, así que repetir esta invocación lo duplicaría"
-            % detalle,
-            "cerrá el ticket a mano en Linear y después corré map:write --project %s "
-            "--append-decision con la url del ticket y el gist, para dejar la línea en "
-            "el mapa" % _citar(args.project))
+            "el estado no se pudo confirmar: %s. Puede que el ticket ya esté en Done y "
+            "puede que no: un timeout no distingue las dos. El comentario de "
+            "resolución YA está escrito en el ticket, así que repetir esta invocación "
+            "lo duplicaría.%s" % (detalle, niebla),
+            "fijate en Linear si el ticket ya quedó en Done antes de tocarlo; si no, "
+            "cerralo a mano. Después corré map:write --project %s --append-decision "
+            "con la url del ticket y el gist, para dejar la línea en el mapa"
+            % _citar(args.project))
     url = issue.get("url") or ""
     ediciones = {ANCLA_DECISIONES: ([], ["- %s: %s" % (url, plan["gist"])])}
     if plan["graduadas"] or plan["niebla"]:
@@ -1734,12 +1749,23 @@ def cmd_ticket_rule_out(args):
     ok, detalle, issue = _cambiar_estado(plan["issue"],
                                          {"stateId": ctx["canceled"]}, key)
     if not ok:
+        # A diferencia de la resolución, acá la remediación SÍ puede imprimir la
+        # invocación exacta: --append-out-of-scope lleva la viñeta que ya está en plan,
+        # y no una url que solo devolvería el issueUpdate que acaba de fallar.
+        faltante = ["map:write", "--project", args.project,
+                    "--append-out-of-scope", plan["vineta"]]
+        for titulo in plan["graduadas"]:
+            faltante += ["--remove-fog", titulo]
+        for vineta in plan["niebla"]:
+            faltante += ["--append-fog", vineta[2:]]
         die(SIN_KEY,
-            "el estado no se pudo cambiar: %s. El comentario YA está escrito en el "
-            "ticket, así que repetir esta invocación lo duplicaría" % detalle,
-            "cancelá el ticket a mano en Linear y después corré map:write --project %s "
-            "--append-out-of-scope con la viñeta, para dejar la línea en el mapa"
-            % _citar(args.project))
+            "el estado no se pudo confirmar: %s. Puede que el ticket ya esté cancelado "
+            "y puede que no: un timeout no distingue las dos. El comentario YA está "
+            "escrito en el ticket, así que repetir esta invocación lo duplicaría"
+            % detalle,
+            "fijate en Linear si el ticket ya quedó cancelado antes de tocarlo; si no, "
+            "cancelalo a mano. Después corré exactamente esto para dejar la línea en "
+            "el mapa: linear.py %s" % " ".join(_citar(t) for t in faltante))
     ediciones = {ANCLA_FUERA: ([], ["- %s" % plan["vineta"]])}
     if plan["graduadas"] or plan["niebla"]:
         ediciones[ANCLA_NIEBLA] = (plan["graduadas"], plan["niebla"])
