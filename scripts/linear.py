@@ -592,6 +592,98 @@ def _cuerpo_de_secciones(args):
                        for nombre in SECCIONES)
 
 
+def _validar_ticket(etiqueta, titulo, cuerpo, etiquetas):
+    """Las cuatro guardas de un ticket de decisión nuevo, sobre los tres valores que
+    llegaron por argumento. La comparten el --ticket de ticket:create y el --new-ticket
+    de las dos operaciones que cierran un ticket, y la etiqueta es un parámetro para que
+    el mensaje nombre el flag que la persona escribió, igual que en _validar_vineta.
+    Devuelve (titulo, cuerpo, nombres)."""
+    _sin_saltos(etiqueta, titulo)
+    _sin_saltos(etiqueta, cuerpo)
+    if not titulo.strip() or not cuerpo.strip():
+        die(SIN_KEY,
+            "%s recibió un título o un cuerpo vacío: %r" % (etiqueta, titulo),
+            "el título es la pregunta en prosa y el cuerpo es esa pregunta y nada "
+            "más; ninguno de los dos puede ir vacío")
+    nombres = [n for n in etiquetas.split(",") if n]
+    ajenos = [n for n in nombres if n not in TIPOS + HITL]
+    if ajenos:
+        die(SIN_KEY,
+            "%s %r recibió labels que no son ni un tipo ni un rol: %s"
+            % (etiqueta, titulo, ", ".join(ajenos)),
+            "pasá a lo sumo un tipo de %s y los roles de %s; map y map:no-landing "
+            "no se piden acá" % (", ".join(TIPOS), ", ".join(HITL)))
+    del_tipo = [n for n in nombres if n in TIPOS]
+    if len(del_tipo) > 1:
+        die(SIN_KEY,
+            "%s %r lleva más de un tipo a la vez y un ticket tiene a lo "
+            "sumo uno: %s" % (etiqueta, titulo, ", ".join(del_tipo)),
+            "dejá un solo tipo, o ninguno si el ticket es AFK, y volvé a correr")
+    return (titulo, cuerpo, nombres)
+
+
+def _validar_par(etiqueta, sustantivo, pares, bloqueante, bloqueado):
+    """Las tres guardas de un par de bloqueo, contra los pares que ya pasaron por acá en
+    esta misma invocación. La comparten el --block de ticket:block, donde los dos lados
+    son ids, y el de las dos operaciones que cierran un ticket, donde son títulos: el
+    sustantivo es un parámetro para que el mensaje diga cuál de los dos recibió.
+
+    Un par cuyos dos lados son iguales aborta, y eso no es celo: un ticket que se bloquea
+    a sí mismo no vuelve a ser tomable nunca, y no hay ninguna operación en el plugin
+    para deshacerlo. El mismo criterio corre contra un --block exacto repetido y contra
+    su recíproco, porque las dos formas terminan en dos issueRelationCreate
+    independientes y ningún guard de más abajo las nota.
+
+    Esto NO es un detector de ciclos: A→B, B→C y C→A en la misma corrida pasa entero,
+    porque cada par se compara solo contra los que ya vinieron antes y no contra la
+    cadena completa. Tampoco cubre B bloqueado por A escrito en una invocación aparte de
+    la que trajo A bloqueado por B: acá nunca se leen las relaciones que ya existen en
+    Linear, así que ese caso cruzado de invocaciones no tiene cómo detectarse acá."""
+    if bloqueante == bloqueado:
+        die(SIN_KEY,
+            "%s recibió el mismo %s de los dos lados: %r"
+            % (etiqueta, sustantivo, bloqueante),
+            "un ticket que se bloquea a sí mismo no vuelve a ser tomable, y no hay "
+            "operación en el plugin para deshacerlo")
+    if (bloqueante, bloqueado) in pares:
+        die(SIN_KEY,
+            "%s repitió el mismo par dos veces: %r bloqueado por %r" %
+            (etiqueta, bloqueado, bloqueante),
+            "sacá el %s duplicado, escribir la misma relación dos veces no "
+            "aporta nada" % etiqueta)
+    if (bloqueado, bloqueante) in pares:
+        die(SIN_KEY,
+            "%s recibió %r bloqueado por %r y también %r bloqueado por %r "
+            "en la misma corrida"
+            % (etiqueta, bloqueado, bloqueante, bloqueante, bloqueado),
+            "elegí un solo sentido: dos tickets bloqueándose mutuamente no vuelven "
+            "a ser tomables nunca")
+
+
+def _cableado_de(args, tickets):
+    """Los pares de --block resueltos contra los títulos de los --new-ticket de ESTA
+    misma invocación, y nunca contra un id: los ids no existen hasta que la primera
+    escritura vuelve. Los dos lados tienen que ser tickets nuevos, así que cablear el
+    ticket que se está cerrando no matchea y aborta: ese ticket queda en Done en la
+    escritura siguiente, y la rama que sí necesita bloquearlo es la de otro rol, que no
+    pasa por esta operación. Devuelve los pares de títulos, en el orden de argv."""
+    titulos = [titulo for titulo, _, _ in tickets]
+    pares = []
+    for bloqueante, bloqueado in args.block:
+        for lado in (bloqueante, bloqueado):
+            cuantos = titulos.count(lado)
+            if cuantos != 1:
+                die(SIN_KEY,
+                    "--block nombra %r, y entre los --new-ticket de esta invocación "
+                    "ese título aparece %s veces" % (lado, cuantos),
+                    "los dos lados de un --block tienen que ser el título exacto de un "
+                    "--new-ticket de esta misma invocación, y de uno solo; los "
+                    "declarados son: %s" % (", ".join(titulos) or "ninguno"))
+        _validar_par("--block", "título", pares, bloqueante, bloqueado)
+        pares.append((bloqueante, bloqueado))
+    return pares
+
+
 def _issue_de(args):
     """El identificador del ticket sobre el que se opera, validado. Lo comparten las tres
     operaciones que escriben sobre un ticket ya existente."""
@@ -664,8 +756,10 @@ def _resolucion_de(args):
     _validar_gist("--gist", args.gist)
     _no_es_encabezado("--gist", args.gist)
     niebla, graduadas = _niebla_de(args)
+    tickets = [_validar_ticket("--new-ticket", t, c, e) for t, c, e in args.new_ticket]
     return {"ctx": ctx, "issue": issue, "cuerpo": cuerpo, "gist": args.gist,
             "niebla": niebla, "graduadas": graduadas,
+            "tickets": tickets, "pares": _cableado_de(args, tickets),
             "esperadas": _esperadas_de(args)}
 
 
@@ -1068,42 +1162,13 @@ def _tickets_de(args):
 
     La guarda del encabezado NO se aplica acá, y es deliberado: su propósito declarado
     es la línea del mapa, y el cuerpo de una issue no es una línea del mapa."""
-    try:
-        ctx = json.loads(args.ctx)
-    except ValueError:
-        die(SIN_KEY, "--ctx no parsea como JSON: %r" % args.ctx,
-            "pasá el blob que emitió el preflight, sin editarlo")
+    ctx = _ctx_de(args)
     if not args.ticket:
         die(SIN_KEY,
             "ticket:create no recibió ningún --ticket, y crear cero tickets es un "
             "error de invocación y no un no-op silencioso",
             "pasá al menos un --ticket con su título, su cuerpo y sus labels")
-    permitidos = TIPOS + HITL
-    tickets = []
-    for titulo, cuerpo, etiquetas in args.ticket:
-        _sin_saltos("--ticket", titulo)
-        _sin_saltos("--ticket", cuerpo)
-        if not titulo.strip() or not cuerpo.strip():
-            die(SIN_KEY,
-                "--ticket recibió un título o un cuerpo vacío: %r" % titulo,
-                "el título es la pregunta en prosa y el cuerpo es esa pregunta y nada "
-                "más; ninguno de los dos puede ir vacío")
-        nombres = [n for n in etiquetas.split(",") if n]
-        ajenos = [n for n in nombres if n not in permitidos]
-        if ajenos:
-            die(SIN_KEY,
-                "--ticket %r recibió labels que no son ni un tipo ni un rol: %s"
-                % (titulo, ", ".join(ajenos)),
-                "pasá a lo sumo un tipo de %s y los roles de %s; map y map:no-landing "
-                "no se piden acá" % (", ".join(TIPOS), ", ".join(HITL)))
-        del_tipo = [n for n in nombres if n in TIPOS]
-        if len(del_tipo) > 1:
-            die(SIN_KEY,
-                "--ticket %r lleva más de un tipo a la vez y un ticket tiene a lo "
-                "sumo uno: %s" % (titulo, ", ".join(del_tipo)),
-                "dejá un solo tipo, o ninguno si el ticket es AFK, y volvé a correr")
-        tickets.append((titulo, cuerpo, nombres))
-    return ctx, tickets
+    return ctx, [_validar_ticket("--ticket", t, c, e) for t, c, e in args.ticket]
 
 
 def _resolver_label(payload):
@@ -1191,13 +1256,9 @@ def _bloqueos_de(args):
 
     El mismo criterio corre contra los pares que ya pasaron por acá en esta misma
     invocación: un --block exacto repetido, o su recíproco (A bloqueado por B junto
-    con B bloqueado por A), también abortan, porque las dos formas terminan en dos
-    issueRelationCreate independientes y ningún guard de más abajo las nota. Esto NO
-    es un detector de ciclos: A→B, B→C y C→A en la misma corrida pasa entero, porque
-    cada par se compara solo contra los que ya vinieron antes y no contra la cadena
-    completa. Tampoco cubre B bloqueado por A escrito en una invocación aparte de la
-    que trajo A bloqueado por B: acá nunca se leen las relaciones que ya existen en
-    Linear, así que ese caso cruzado de invocaciones no tiene cómo detectarse acá."""
+    con B bloqueado por A), también abortan. Esas tres guardas viven en _validar_par,
+    compartidas con las dos operaciones que cierran un ticket, y ahí está escrito lo que
+    NO cubren."""
     if not args.block:
         die(SIN_KEY,
             "ticket:block no recibió ningún --block, y escribir cero relaciones es un "
@@ -1212,23 +1273,7 @@ def _bloqueos_de(args):
                 "--block recibió un id vacío: %r y %r" % (bloqueante, bloqueado),
                 "pasá los dos ids, el del bloqueante primero y el del bloqueado "
                 "después")
-        if bloqueante == bloqueado:
-            die(SIN_KEY,
-                "--block recibió el mismo id de los dos lados: %r" % bloqueante,
-                "un ticket que se bloquea a sí mismo no vuelve a ser tomable, y no hay "
-                "operación en el plugin para deshacerlo")
-        if (bloqueante, bloqueado) in pares:
-            die(SIN_KEY,
-                "--block repitió el mismo par dos veces: %r bloqueado por %r" %
-                (bloqueado, bloqueante),
-                "sacá el --block duplicado, escribir la misma relación dos veces no "
-                "aporta nada")
-        if (bloqueado, bloqueante) in pares:
-            die(SIN_KEY,
-                "--block recibió %r bloqueado por %r y también %r bloqueado por %r "
-                "en la misma corrida" % (bloqueado, bloqueante, bloqueante, bloqueado),
-                "elegí un solo sentido: dos tickets bloqueándose mutuamente no vuelven "
-                "a ser tomables nunca")
+        _validar_par("--block", "id", pares, bloqueante, bloqueado)
         pares.append((bloqueante, bloqueado))
     return pares
 
@@ -1616,6 +1661,13 @@ def construir_parser():
     # propia escritura del estado, en el mismo round trip, así que no hay forma de que
     # la línea apunte a un ticket distinto del que se acaba de cerrar.
     p_ticket_resolve.add_argument("--gist", required=True)
+    # Misma forma exacta que el --ticket de ticket:create, y el cableado se nombra por
+    # título de un --new-ticket de esta misma invocación: los ids no existen hasta que
+    # la primera escritura vuelve.
+    p_ticket_resolve.add_argument("--new-ticket", nargs=3, action="append", default=[],
+                                  metavar=("TITULO", "CUERPO", "LABELS"))
+    p_ticket_resolve.add_argument("--block", nargs=2, action="append", default=[],
+                                  metavar=("BLOQUEANTE", "BLOQUEADO"))
     p_ticket_resolve.add_argument("--append-fog", action="append", default=[],
                                   metavar="VINETA")
     p_ticket_resolve.add_argument("--remove-fog", action="append", default=[],

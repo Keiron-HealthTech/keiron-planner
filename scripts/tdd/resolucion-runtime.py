@@ -256,6 +256,92 @@ rc, valor, err = puro(n, ["ticket:resolve", "--ctx", "{no json", "--project", "k
                           "--issue", "CRM-1"] + secciones() + GIST, mod._resolucion_de)
 chequear(n, "rc", rc, mod.SIN_KEY)
 
+# --- los tickets nuevos y su cableado por titulo -----------------------------------
+
+T1 = ["--new-ticket", "Una pregunta nueva", "El cuerpo es la pregunta", "map:grilling"]
+T2 = ["--new-ticket", "Otra pregunta", "Su cuerpo", ""]
+
+n = "new-ticket-feliz"
+rc, valor, err = puro(n, BASE + secciones() + T1 + T2, mod._resolucion_de)
+chequear(n, "rc", rc, 0)
+chequear(n, "los tickets llegan validados y en orden",
+         (valor or {}).get("tickets"),
+         [("Una pregunta nueva", "El cuerpo es la pregunta", ["map:grilling"]),
+          ("Otra pregunta", "Su cuerpo", [])])
+
+n = "new-ticket-dos-tipos"
+rc, valor, err = puro(n, BASE + secciones() +
+                      ["--new-ticket", "T", "C", "map:grilling,map:task"],
+                      mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+chequear(n, "es la guarda de los dos tipos", "más de un tipo" in err, True)
+chequear(n, "el mensaje nombra el flag que se escribió", "--new-ticket" in err, True)
+
+n = "new-ticket-label-ajeno"
+rc, valor, err = puro(n, BASE + secciones() + ["--new-ticket", "T", "C", "map"],
+                      mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+
+n = "new-ticket-titulo-vacio"
+rc, valor, err = puro(n, BASE + secciones() + ["--new-ticket", "  ", "C", ""],
+                      mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+
+n = "block-por-titulo"
+rc, valor, err = puro(n, BASE + secciones() + T1 + T2 +
+                      ["--block", "Una pregunta nueva", "Otra pregunta"],
+                      mod._resolucion_de)
+chequear(n, "rc", rc, 0)
+chequear(n, "el par viaja por titulo y nunca por id",
+         (valor or {}).get("pares"), [("Una pregunta nueva", "Otra pregunta")])
+
+n = "block-titulo-inexistente"
+rc, valor, err = puro(n, BASE + secciones() + T1 +
+                      ["--block", "Un título que no declaré", "Una pregunta nueva"],
+                      mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+chequear(n, "nombra el titulo que no matchea",
+         "Un título que no declaré" in err, True)
+chequear(n, "nombra los declarados", "Una pregunta nueva" in err, True)
+
+n = "block-titulo-ambiguo"
+rc, valor, err = puro(n, BASE + secciones() + T1 +
+                      ["--new-ticket", "Una pregunta nueva", "Otro cuerpo", ""] +
+                      ["--block", "Una pregunta nueva", "Una pregunta nueva"],
+                      mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+
+n = "block-consigo-mismo"
+rc, valor, err = puro(n, BASE + secciones() + T1 +
+                      ["--block", "Una pregunta nueva", "Una pregunta nueva"],
+                      mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+
+n = "block-duplicado"
+rc, valor, err = puro(n, BASE + secciones() + T1 + T2 +
+                      ["--block", "Una pregunta nueva", "Otra pregunta",
+                       "--block", "Una pregunta nueva", "Otra pregunta"],
+                      mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+
+n = "block-reciproco"
+rc, valor, err = puro(n, BASE + secciones() + T1 + T2 +
+                      ["--block", "Una pregunta nueva", "Otra pregunta",
+                       "--block", "Otra pregunta", "Una pregunta nueva"],
+                      mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+
+n = "block-contra-el-ticket-que-se-cierra"
+rc, valor, err = puro(n, BASE + secciones() + T1 +
+                      ["--block", "Una pregunta nueva", "CRM-1"], mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+
+n = "sin-ticket-ni-block-es-legitimo"
+rc, valor, err = puro(n, BASE + secciones(), mod._resolucion_de)
+chequear(n, "rc", rc, 0)
+chequear(n, "cero tickets", (valor or {}).get("tickets"), [])
+chequear(n, "cero pares", (valor or {}).get("pares"), [])
+
 # --- la puerta de commentCreate ---------------------------------------------------
 
 n = "comentar-exito"
@@ -276,4 +362,4 @@ if FALLAS:
     for f in FALLAS:
         print("FAIL - " + f)
     sys.exit(1)
-print("OK - las secciones, el gist, la niebla y la puerta del comentario")
+print("OK - las secciones, el gist, la niebla, el cableado y el comentario")
