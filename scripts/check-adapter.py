@@ -1139,6 +1139,65 @@ if "map:no-landing" not in etiquetas:
     fail("[54] map:no-landing no está en LABELS, así que ticket:create no lo crea "
          "cuando falta y un aterrizaje sin trabajo se queda sin su marcador")
 
+# --- afirmación 41: la cadena de cinco mutations de las dos resoluciones ----------
+
+
+def _alcanza_mutation(st, aguja):
+    """True si la sentencia, o cualquier función del módulo que su subárbol invoque
+    transitivamente, le pasa a _post una constante de string que contiene la aguja. Es la
+    generalización de _post_con que la 41 necesita y la 24 no necesitaba: las dos
+    sentencias de red de map:write viven literalmente en el cuerpo de _intentar_escribir,
+    y en cambio las cinco escrituras de una resolución viven en helpers y no en el cuerpo
+    del handler."""
+    if _post_con(st, aguja):
+        return True
+    for n in ast.walk(st):
+        if isinstance(n, ast.Call) and invocado(n.func) in FUNCS:
+            for nm in alcanzable(invocado(n.func)):
+                if _post_con(FUNCS[nm], aguja):
+                    return True
+    return False
+
+
+# En el orden del contrato. La lista es la afirmación: el orden de esta secuencia es lo
+# que se compara, y no un conteo de llamadas a _post.
+AGUJAS_41 = ["issueBatchCreate", "issueRelationCreate", "commentCreate",
+             "issueUpdate", "projectUpdate"]
+
+for _op in ("ticket:resolve", "ticket:rule-out"):
+    _h = handler.get(_op)
+    require_nonempty(alcanzable(_h),
+                     "[41] el grafo alcanzable desde el handler de %s dio vacío; el "
+                     "subparser no resuelve a ninguna función del módulo" % _op)
+    _cuerpo41 = FUNCS[_h].body
+    _primeros = {}
+    for _aguja in AGUJAS_41:
+        _indices = [i for i, st in enumerate(_cuerpo41)
+                    if _alcanza_mutation(st, _aguja)]
+        require_nonempty(_indices,
+                         "[41] ninguna sentencia de primer nivel de %s alcanza %s; el "
+                         "handler volvió a ser un stub o perdió una de sus cinco "
+                         "escrituras, y la afirmación probaría cero" % (_h, _aguja))
+        _primeros[_aguja] = _indices[0]
+    _sec = [_primeros[a] for a in AGUJAS_41]
+    # No decreciente y no estrictamente creciente: dos escrituras pueden compartir una
+    # sentencia de primer nivel, y exigir estrictez prohibiría una factorización correcta
+    # sin proteger nada.
+    if _sec != sorted(_sec):
+        fail("[41] las cinco mutations de %s no se alcanzan en el orden del contrato: "
+             "%s" % (_h, dict(zip(AGUJAS_41, _sec))))
+    if not _primeros["commentCreate"] < _primeros["issueUpdate"]:
+        fail("[41] en %s el comentario no se alcanza estrictamente antes que el cambio "
+             "de estado, y el orden inverso deja un ticket cerrado sin respuesta" % _h)
+    if not (_primeros["projectUpdate"] > _primeros["commentCreate"]
+            and _primeros["projectUpdate"] > _primeros["issueUpdate"]):
+        fail("[41] en %s el mapa no se alcanza estrictamente después del comentario y "
+             "del estado, y el mapa va siempre último" % _h)
+    _corte41 = [i for i in range(min(_sec) + 1, max(_sec)) if _corta(_cuerpo41[i])]
+    if _corte41:
+        fail("[41] en %s estas sentencias entre la primera y la última escritura SON un "
+             "retorno, un levantamiento o una salida: %s" % (_h, _corte41))
+
 # --- afirmación 63: la toma escribe assigneeId y ninguna otra clave --------------
 
 _CLAIM = handler.get("ticket:claim")
@@ -1201,6 +1260,6 @@ if _OTROS_NULOS:
          % (_CLAIM, _OTROS_NULOS))
 
 report()
-print("%s: OK - las veinticinco afirmaciones de AST sobre %s cierran, bajo Python "
+print("%s: OK - las veintiséis afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))
