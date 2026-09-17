@@ -155,7 +155,7 @@ CREAR = ["map:create", "--ctx", CTX, "--destino", DESTINO]
 # Dos acumuladores y no uno: este harness lleva los desenlaces de dos afirmaciones, y
 # un [N] que no distinga cuál falló manda a leer el script equivocado. La afirmación en
 # curso la fija el bucle del final, así que ningún caso puede anotar en el balde ajeno.
-FALLAS = {"60": [], "47": []}
+FALLAS = {"60": [], "47": [], "61": []}
 AFIRMACION = ["60"]
 
 
@@ -743,20 +743,354 @@ def caso_13():
     chequear(r, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
 
 
+
+# --- los once desenlaces de las tres operaciones que cierran un ticket -------------
+# Mismo aparato que la 60 y la 47, en el mismo harness: el seam es
+# mod.urllib.request.urlopen y nunca mod._post, así que el endurecimiento del transporte
+# corre de verdad. Lo que estos once agregan sobre el AST es todo lo que el AST no puede
+# ver: el ORDEN real en que salen las queries, el markdown que el adapter renderiza, el
+# content que viaja al mapa, y el cero del transporte en las abortadas antes de la red.
+
+SEIS = list(mod.SECCIONES)
+GRADUADA = "Una niebla previa."
+# CRM-5 y no CRM-1: el overview del fixture ya lleva una linea de decision con la url
+# de CRM-1, y resolver ese mismo ticket dejaria una asercion de "no se colo ninguna
+# linea nueva" midiendo la linea vieja en vez de la que este caso vigila.
+RESOLVER = ["ticket:resolve", "--ctx", CTX_TICKET, "--project", "p-1",
+            "--issue", "CRM-5"]
+FUERA = ["ticket:rule-out", "--ctx", CTX_TICKET, "--project", "p-1",
+         "--issue", "CRM-5"]
+GIST = ["--gist", "el mapa vive en el overview del Project"]
+VINETA_FUERA = "**Los reportes del equipo clinico.** quedaron mas alla del destino"
+NUEVOS = ["--new-ticket", "Una pregunta nueva", "El cuerpo es la pregunta",
+          "map:grilling",
+          "--new-ticket", "Otra pregunta", "Su cuerpo", ""]
+CABLE = ["--block", "Una pregunta nueva", "Otra pregunta"]
+URL_CERRADO = "https://linear.app/keiron/issue/CRM-5"
+
+
+def secciones(**cambios):
+    """Los seis --section completos, con la sección que se quiera pisar o vaciar. Las
+    seis son obligatorias, así que el caso de la sección vacía se arma borrando una."""
+    cuerpos = dict((n, ["linea de " + n]) for n in SEIS)
+    cuerpos.update(cambios)
+    argv = []
+    for n in SEIS:
+        for l in cuerpos[n]:
+            argv += ["--section", n, l]
+    return argv
+
+
+URL_TOMADO = "https://linear.app/keiron/issue/CRM-1"
+TOMADO = {"data": {"issueUpdate": {"success": True, "issue": {
+    "identifier": "CRM-1", "url": URL_TOMADO,
+    "assignee": {"displayName": "Dev Leader"}, "state": {"name": "Todo"}}}}}
+SOLTADO = {"data": {"issueUpdate": {"success": True, "issue": {
+    "identifier": "CRM-1", "url": URL_TOMADO, "assignee": None,
+    "state": {"name": "Todo"}}}}}
+CERRADO = {"data": {"issueUpdate": {"success": True, "issue": {
+    "identifier": "CRM-5", "url": URL_CERRADO, "assignee": None,
+    "state": {"name": "Done"}}}}}
+CANCELADO = {"data": {"issueUpdate": {"success": True, "issue": {
+    "identifier": "CRM-5", "url": URL_CERRADO, "assignee": None,
+    "state": {"name": "Canceled"}}}}}
+NUEVOS_OK = {"data": {"issueBatchCreate": {"success": True, "issues": [
+    {"id": "i-1", "identifier": "CRM-10", "title": "Una pregunta nueva",
+     "url": "https://linear.app/keiron/issue/CRM-10"},
+    {"id": "i-2", "identifier": "CRM-11", "title": "Otra pregunta",
+     "url": "https://linear.app/keiron/issue/CRM-11"}]}}}
+COMENTADO = {"data": {"commentCreate": {"success": True, "comment": {
+    "id": "c-1", "url": URL_CERRADO + "#comment-c-1"}}}}
+COMENTADO_FALSO = {"data": {"commentCreate": {"success": False, "comment": None}}}
+CIERRE_FALSO = {"data": {"issueUpdate": {"success": False, "issue": None}}}
+
+
+def caso_14():
+    """La toma: un solo write, y escribe assigneeId y ninguna otra clave."""
+    n = "14-ticket-claim-toma"
+    rc, out, err, tr = correr(n, ["ticket:claim", "--ctx", CTX_TICKET,
+                                  "--issue", "CRM-1"], [TOMADO])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "UNA sola llamada al transporte", tr.llamadas, 1)
+    entrada = (tr.variables[0] if tr.variables else {}).get("input") or {}
+    chequear(n, "input.assigneeId es el viewer del ctx", entrada.get("assigneeId"), "v1")
+    chequear(n, "sin la clave stateId", "stateId" in entrada, False)
+    chequear(n, "el issue viaja por su identificador",
+             (tr.variables[0] if tr.variables else {}).get("issue"), "CRM-1")
+    d = json_de(n, out)
+    chequear(n, "stdout issue", d.get("issue"), "CRM-1")
+    chequear(n, "stdout assignee", d.get("assignee"), "v1")
+    chequear(n, "stdout assigneeName", d.get("assigneeName"), "Dev Leader")
+
+    # Las dos guardas previas: sin ticket y sin viewer, las dos con el transporte en cero.
+    for sufijo, argv in (
+            ("issue-vacio", ["ticket:claim", "--ctx", CTX_TICKET, "--issue", "  "]),
+            ("viewer-nulo", ["ticket:claim", "--ctx", json.dumps(
+                {"viewer": None, "team": "t1", "done": "s1", "canceled": "s2",
+                 "default": "s3", "discovery": None, "labels": LABELS_RESUELTOS}),
+                "--issue", "CRM-1"])):
+        g = n + "-CONTROL-" + sufijo
+        rc, out, err, tr = correr(g, argv, [])
+        chequear(g, "rc", rc, mod.SIN_KEY)
+        chequear(g, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+
+def caso_15():
+    """La devolución deliberada. Que sea la ÚNICA ruta del archivo que deja un
+    assigneeId nulo lo prueba la afirmación 63 por AST, y acá no se copia: este caso
+    prueba lo que el AST no ve, que el null viaja de verdad en el input del POST."""
+    n = "15-ticket-claim-release"
+    rc, out, err, tr = correr(n, ["ticket:claim", "--ctx", CTX_TICKET,
+                                  "--issue", "CRM-1", "--release"], [SOLTADO])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "UNA sola llamada al transporte", tr.llamadas, 1)
+    entrada = (tr.variables[0] if tr.variables else {}).get("input") or {}
+    chequear(n, "input.assigneeId viajo NULO", entrada.get("assigneeId", "AUSENTE"),
+             None)
+    chequear(n, "la clave esta presente y no ausente", "assigneeId" in entrada, True)
+    chequear(n, "sin la clave stateId", "stateId" in entrada, False)
+    d = json_de(n, out)
+    chequear(n, "stdout assignee nulo", d.get("assignee", "AUSENTE"), None)
+    chequear(n, "stdout assigneeName nulo", d.get("assigneeName", "AUSENTE"), None)
+
+
+def caso_16():
+    """La resolución entera: seis POSTs en el orden del contrato, el markdown que el
+    adapter renderiza, y el content que viaja al mapa con la url que devolvió el propio
+    issueUpdate. Es el caso que el AST no puede cubrir: el orden real y el texto."""
+    n = "16-ticket-resolve-seis-posts-en-orden"
+    base = overview()
+    rc, out, err, tr = correr(
+        n, RESOLVER + secciones(**{SEIS[3]: ["se graduo " + GRADUADA]}) + GIST +
+        NUEVOS + CABLE + ["--remove-fog", GRADUADA],
+        [NUEVOS_OK, RELACION_OK, COMENTADO, CERRADO, leido(base), ESCRITO_OK])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "SEIS llamadas al transporte", tr.llamadas, 6)
+    esperado = ["issueBatchCreate", "issueRelationCreate", "commentCreate",
+                "issueUpdate", "project(id:", "projectUpdate"]
+    for i, aguja in enumerate(esperado):
+        chequear(n, "el POST %d lleva %s" % (i + 1, aguja),
+                 aguja in (tr.queries[i] if i < len(tr.queries) else ""), True)
+    if tr.llamadas != 6:
+        return
+    cuerpo = tr.variables[2].get("body") or ""
+    chequear(n, "el comentario lleva los seis encabezados en el orden de SECCIONES",
+             [l[3:] for l in cuerpo.split("\n") if l.startswith("## ")], SEIS)
+    chequear(n, "y ninguno de mas", cuerpo.count("## "), 6)
+    chequear(n, "el comentario va al issue por su identificador",
+             tr.variables[2].get("issue"), "CRM-5")
+    entrada = tr.variables[3].get("input") or {}
+    chequear(n, "input.stateId es el done del ctx", entrada.get("stateId"), "s1")
+    chequear(n, "y no lleva assigneeId", "assigneeId" in entrada, False)
+    contenido = tr.variables[5].get("content") or ""
+    cuerpos = mod.cortar_secciones(contenido)
+    linea = "- %s: %s" % (URL_CERRADO, GIST[1])
+    chequear(n, "el mapa gano la linea con la url que devolvio el issueUpdate",
+             linea in cuerpos[mod.ANCLA_DECISIONES], True)
+    chequear(n, "la decision previa sobrevive",
+             DECISION_PREVIA in cuerpos[mod.ANCLA_DECISIONES], True)
+    chequear(n, "el mapa perdio la vineta graduada",
+             any(GRADUADA in l for l in cuerpos[mod.ANCLA_NIEBLA]), False)
+    chequear(n, "y su continuacion indentada tambien",
+             any("continuacion indentada" in l for l in cuerpos[mod.ANCLA_NIEBLA]),
+             False)
+    chequear(n, "la prosa heredada bajo la frontera sobrevive",
+             contenido.split("\n")[-2:], ["prosa heredada que no se toca", ""])
+    d = json_de(n, out)
+    chequear(n, "stdout nombra los dos tickets nuevos", len(d.get("tickets") or []), 2)
+    chequear(n, "stdout nombra el par cableado",
+             d.get("blocks"), [{"blocker": "i-1", "blocked": "i-2"}])
+
+
+def caso_17():
+    """Sin --new-ticket: CUATRO POSTs exactos. La guarda del batch vacío, que es la
+    misma razón por la que la fila 51 se la pide a work:write."""
+    n = "17-ticket-resolve-sin-tickets-nuevos"
+    rc, out, err, tr = correr(n, RESOLVER + secciones() + GIST,
+                              [COMENTADO, CERRADO, leido(overview()), ESCRITO_OK])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "CUATRO llamadas al transporte", tr.llamadas, 4)
+    for prohibida in ("issueBatchCreate", "issueRelationCreate", "issueLabelCreate"):
+        chequear(n, "ninguna query lleva " + prohibida,
+                 [q for q in tr.queries if prohibida in q], [])
+
+
+def caso_18():
+    """Una de las seis secciones sin ninguna línea: aborta ANTES de la red, nombrando
+    cuál falta. Es lo que vuelve mecánicamente imposible saltearse la graduación de
+    niebla sin decirlo, porque el negativo hay que escribirlo a mano."""
+    n = "18-seccion-vacia-aborta-antes-de-la-red"
+    rc, out, err, tr = correr(n, RESOLVER + secciones(**{SEIS[3]: []}) + GIST, [])
+    chequear(n, "rc", rc, mod.SIN_KEY)
+    chequear(n, "stdout vacio", out, "")
+    chequear(n, "stderr nombra la seccion que falta", SEIS[3] in err, True)
+    chequear(n, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+
+def caso_19():
+    """El comentario rechazado con success false y SIN errors de nivel superior: TRES
+    POSTs, y el mensaje dice qué quedó escrito. Sin la puerta de tres casos esto se
+    reportaría como éxito sobre un comentario que Linear no escribió."""
+    n = "19-comentario-rechazado"
+    rc, out, err, tr = correr(n, RESOLVER + secciones() + GIST + NUEVOS + CABLE,
+                              [NUEVOS_OK, RELACION_OK, COMENTADO_FALSO])
+    chequear(n, "rc", rc, mod.SIN_KEY)
+    chequear(n, "stdout vacio", out, "")
+    chequear(n, "TRES llamadas al transporte", tr.llamadas, 3)
+    chequear(n, "stderr nombra success", "success" in err, True)
+    chequear(n, "stderr dice que los tickets ya quedaron escritos",
+             "tickets nuevos" in err, True)
+
+
+def caso_20():
+    """La quinta escritura falla: SEIS POSTs, y la remediación imprime la invocación de
+    map:write que falta, con el mismo project, la url real y el gist. Es la mejor
+    remediación del archivo y es la razón por la que la quinta no reintenta."""
+    n = "20-el-mapa-falla-e-imprime-el-map-write"
+    rc, out, err, tr = correr(
+        n, RESOLVER + secciones(**{SEIS[3]: ["se graduo " + GRADUADA]}) + GIST +
+        NUEVOS + CABLE + ["--remove-fog", GRADUADA],
+        [NUEVOS_OK, RELACION_OK, COMENTADO, CERRADO, leido(overview()),
+         ESCRITO_FALSO])
+    chequear(n, "rc", rc, mod.SIN_KEY)
+    chequear(n, "SEIS llamadas al transporte", tr.llamadas, 6)
+    chequear(n, "stderr imprime una invocacion de map:write", "map:write" in err, True)
+    chequear(n, "con el mismo --project", "--project p-1" in err, True)
+    chequear(n, "con la url real que devolvio el issueUpdate", URL_CERRADO in err, True)
+    chequear(n, "con el gist real", GIST[1] in err, True)
+    chequear(n, "y con el titulo graduado", GRADUADA in err, True)
+    chequear(n, "NUNCA sugiere repetir ticket:resolve", "ticket:resolve" in err, False)
+    chequear(n, "y dice que el comentario y el estado ya aterrizaron",
+             "comentario" in err and "Done" in err, True)
+
+
+def caso_21():
+    """Fuera de alcance: el estado cancelado, la viñeta bajo su propia ancla, y
+    Decisiones hasta ahora byte a byte como estaba. La asimetría es la operación."""
+    n = "21-ticket-rule-out"
+    base = overview()
+    rc, out, err, tr = correr(n, FUERA + secciones() +
+                              ["--out-of-scope", VINETA_FUERA],
+                              [COMENTADO, CANCELADO, leido(base), ESCRITO_OK])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "CUATRO llamadas al transporte", tr.llamadas, 4)
+    if tr.llamadas != 4:
+        return
+    chequear(n, "input.stateId es el canceled del ctx",
+             (tr.variables[1].get("input") or {}).get("stateId"), "s2")
+    contenido = tr.variables[3].get("content") or ""
+    cuerpos = mod.cortar_secciones(contenido)
+    chequear(n, "la vineta aterrizo bajo Fuera de alcance",
+             ("- " + VINETA_FUERA) in cuerpos[mod.ANCLA_FUERA], True)
+    chequear(n, "Decisiones hasta ahora quedo BYTE A BYTE como estaba",
+             cuerpos[mod.ANCLA_DECISIONES],
+             mod.cortar_secciones(base)[mod.ANCLA_DECISIONES])
+    chequear(n, "y no se colo ninguna linea de decision",
+             any(URL_CERRADO in l for l in cuerpos[mod.ANCLA_DECISIONES]), False)
+
+    # La asimetría del otro lado: --gist no está declarado, así que argparse lo rechaza.
+    g = n + "-CONTROL-no-acepta-gist"
+    rc, out, err, tr = correr(g, FUERA + secciones() +
+                              ["--out-of-scope", VINETA_FUERA, "--gist", "x"], [])
+    chequear(g, "rc del error de argparse", rc, 2)
+    chequear(g, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+
+def caso_22():
+    """El enum, otra vez, y por la ruta nueva. La 60 ya lo mide desde ticket:block; acá
+    se mide que el cableado de una resolución REUSE esa constante en vez de reescribirla,
+    que es exactamente por donde el defecto de 60329ef volvería a entrar."""
+    n = "22-el-enum-reusado-desde-la-resolucion"
+    rc, out, err, tr = correr(
+        n, RESOLVER + secciones() + GIST + NUEVOS + CABLE,
+        [NUEVOS_OK, RELACION_OK, COMENTADO, CERRADO, leido(overview()), ESCRITO_OK])
+    chequear(n, "rc", rc, 0)
+    q = tr.queries[1] if len(tr.queries) > 1 else ""
+    chequear(n, "la query de la relacion es la constante del modulo, BYTE A BYTE",
+             q, mod.ISSUE_RELATION_CREATE)
+    chequear(n, "lleva el enum sin comillas", "type: blocks" in q, True)
+    chequear(n, "y NUNCA cita un enum", 'type: "' in q, False)
+
+
+def caso_23():
+    """Las dos consistencias que se rompen antes de la red: un --remove-fog que la
+    sección Niebla graduada no nombra, y un --block que nombra un título que ningún
+    --new-ticket declaró. Las dos por el handler entero y no por la función pura, que es
+    lo que prueba que la validación corre antes del primer POST y no después."""
+    n = "23-titulos-que-no-matchean-abortan-antes-de-la-red"
+    rc, out, err, tr = correr(
+        n, RESOLVER + secciones() + GIST + ["--remove-fog", GRADUADA], [])
+    chequear(n, "rc", rc, mod.SIN_KEY)
+    chequear(n, "stdout vacio", out, "")
+    chequear(n, "stderr nombra el titulo que la seccion no menciona",
+             GRADUADA in err, True)
+    chequear(n, "stderr nombra la seccion que lo tendria que nombrar",
+             SEIS[3] in err, True)
+    chequear(n, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+    b = n + "-CONTROL-block-con-titulo-inexistente"
+    rc, out, err, tr = correr(
+        b, RESOLVER + secciones() + GIST + NUEVOS +
+        ["--block", "Un titulo que no declare", "Otra pregunta"], [])
+    chequear(b, "rc", rc, mod.SIN_KEY)
+    chequear(b, "stdout vacio", out, "")
+    chequear(b, "stderr nombra el titulo que no matchea",
+             "Un titulo que no declare" in err, True)
+    chequear(b, "stderr nombra los declarados", "Una pregunta nueva" in err, True)
+    chequear(b, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+    # Y el mismo desenlace por la otra punta, ticket:rule-out.
+    r = n + "-CONTROL-por-la-ruta-de-rule-out"
+    rc, out, err, tr = correr(
+        r, FUERA + secciones() + ["--out-of-scope", VINETA_FUERA,
+                                  "--remove-fog", GRADUADA], [])
+    chequear(r, "rc", rc, mod.SIN_KEY)
+    chequear(r, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+
+def caso_24():
+    """La cuarta escritura falla, antes de llegar a la quinta: CUATRO POSTs, sin afirmar
+    que el estado no cambio (un timeout no distingue eso de que haya cambiado y se haya
+    perdido la respuesta), y nombrando los flags de niebla pendientes, porque a esta
+    altura todavia no hay url para imprimir la invocacion entera de map:write. Mismo
+    desenlace que el caso 20 mide para la quinta escritura, ahora para la cuarta."""
+    n = "24-el-issueupdate-falla-antes-del-mapa"
+    rc, out, err, tr = correr(
+        n, RESOLVER + secciones(**{SEIS[3]: ["se graduo " + GRADUADA]}) + GIST +
+        NUEVOS + CABLE + ["--remove-fog", GRADUADA,
+                          "--append-fog",
+                          "**Una niebla nueva.** que abre esta resolucion"],
+        [NUEVOS_OK, RELACION_OK, COMENTADO, CIERRE_FALSO])
+    chequear(n, "rc", rc, mod.SIN_KEY)
+    chequear(n, "CUATRO llamadas al transporte", tr.llamadas, 4)
+    chequear(n, "stderr NO afirma que el estado no cambio",
+             "no se pudo cambiar" in err, False)
+    chequear(n, "stderr admite que puede haber cambiado igual",
+             "puede que" in err, True)
+    chequear(n, "stderr nombra el remove-fog pendiente",
+             "--remove-fog" in err and GRADUADA in err, True)
+    chequear(n, "stderr nombra el append-fog pendiente",
+             "--append-fog" in err and "Una niebla nueva." in err, True)
+    chequear(n, "y dice que el comentario ya esta escrito", "comentario" in err, True)
+    chequear(n, "NUNCA sugiere repetir ticket:resolve", "ticket:resolve" in err, False)
+
+
 CASOS = [("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("60", caso_5), ("60", caso_6), ("60", caso_7), ("60", caso_8),
          ("60", caso_9), ("47", caso_10), ("47", caso_11), ("47", caso_12),
-         ("60", caso_13)]
+         ("60", caso_13), ("61", caso_14), ("61", caso_15), ("61", caso_16),
+         ("61", caso_17), ("61", caso_18), ("61", caso_19), ("61", caso_20),
+         ("61", caso_21), ("61", caso_22), ("61", caso_23), ("61", caso_24)]
 for _afirmacion, _caso in CASOS:
     AFIRMACION[0] = _afirmacion
     _caso()
 
-for _afirmacion in ("60", "47"):
+for _afirmacion in ("60", "47", "61"):
     print("casos%s=%d" % (_afirmacion,
                           len([c for c in CASOS if c[0] == _afirmacion])))
     print("fallas%s=%s" % (_afirmacion, plano(FALLAS[_afirmacion])
                            if FALLAS[_afirmacion] else "ninguna"))
-sys.exit(1 if FALLAS["60"] or FALLAS["47"] else 0)
+sys.exit(1 if FALLAS["60"] or FALLAS["47"] or FALLAS["61"] else 0)
 PY
 )"
 
@@ -768,7 +1102,8 @@ PY
 # volcado sale por stderr ANTES que report, así que sin esa línea la primera de stderr es
 # una línea del protocolo del harness y el lector no sabe qué check abrió el archivo.
 if printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas60=ninguna' \
-   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas47=ninguna'; then
+   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas47=ninguna' \
+   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas61=ninguna'; then
   :
 else
   echo "$CHECK_NAME: la corrida del harness dijo:" >&2
@@ -783,6 +1118,10 @@ if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas47=ninguna'; then
   fail "[47] ticket:create no rechaza dos labels de tipo antes de tocar la red, o rechaza de más: cero tipos es AFK y uno solo se crea"
 fi
 
+if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas61=ninguna'; then
+  fail "[61] ticket:claim, ticket:resolve y ticket:rule-out no distinguen sus desenlaces de runtime con el transporte mockeado, o las cinco escrituras de una resolución no viajan en el orden del contrato"
+fi
+
 report
 
 # Los cardinales salen de la corrida y no de una palabra escrita a mano: un conteo
@@ -791,6 +1130,8 @@ casos="$(printf '%s\n' "$salida" | sed -n 's/^casos60=//p')"
 require_nonempty "$casos" "[60] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 casos47="$(printf '%s\n' "$salida" | sed -n 's/^casos47=//p')"
 require_nonempty "$casos47" "[47] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
+casos61="$(printf '%s\n' "$salida" | sed -n 's/^casos61=//p')"
+require_nonempty "$casos61" "[61] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 plural=""
 [ "$casos" = 1 ] || plural="s"
-echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
+echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"

@@ -157,6 +157,12 @@ antes de proponer nada. Toma cuatro valores y solo cuatro:
 | listo para colapsar | Cero tickets abiertos y cero milestones. |
 | colapsado | Cero tickets abiertos y al menos un milestone. |
 
+La derivación, o sea qué conteos producen cada uno de los cuatro valores y con qué
+token sale, vive en `skills/_shared/map-contract.md` y esa es su única casa: desde
+que dos comandos la leen, dejarla en uno de los dos sería la copia que ningún check
+compara. Acá quedan los cuatro valores y qué significan, que es lo que el glosario
+debe.
+
 El veredicto **no es** el token, y la relación no es uno a uno: `trabado` mapea a
 dos tokens distintos según la causa, y un Project que resolvió y no carga ningún
 mapa emite token sin tener veredicto. Deducir cuatro tokens de cuatro veredictos es
@@ -217,7 +223,7 @@ está permitido, y es el mecanismo.
 | `ticket:create` | Crear un ticket | Los tickets de decisión de una pasada, en una sola invocación, cada uno con un cuerpo que es la pregunta y nada más. El tipo, el modo, el bloqueo y la toma viven en campos nativos del tracker. Es además el **único** que crea los labels del plugin que falten, los nueve, aunque no los use todos. Nunca crea `Discovery`. |
 | `ticket:block` | Bloquear | La relación nativa de bloqueo. Se escribe en una segunda pasada, porque los tickets tienen que existir para poder referenciarse. |
 | `frontier:query` | Consultar la frontera | Los tickets abiertos, sin bloqueantes abiertos y sin assignee, y además la cantidad de milestones del Project, que es lo único que distingue un mapa listo para colapsar de uno ya colapsado. |
-| `ticket:claim` | Tomar | El primer write de la sesión. No se libera sola. |
+| `ticket:claim` | Tomar | El primer write de la sesión. No se libera sola: una toma huérfana, la de una sesión que murió, deja el ticket fuera de la frontera hasta que alguien la saque a mano. La devolución deliberada es otra cosa y tiene su propio flag, `--release`: una sesión viva que devuelve el ticket porque el trabajo necesita otro rol, con una persona mirando. Es la única vía del plugin que limpia un assignee. |
 | `ticket:resolve` | Resolver | Los tickets nuevos, su cableado, el comentario, el estado y el mapa, en ese orden. El mapa siempre último. Las cinco escrituras van adentro de una sola invocación: el orden lo garantiza el adapter, nunca el modelo. |
 | `ticket:rule-out` | Sacar de alcance | La única operación destructiva: cierra un ticket sin resolverlo. Su línea va a Fuera de alcance, nunca a Decisiones. |
 | `milestone:create` | Crear un milestone | Un corte demoable del colapso. Nunca lleva fecha. |

@@ -600,13 +600,17 @@ for _dict in DICTS_COUNTS:
         fail("[59] el valor apareado con counts en la línea %d no es un dict literal, "
              "así que sus claves no se pueden comparar" % _linea)
         continue
-    _claves = set(k.value for k in _interno.keys
-                  if isinstance(k, ast.Constant) and isinstance(k.value, str))
-    if _claves != CLAVES_COUNTS:
+    # _claves_counts y no _claves: el nombre pelado pisaba la FUNCIÓN _claves de arriba
+    # para todo lo que viniera después en el archivo, y el primer bloque que la volviera
+    # a llamar reventaba con un TypeError en vez de fallar una afirmación.
+    _claves_counts = set(k.value for k in _interno.keys
+                         if isinstance(k, ast.Constant) and isinstance(k.value, str))
+    if _claves_counts != CLAVES_COUNTS:
         # Igualdad de conjuntos: ninguna rama puede olvidarse la clave nueva y ninguna
         # puede agregar una cuarta.
         fail("[59] el counts de la línea %d tiene las claves %s y tiene que tener "
-             "exactamente %s" % (_linea, sorted(_claves), sorted(CLAVES_COUNTS)))
+             "exactamente %s" % (_linea, sorted(_claves_counts),
+                                 sorted(CLAVES_COUNTS)))
         continue
     if not _forma_de_conteo(_valor_apareado(_interno, "milestones")):
         fail("[59] el valor de milestones en la línea %d no es un entero literal no "
@@ -1139,7 +1143,184 @@ if "map:no-landing" not in etiquetas:
     fail("[54] map:no-landing no está en LABELS, así que ticket:create no lo crea "
          "cuando falta y un aterrizaje sin trabajo se queda sin su marcador")
 
+# --- afirmación 41: la cadena de cinco mutations de las dos resoluciones ----------
+
+
+def _alcanza_mutation(st, aguja):
+    """True si la sentencia, o cualquier función del módulo que su subárbol invoque
+    transitivamente, le pasa a _post una constante de string que contiene la aguja. Es la
+    generalización de _post_con que la 41 necesita y la 24 no necesitaba: las dos
+    sentencias de red de map:write viven literalmente en el cuerpo de _intentar_escribir,
+    y en cambio las cinco escrituras de una resolución viven en helpers y no en el cuerpo
+    del handler."""
+    if _post_con(st, aguja):
+        return True
+    for n in ast.walk(st):
+        if isinstance(n, ast.Call) and invocado(n.func) in FUNCS:
+            for nm in alcanzable(invocado(n.func)):
+                if _post_con(FUNCS[nm], aguja):
+                    return True
+    return False
+
+
+# En el orden del contrato. La lista es la afirmación: el orden de esta secuencia es lo
+# que se compara, y no un conteo de llamadas a _post.
+AGUJAS_41 = ["issueBatchCreate", "issueRelationCreate", "commentCreate",
+             "issueUpdate", "projectUpdate"]
+
+for _op in ("ticket:resolve", "ticket:rule-out"):
+    _h = handler.get(_op)
+    require_nonempty(alcanzable(_h),
+                     "[41] el grafo alcanzable desde el handler de %s dio vacío; el "
+                     "subparser no resuelve a ninguna función del módulo" % _op)
+    _cuerpo41 = FUNCS[_h].body
+    _primeros = {}
+    for _aguja in AGUJAS_41:
+        _indices = [i for i, st in enumerate(_cuerpo41)
+                    if _alcanza_mutation(st, _aguja)]
+        require_nonempty(_indices,
+                         "[41] ninguna sentencia de primer nivel de %s alcanza %s; el "
+                         "handler volvió a ser un stub o perdió una de sus cinco "
+                         "escrituras, y la afirmación probaría cero" % (_h, _aguja))
+        _primeros[_aguja] = _indices[0]
+    _sec = [_primeros[a] for a in AGUJAS_41]
+    # No decreciente y no estrictamente creciente: dos escrituras pueden compartir una
+    # sentencia de primer nivel, y exigir estrictez prohibiría una factorización correcta
+    # sin proteger nada.
+    if _sec != sorted(_sec):
+        fail("[41] las cinco mutations de %s no se alcanzan en el orden del contrato: "
+             "%s" % (_h, dict(zip(AGUJAS_41, _sec))))
+    if not _primeros["commentCreate"] < _primeros["issueUpdate"]:
+        fail("[41] en %s el comentario no se alcanza estrictamente antes que el cambio "
+             "de estado, y el orden inverso deja un ticket cerrado sin respuesta" % _h)
+    if not (_primeros["projectUpdate"] > _primeros["commentCreate"]
+            and _primeros["projectUpdate"] > _primeros["issueUpdate"]):
+        fail("[41] en %s el mapa no se alcanza estrictamente después del comentario y "
+             "del estado, y el mapa va siempre último" % _h)
+    _corte41 = [i for i in range(min(_sec) + 1, max(_sec)) if _corta(_cuerpo41[i])]
+    if _corte41:
+        fail("[41] en %s estas sentencias entre la primera y la última escritura SON un "
+             "retorno, un levantamiento o una salida: %s" % (_h, _corte41))
+
+# --- afirmación 62: la asimetría de estado y de ancla entre las dos resoluciones --
+
+
+def _anclas_de(nombre):
+    """Las constantes de ancla que el cuerpo de una función referencia por Name. Mira el
+    cuerpo y no el grafo, y eso es lo que la fila declara: depende de que los dos
+    literales sigan viviendo ahí, que es justo lo que la decisión de no parametrizar un
+    helper común garantiza."""
+    return set(n.id for n in ast.walk(FUNCS[nombre])
+               if isinstance(n, ast.Name) and n.id.startswith("ANCLA_"))
+
+
+_H_RESOLVE = handler.get("ticket:resolve")
+_H_RULE_OUT = handler.get("ticket:rule-out")
+if _H_RESOLVE not in FUNCS or _H_RULE_OUT not in FUNCS:
+    bail("[62] los subparsers de ticket:resolve y ticket:rule-out no resuelven a dos "
+         "FunctionDef del módulo; la asimetría probaría sobre el conjunto vacío")
+if _H_RESOLVE == _H_RULE_OUT:
+    fail("[62] los dos subcomandos resuelven al mismo handler, %s, así que no hay dos "
+         "cuerpos donde vivan los literales asimétricos" % _H_RESOLVE)
+
+_ESTADOS = {_H_RESOLVE: _claves(FUNCS[_H_RESOLVE]),
+            _H_RULE_OUT: _claves(FUNCS[_H_RULE_OUT])}
+_ANCLAS_H = {_H_RESOLVE: _anclas_de(_H_RESOLVE),
+             _H_RULE_OUT: _anclas_de(_H_RULE_OUT)}
+for _h in (_H_RESOLVE, _H_RULE_OUT):
+    require_nonempty(_ESTADOS[_h],
+                     "[62] el cuerpo de %s no indexa ningún payload con un literal; un "
+                     "helper parametrizado dejaría la afirmación probando sobre el "
+                     "conjunto vacío" % _h)
+    require_nonempty(_ANCLAS_H[_h],
+                     "[62] el cuerpo de %s no referencia ninguna constante de ancla; "
+                     "el ancla se fue al sitio de llamada y el AST ya no la ve" % _h)
+
+# Cuatro pertenencias y cuatro no pertenencias. Tomadas en pares para que el mensaje
+# diga cuál de las dos mitades se rompió.
+for _h, _propio, _ajeno in ((_H_RESOLVE, "done", "canceled"),
+                            (_H_RULE_OUT, "canceled", "done")):
+    if _propio not in _ESTADOS[_h]:
+        fail("[62] %s no indexa el ctx con el literal %s, así que no manda el estado "
+             "que le toca" % (_h, _propio))
+    if _ajeno in _ESTADOS[_h]:
+        fail("[62] %s nombra %s, que es el estado del otro handler" % (_h, _ajeno))
+for _h, _propia, _ajena in ((_H_RESOLVE, "ANCLA_DECISIONES", "ANCLA_FUERA"),
+                            (_H_RULE_OUT, "ANCLA_FUERA", "ANCLA_DECISIONES")):
+    if _propia not in _ANCLAS_H[_h]:
+        fail("[62] %s no escribe en %s, que es su ancla" % (_h, _propia))
+    if _ajena in _ANCLAS_H[_h]:
+        fail("[62] %s escribe en %s, que es el ancla del otro handler" % (_h, _ajena))
+
+# El estado se manda por su id del ctx y nunca se decide comparando contra el type de
+# Linear: esa lectura es del preflight y de nadie más.
+for _h in (_H_RESOLVE, _H_RULE_OUT):
+    if "type" in _ESTADOS[_h]:
+        fail("[62] %s nombra el campo type de un estado; el id del estado sale del ctx "
+             "y ninguna de las dos rutas lo redecide" % _h)
+
+# --- afirmación 63: la toma escribe assigneeId y ninguna otra clave --------------
+
+_CLAIM = handler.get("ticket:claim")
+if _CLAIM not in FUNCS:
+    bail("[63] el subparser de ticket:claim no resuelve a ningún FunctionDef del "
+         "módulo; el handler volvió a ser un stub y la afirmación probaría cero")
+
+# Los dicts que alimentan el input de la mutation, tomados del sitio de llamada: viven
+# como literales en el cuerpo del handler por decisión de diseño, y eso es lo que los
+# vuelve legibles sin seguir argumentos. El dict que el handler imprime por stdout NO
+# entra, y esa exclusión es la afirmación: lo que se escribe en Linear y lo que se
+# reporta son dos cosas, y solo la primera es el input de un issueUpdate.
+_INPUTS_CLAIM = [a for n in ast.walk(FUNCS[_CLAIM])
+                 if isinstance(n, ast.Call) and invocado(n.func) == "_cambiar_estado"
+                 for a in n.args if isinstance(a, ast.Dict)]
+require_nonempty(_INPUTS_CLAIM,
+                 "[63] ningún dict literal del cuerpo de %s llega como argumento de "
+                 "_cambiar_estado; el input se arma en otro lado y la afirmación "
+                 "probaría sobre el conjunto vacío" % _CLAIM)
+
+for _d in _INPUTS_CLAIM:
+    _claves_input = set(k.value for k in _d.keys
+                        if isinstance(k, ast.Constant) and isinstance(k.value, str))
+    if _claves_input != set(["assigneeId"]) or len(_d.keys) != 1:
+        fail("[63] un input de %s lleva las claves %s y tiene que llevar assigneeId y "
+             "ninguna otra" % (_CLAIM, sorted(_claves_input)))
+        continue
+    _valor = _d.values[0]
+    if isinstance(_valor, ast.Constant) and _valor.value is None:
+        continue
+    # La mitad que impide que el asignado venga de un argumento: el valor no nulo es
+    # una indexación del ctx con el literal viewer, y nada más que eso.
+    if not (isinstance(_valor, ast.Subscript)
+            and isinstance(_valor.value, ast.Name) and _valor.value.id != "args"
+            and isinstance(_valor.slice, ast.Constant)
+            and _valor.slice.value == "viewer"):
+        fail("[63] el assigneeId no nulo de %s no sale de indexar el ctx con el "
+             "literal viewer" % _CLAIM)
+
+require_nonempty(ARGS_DE.get("ticket:claim"),
+                 "[63] el subparser de ticket:claim no declara ningún add_argument que "
+                 "el extractor vea; la guarda del flag de asignado probaría cero")
+_FLAGS_ASIGNADO = sorted(f for f in ARGS_DE["ticket:claim"] if "assignee" in f)
+if _FLAGS_ASIGNADO:
+    fail("[63] el subparser de ticket:claim declara flags de asignado: %s; el asignado "
+         "sale del ctx y de ningún otro lado" % _FLAGS_ASIGNADO)
+
+if [n for n in ast.walk(FUNCS[_CLAIM])
+        if isinstance(n, ast.Constant) and n.value == "stateId"]:
+    fail("[63] %s nombra stateId, y la toma no cambia el estado de nada" % _CLAIM)
+
+# El null del assigneeId es la única vía del plugin que limpia una toma, así que una
+# segunda casa que lo escriba es una devolución que nadie ve. Reusa _valores_de_clave,
+# que ya lee los valores de una clave literal en los dicts del cuerpo de una función.
+_OTROS_NULOS = sorted(nm for nm in FUNCS if nm != _CLAIM
+                      and any(isinstance(v, ast.Constant) and v.value is None
+                              for v in _valores_de_clave(nm, "assigneeId")))
+if _OTROS_NULOS:
+    fail("[63] estas funciones aparean assigneeId con None fuera de %s: %s"
+         % (_CLAIM, _OTROS_NULOS))
+
 report()
-print("%s: OK - las veinticuatro afirmaciones de AST sobre %s cierran, bajo Python "
+print("%s: OK - las veintisiete afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))

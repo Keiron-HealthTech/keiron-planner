@@ -5,9 +5,9 @@ lang: en
 # Map contract
 
 What more than one command of `keiron-planner` has to agree on. Its only reader is the
-model. It carries three things and nothing else: the closed set of `next_recommended`
-tokens, the `$ARGUMENTS` contract, and the ticket type to discipline table. Anything that
-belongs to one command alone lives in that command.
+model. It carries four things and nothing else: the closed set of `next_recommended`
+tokens, the `$ARGUMENTS` contract, the ticket type to discipline table, and the derivation
+of the verdict. Anything that belongs to one command alone lives in that command.
 
 ## The closed set of next_recommended tokens
 
@@ -70,3 +70,38 @@ adds it deletes the paragraph.
 | `map:prototype` | prototype | The agent builds variants and never chooses. |
 | `map:research` | subagents in parallel, one per ticket | The only AFK type, and the only exception to one ticket per session. |
 | `map:task` | no discipline | It does instead of deciding, and it earns its place by unblocking a decision, never by delivering a piece of the destination. |
+
+## The verdict and the token
+
+The verdict is what a command says about the map before it proposes anything. It takes four
+values and only four, and this table is the one house of its derivation: every command that
+reports the map cites it and none of them restates a row. Derive both the verdict and the
+token from `counts` and `notTakeable`, and from nothing else.
+
+| Condition | Verdict | Token |
+| --- | --- | --- |
+| `counts.takeable` is above zero | `en curso`, with its counts | `next_recommended: map-work` |
+| `counts.takeable` is zero, `counts.open` is above zero, and some entry of `notTakeable` has a non-null `assignee` | `trabado` | `next_recommended: release-claim` |
+| `counts.takeable` is zero, `counts.open` is above zero, and every entry of `notTakeable` is there only for its `blockers` | `trabado` | `next_recommended: break-cycle` |
+| `counts.open` is zero and `counts.milestones` is zero | `listo para colapsar` | `next_recommended: map-collapse` |
+| `counts.open` is zero and `counts.milestones` is above zero | `colapsado` | `next_recommended: sdd-new` |
+
+Four verdicts and six tokens are not a bijection, and reading four tokens out of four verdicts
+is wrong: `trabado` maps to two tokens by cause, and a map that resolves and carries none at
+all emits a token with no verdict behind it.
+
+Use no numeric threshold anywhere, neither a count of takeable tickets nor the age of a claim.
+The precedence between the two `trabado` rows needs no written rule of order: one existing
+claim is enough for the first of them to win.
+
+`counts.open` zero with `counts.takeable` above zero is impossible and needs no branch. The
+takeable tickets are a subset of the open ones, and the two invariants the adapter publishes
+guarantee it.
+
+`counts.milestones` is read ONLY when `counts.open` is zero. With at least one open ticket the
+first two rows decide and the third count takes no part. The natural mistake is to branch on
+milestones first, and this line is here to prevent it.
+
+The first row is the one place where a command that reads and a command that works part ways,
+and they part in the action rather than in the derivation: a read-only command emits the token
+there, and a command that works the frontier cannot recommend itself, so it works instead.

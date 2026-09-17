@@ -24,7 +24,7 @@ para que el adapter tenga su contrato a mano.
 | `ticket:create` | Los tickets de decisión de una pasada, en una sola invocación, cada uno con un cuerpo que es la pregunta y nada más. |
 | `ticket:block` | La relación nativa de bloqueo, en una segunda pasada. |
 | `frontier:query` | Los tickets abiertos, sin bloqueantes abiertos y sin assignee. |
-| `ticket:claim` | Tomar. El primer write de la sesión. |
+| `ticket:claim` | Tomar. El primer write de la sesión, y con `--release` la escritura inversa, que devuelve la toma. |
 | `ticket:resolve` | Las cinco escrituras de una resolución, en una sola invocación. |
 | `ticket:rule-out` | Cierra un ticket sin resolverlo. La única destructiva. |
 | `milestone:create` | Un corte demoable del colapso. Nunca lleva fecha. |
@@ -47,7 +47,7 @@ genérica pasaría las cuatro sin distinguirlas. Reformular una marca sin tocar 
 mensaje, o al revés, deja el contrato y el script en desacuerdo.
 
 Los otros tres códigos que el adapter puede devolver no son fallas duras del preflight.
-El **9** es el de los stubs, los siete subcomandos que todavía no tienen cuerpo. El
+El **9** es el de los stubs, los dos subcomandos que todavía no tienen cuerpo, `milestone:create` y `work:write`. El
 **2** lo emite `argparse`, y cubre tres casos: falta el subcomando, falta un argumento
 requerido, o el subcomando no existe. El **1** queda reservado para lo que el script no
 pudo decidir.
@@ -208,3 +208,152 @@ línea, no prosa con saltos duros.
 Un ancla duplicada hashea la primera aparición, emite un aviso por stderr nombrándola, y
 el código de salida sigue siendo 0. Abortar por ancla ambigua es regla de escritura, y
 le toca a `map:write`.
+
+## La salida de las operaciones que escriben sobre un ticket
+
+### `ticket:claim`
+
+Una sola línea de JSON compacto, con la misma regla de separadores y de escapado a
+ASCII que las dos operaciones de lectura. Tres claves de primer nivel, las tres
+siempre presentes:
+
+    issue         string. El identificador que devolvió la mutation, CRM-3401, y el
+                  que se le pasó a --issue cuando la respuesta no lo trajo.
+    assignee      string o null. El id del usuario que quedó asignado, que es el
+                  viewer del ctx, y null después de un --release.
+    assigneeName  string o null. El displayName que la mutation devolvió en el mismo
+                  round trip. Viaja porque es lo único legible para una persona, y
+                  aparte de assignee porque quien compone el reporte necesita el id
+                  sin volver a resolverlo.
+
+El write es uno solo, un `issueUpdate` que escribe `assigneeId` y ninguna otra clave.
+No hay `--assignee`, y su ausencia es deliberada: el asignado sale de `ctx["viewer"]`
+y de ningún otro lado, para que el modelo no pueda tomar en nombre de otra persona.
+
+**La toma huérfana y la devolución deliberada son dos cosas distintas.** Una sesión
+que tomó un ticket y murió deja el ticket asignado, fuera de la frontera, y nada del
+plugin lo libera solo: ninguna corrida sin `--release` explícito limpia un assignee.
+`--release` es la otra mitad, y es un write de una sesión viva, con una persona
+mirando, para cuando el trabajo se pausa porque hace falta otro rol. Es la **única**
+vía del plugin entero que deja un `assigneeId` en nulo.
+
+No reintenta. Es un solo campo de un solo issue, así que repetir la invocación entera
+es la remediación correcta y no duplica nada.
+
+### `ticket:resolve`
+
+Diez flags, y `--ctx`, `--project`, `--issue` y `--gist` son los cuatro requeridos:
+
+    --ctx              el blob del preflight, opaco.
+    --project          el Project cuyo overview lleva el mapa, en cualquiera de las
+                       tres formas que el adapter resuelve.
+    --issue            el identificador del ticket que se resuelve, CRM-3401, tal como
+                       lo devolvió frontier:query y sin tipearlo de nuevo.
+    --section          NOMBRE LINEA, repetible. NOMBRE es una de las seis secciones de
+                       la constante SECCIONES y LINEA es una línea física de su cuerpo.
+                       Las seis son obligatorias y ninguna puede quedar sin líneas.
+    --gist             la línea que el mapa va a mostrar de esta decisión, con tope de
+                       120 caracteres, validada por la misma función que aplica el tope
+                       al --append-decision de map:write.
+    --new-ticket       TITULO CUERPO LABELS, repetible. La misma forma exacta que el
+                       --ticket de ticket:create.
+    --block            BLOQUEANTE BLOQUEADO, repetible. Cada lado es el TÍTULO de un
+                       --new-ticket de esta misma invocación, nunca un id: los ids no
+                       existen hasta que la primera escritura vuelve.
+    --append-fog       una viñeta de niebla nueva, con su título en negrita.
+    --remove-fog       el título de una viñeta que esta resolución graduó. Tiene que
+                       estar nombrado en alguna línea de --section "Niebla graduada".
+    --expect-sections  el JSON de huellas que map:read emitió, para el aviso de deriva.
+
+No hay `--append-decision`, y su ausencia es la decisión: el enlace de la línea del
+mapa sale de `issue.url`, que la escritura 4 devuelve en su propio round trip. Así es
+imposible que la línea del mapa apunte a un ticket distinto del que se acaba de cerrar,
+y el modelo nunca tipea una URL.
+
+El cuerpo del comentario cruza la CLI como líneas y nunca como markdown. El adapter lo
+arma: `## <Nombre>`, línea en blanco, las líneas de esa sección unidas por salto, y una
+línea en blanco entre secciones. El orden adentro de una sección es el de la línea de
+comandos; el orden entre secciones lo pone `SECCIONES` y jamás el argv.
+
+Las cinco escrituras van adentro de una sola invocación y en este orden, que el adapter
+garantiza y ninguna combinación de flags reordena:
+
+| Nº | Mutation | Cuándo |
+| --- | --- | --- |
+| 1 | `issueBatchCreate` | solo si hay al menos un `--new-ticket` |
+| 2 | `issueRelationCreate` | solo si hay al menos un `--block` |
+| 3 | `commentCreate` | siempre |
+| 4 | `issueUpdate` | siempre, con `stateId` en el `done` del ctx |
+| 5 | `projectUpdate` | siempre, precedida de su relectura del overview |
+
+Las dos primeras son condicionales porque un batch vacío es un round trip desperdiciado
+y Linear puede rechazarlo. El comentario va antes que el estado porque una sesión que
+muere entre los dos deja el ticket abierto con la respuesta ya escrita, mientras que el
+orden inverso deja un ticket en Done sin respuesta, que es un agujero que nadie ve. El
+mapa va último porque es el único recurso compartido entre corridas.
+
+Ninguna de las cinco reintenta, y la quinta llama a `_intentar_escribir` una sola vez y
+sin bucle propio. `_post` traga la falla de transporte, así que ninguna rama puede
+distinguir "no llegó" de "llegó y se perdió la respuesta", y las tres primeras crean
+recursos que nada en el plugin sabe deshacer.
+
+Todo abort sale con `SIN_KEY`, que es 3, y ninguno acuña un código nuevo. Lo que
+distingue a cada uno es qué dice que aterrizó y cómo terminar a mano:
+
+| Falla en | Qué quedó escrito | Remediación que imprime |
+| --- | --- | --- |
+| antes de la red | nada | corregir la invocación; el transporte no se llamó ni una vez |
+| 1, `issueBatchCreate` | nada | volver a correr la misma invocación entera |
+| 2, `issueRelationCreate` | los tickets nuevos, y cuántos bloqueos entraron | `ticket:block` con los pares que faltan, y después esta misma invocación sin `--new-ticket` ni `--block` |
+| 3, `commentCreate` | los tickets y su cableado | esta misma invocación sin `--new-ticket` ni `--block` |
+| 4, `issueUpdate` | los tickets, el cableado y **el comentario**; el estado en sí queda incierto, porque un timeout no distingue que el `issueUpdate` no haya llegado de que haya llegado y se perdió la respuesta | fijarse en Linear si el ticket ya cambió de estado antes de tocarlo a mano, y después correr `map:write`: repetir la invocación duplicaría el comentario. Nombra además los `--remove-fog`/`--append-fog` pendientes, para que la niebla ya validada contra el comentario no se pierda en silencio |
+| 5, `projectUpdate` | todo menos la línea del mapa | **la invocación exacta de `map:write` que falta**, impresa con su `--project`, la url real, el gist y los `--remove-fog` que correspondan |
+
+La fila 4 no tiene la misma suerte que la 5: en el punto de la falla, la url que
+`--append-decision` necesita la devolvería el mismo `issueUpdate` que acaba de fallar,
+así que su remediación no puede imprimir la invocación completa. `ticket:rule-out` no
+carga esa restricción: `--append-out-of-scope` lleva la viñeta que ya está en el plan y
+no depende de ninguna url, así que ahí la fila 4 sí imprime la invocación entera, igual
+que la 5.
+
+La última fila es la mejor remediación del archivo y es gratis: en ese punto el adapter
+ya tiene el project, la url que le devolvió el `issueUpdate` y el gist. Es también la
+razón por la que la quinta no reintenta. El mensaje nunca sugiere repetir
+`ticket:resolve`, que recrearía los tickets nuevos y volvería a postear el comentario.
+
+stdout, una sola línea de JSON compacto, con siete claves siempre presentes: `issue`,
+`url`, `comment` con el enlace del comentario recién escrito, `tickets` con los que se
+crearon, `blocks` con los pares que quedaron cableados, `mapWritten` y `noop` con los
+títulos de `--remove-fog` que no matchearon ninguna viñeta.
+
+### `ticket:rule-out`
+
+La misma superficie que `ticket:resolve` salvo una fila, y esa fila es la operación:
+
+    --out-of-scope   la viñeta entera de Fuera de alcance, con su título en negrita,
+                     validada por _validar_vineta, la misma que valida las viñetas de
+                     niebla de map:write. Requerida.
+
+**No acepta `--gist`, y la asimetría es el punto.** El flag no está declarado, así que
+pasarlo no es un argumento ignorado sino un error de invocación de `argparse`, con
+código 2. La línea de esta operación va a `## Fuera de alcance` y nunca a
+`## Decisiones hasta ahora`, y la recíproca es igual de fuerte: `ticket:resolve` no
+acepta `--append-out-of-scope`.
+
+Los otros nueve flags son los mismos, `--new-ticket` y `--block` incluidos. Sus dos
+primeras escrituras casi siempre están vacías, pero casi siempre no es siempre, y darle
+la misma forma cuesta cero: sacar un ticket de alcance puede abrir preguntas nuevas.
+
+Las cinco escrituras van en el mismo orden y con las mismas condiciones que las de
+`ticket:resolve`, y las seis fallas dicen lo mismo con tres diferencias: la escritura 4
+manda el `canceled` del ctx en vez del `done`; la remediación de la escritura 4, a
+diferencia de la de `ticket:resolve`, sí imprime la invocación entera de `map:write`,
+porque `--append-out-of-scope` no depende de ninguna url; y la remediación de la
+escritura 5 imprime un `map:write --append-out-of-scope` en vez de un
+`--append-decision`.
+
+Es la **única operación destructiva del adapter**: cierra un ticket sin resolverlo. El
+comentario se escribe igual, con sus seis secciones, así que la decisión de sacarlo de
+alcance queda auditable en el ticket aunque el ticket quede cancelado.
+
+stdout, la misma forma que `ticket:resolve`, con las mismas siete claves.

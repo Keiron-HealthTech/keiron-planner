@@ -69,27 +69,11 @@ the verdict derived from them would read `listo para colapsar`, which would be a
 
 ## The verdict and the token
 
-Derive both from `counts` and `notTakeable`, and from nothing else.
-
-| Condition | Verdict | Token |
-| --- | --- | --- |
-| `counts.takeable` is above zero | `en curso`, with its counts | `next_recommended: map-work` |
-| `counts.takeable` is zero, `counts.open` is above zero, and some entry of `notTakeable` has a non-null `assignee` | `trabado` | `next_recommended: release-claim` |
-| `counts.takeable` is zero, `counts.open` is above zero, and every entry of `notTakeable` is there only for its `blockers` | `trabado` | `next_recommended: break-cycle` |
-| `counts.open` is zero and `counts.milestones` is zero | `listo para colapsar` | `next_recommended: map-collapse` |
-| `counts.open` is zero and `counts.milestones` is above zero | `colapsado` | `next_recommended: sdd-new` |
-
-Four verdicts and six tokens are not a bijection, and reading four tokens out of four verdicts
-is wrong: `trabado` maps to two tokens by cause, and the no-map path of step 1 emits a token
-and has no verdict at all.
-
-Use no numeric threshold anywhere, neither a count of takeable tickets nor the age of a claim.
-The precedence between the two `trabado` rows needs no written rule of order: one existing
-claim is enough for the first of them to win.
-
-`counts.open` zero with `counts.takeable` above zero is impossible and needs no branch. The
-takeable tickets are a subset of the open ones, and the two invariants the adapter publishes
-guarantee it.
+The derivation lives in the contract, in its `The verdict and the token` section, and this
+command is one of two that read it. Derive both from there, and restate no row of it here:
+the row that matches the counts carries the token, and that row is the only place the pairing
+is written. The one token this command emits without a verdict behind it is the no-map path of
+step 1, already written above.
 
 ## The report: six blocks and no seventh
 
@@ -97,8 +81,9 @@ Print these six, and not one more. The block labels are the Spanish the person r
 
 1. `Destino`: the line of the map, taken from `content` only when the fingerprint of the
    `Destino` section is not null.
-2. `Veredicto`: one of the four values above, with its counts when it is `en curso`, and the
-   fog patch count on the line under them, so the two read as one health line: first
+2. `Veredicto`: one of the four values the contract derives, with its counts when it is
+   `en curso`, and the fog patch count on the line under them, so the two read as one
+   health line: first
    `en curso: 4 tomables, 2 tomados, 1 bloqueado`, and under it `niebla: 6 parches`. The count
    is reported in this block and not in block 1 because it is a health signal of the map just
    like the verdict, and this is the block that already carries numbers.
