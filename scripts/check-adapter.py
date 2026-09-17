@@ -1139,7 +1139,68 @@ if "map:no-landing" not in etiquetas:
     fail("[54] map:no-landing no está en LABELS, así que ticket:create no lo crea "
          "cuando falta y un aterrizaje sin trabajo se queda sin su marcador")
 
+# --- afirmación 63: la toma escribe assigneeId y ninguna otra clave --------------
+
+_CLAIM = handler.get("ticket:claim")
+if _CLAIM not in FUNCS:
+    bail("[63] el subparser de ticket:claim no resuelve a ningún FunctionDef del "
+         "módulo; el handler volvió a ser un stub y la afirmación probaría cero")
+
+# Los dicts que alimentan el input de la mutation, tomados del sitio de llamada: viven
+# como literales en el cuerpo del handler por decisión de diseño, y eso es lo que los
+# vuelve legibles sin seguir argumentos. El dict que el handler imprime por stdout NO
+# entra, y esa exclusión es la afirmación: lo que se escribe en Linear y lo que se
+# reporta son dos cosas, y solo la primera es el input de un issueUpdate.
+_INPUTS_CLAIM = [a for n in ast.walk(FUNCS[_CLAIM])
+                 if isinstance(n, ast.Call) and invocado(n.func) == "_cambiar_estado"
+                 for a in n.args if isinstance(a, ast.Dict)]
+require_nonempty(_INPUTS_CLAIM,
+                 "[63] ningún dict literal del cuerpo de %s llega como argumento de "
+                 "_cambiar_estado; el input se arma en otro lado y la afirmación "
+                 "probaría sobre el conjunto vacío" % _CLAIM)
+
+for _d in _INPUTS_CLAIM:
+    _claves_input = set(k.value for k in _d.keys
+                        if isinstance(k, ast.Constant) and isinstance(k.value, str))
+    if _claves_input != set(["assigneeId"]) or len(_d.keys) != 1:
+        fail("[63] un input de %s lleva las claves %s y tiene que llevar assigneeId y "
+             "ninguna otra" % (_CLAIM, sorted(_claves_input)))
+        continue
+    _valor = _d.values[0]
+    if isinstance(_valor, ast.Constant) and _valor.value is None:
+        continue
+    # La mitad que impide que el asignado venga de un argumento: el valor no nulo es
+    # una indexación del ctx con el literal viewer, y nada más que eso.
+    if not (isinstance(_valor, ast.Subscript)
+            and isinstance(_valor.value, ast.Name) and _valor.value.id != "args"
+            and isinstance(_valor.slice, ast.Constant)
+            and _valor.slice.value == "viewer"):
+        fail("[63] el assigneeId no nulo de %s no sale de indexar el ctx con el "
+             "literal viewer" % _CLAIM)
+
+require_nonempty(ARGS_DE.get("ticket:claim"),
+                 "[63] el subparser de ticket:claim no declara ningún add_argument que "
+                 "el extractor vea; la guarda del flag de asignado probaría cero")
+_FLAGS_ASIGNADO = sorted(f for f in ARGS_DE["ticket:claim"] if "assignee" in f)
+if _FLAGS_ASIGNADO:
+    fail("[63] el subparser de ticket:claim declara flags de asignado: %s; el asignado "
+         "sale del ctx y de ningún otro lado" % _FLAGS_ASIGNADO)
+
+if [n for n in ast.walk(FUNCS[_CLAIM])
+        if isinstance(n, ast.Constant) and n.value == "stateId"]:
+    fail("[63] %s nombra stateId, y la toma no cambia el estado de nada" % _CLAIM)
+
+# El null del assigneeId es la única vía del plugin que limpia una toma, así que una
+# segunda casa que lo escriba es una devolución que nadie ve. Reusa _valores_de_clave,
+# que ya lee los valores de una clave literal en los dicts del cuerpo de una función.
+_OTROS_NULOS = sorted(nm for nm in FUNCS if nm != _CLAIM
+                      and any(isinstance(v, ast.Constant) and v.value is None
+                              for v in _valores_de_clave(nm, "assigneeId")))
+if _OTROS_NULOS:
+    fail("[63] estas funciones aparean assigneeId con None fuera de %s: %s"
+         % (_CLAIM, _OTROS_NULOS))
+
 report()
-print("%s: OK - las veinticuatro afirmaciones de AST sobre %s cierran, bajo Python "
+print("%s: OK - las veinticinco afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))
