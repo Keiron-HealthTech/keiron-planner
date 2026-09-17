@@ -600,13 +600,17 @@ for _dict in DICTS_COUNTS:
         fail("[59] el valor apareado con counts en la línea %d no es un dict literal, "
              "así que sus claves no se pueden comparar" % _linea)
         continue
-    _claves = set(k.value for k in _interno.keys
-                  if isinstance(k, ast.Constant) and isinstance(k.value, str))
-    if _claves != CLAVES_COUNTS:
+    # _claves_counts y no _claves: el nombre pelado pisaba la FUNCIÓN _claves de arriba
+    # para todo lo que viniera después en el archivo, y el primer bloque que la volviera
+    # a llamar reventaba con un TypeError en vez de fallar una afirmación.
+    _claves_counts = set(k.value for k in _interno.keys
+                         if isinstance(k, ast.Constant) and isinstance(k.value, str))
+    if _claves_counts != CLAVES_COUNTS:
         # Igualdad de conjuntos: ninguna rama puede olvidarse la clave nueva y ninguna
         # puede agregar una cuarta.
         fail("[59] el counts de la línea %d tiene las claves %s y tiene que tener "
-             "exactamente %s" % (_linea, sorted(_claves), sorted(CLAVES_COUNTS)))
+             "exactamente %s" % (_linea, sorted(_claves_counts),
+                                 sorted(CLAVES_COUNTS)))
         continue
     if not _forma_de_conteo(_valor_apareado(_interno, "milestones")):
         fail("[59] el valor de milestones en la línea %d no es un entero literal no "
@@ -1198,6 +1202,63 @@ for _op in ("ticket:resolve", "ticket:rule-out"):
         fail("[41] en %s estas sentencias entre la primera y la última escritura SON un "
              "retorno, un levantamiento o una salida: %s" % (_h, _corte41))
 
+# --- afirmación 62: la asimetría de estado y de ancla entre las dos resoluciones --
+
+
+def _anclas_de(nombre):
+    """Las constantes de ancla que el cuerpo de una función referencia por Name. Mira el
+    cuerpo y no el grafo, y eso es lo que la fila declara: depende de que los dos
+    literales sigan viviendo ahí, que es justo lo que la decisión de no parametrizar un
+    helper común garantiza."""
+    return set(n.id for n in ast.walk(FUNCS[nombre])
+               if isinstance(n, ast.Name) and n.id.startswith("ANCLA_"))
+
+
+_H_RESOLVE = handler.get("ticket:resolve")
+_H_RULE_OUT = handler.get("ticket:rule-out")
+if _H_RESOLVE not in FUNCS or _H_RULE_OUT not in FUNCS:
+    bail("[62] los subparsers de ticket:resolve y ticket:rule-out no resuelven a dos "
+         "FunctionDef del módulo; la asimetría probaría sobre el conjunto vacío")
+if _H_RESOLVE == _H_RULE_OUT:
+    fail("[62] los dos subcomandos resuelven al mismo handler, %s, así que no hay dos "
+         "cuerpos donde vivan los literales asimétricos" % _H_RESOLVE)
+
+_ESTADOS = {_H_RESOLVE: _claves(FUNCS[_H_RESOLVE]),
+            _H_RULE_OUT: _claves(FUNCS[_H_RULE_OUT])}
+_ANCLAS_H = {_H_RESOLVE: _anclas_de(_H_RESOLVE),
+             _H_RULE_OUT: _anclas_de(_H_RULE_OUT)}
+for _h in (_H_RESOLVE, _H_RULE_OUT):
+    require_nonempty(_ESTADOS[_h],
+                     "[62] el cuerpo de %s no indexa ningún payload con un literal; un "
+                     "helper parametrizado dejaría la afirmación probando sobre el "
+                     "conjunto vacío" % _h)
+    require_nonempty(_ANCLAS_H[_h],
+                     "[62] el cuerpo de %s no referencia ninguna constante de ancla; "
+                     "el ancla se fue al sitio de llamada y el AST ya no la ve" % _h)
+
+# Cuatro pertenencias y cuatro no pertenencias. Tomadas en pares para que el mensaje
+# diga cuál de las dos mitades se rompió.
+for _h, _propio, _ajeno in ((_H_RESOLVE, "done", "canceled"),
+                            (_H_RULE_OUT, "canceled", "done")):
+    if _propio not in _ESTADOS[_h]:
+        fail("[62] %s no indexa el ctx con el literal %s, así que no manda el estado "
+             "que le toca" % (_h, _propio))
+    if _ajeno in _ESTADOS[_h]:
+        fail("[62] %s nombra %s, que es el estado del otro handler" % (_h, _ajeno))
+for _h, _propia, _ajena in ((_H_RESOLVE, "ANCLA_DECISIONES", "ANCLA_FUERA"),
+                            (_H_RULE_OUT, "ANCLA_FUERA", "ANCLA_DECISIONES")):
+    if _propia not in _ANCLAS_H[_h]:
+        fail("[62] %s no escribe en %s, que es su ancla" % (_h, _propia))
+    if _ajena in _ANCLAS_H[_h]:
+        fail("[62] %s escribe en %s, que es el ancla del otro handler" % (_h, _ajena))
+
+# El estado se manda por su id del ctx y nunca se decide comparando contra el type de
+# Linear: esa lectura es del preflight y de nadie más.
+for _h in (_H_RESOLVE, _H_RULE_OUT):
+    if "type" in _ESTADOS[_h]:
+        fail("[62] %s nombra el campo type de un estado; el id del estado sale del ctx "
+             "y ninguna de las dos rutas lo redecide" % _h)
+
 # --- afirmación 63: la toma escribe assigneeId y ninguna otra clave --------------
 
 _CLAIM = handler.get("ticket:claim")
@@ -1260,6 +1321,6 @@ if _OTROS_NULOS:
          % (_CLAIM, _OTROS_NULOS))
 
 report()
-print("%s: OK - las veintiséis afirmaciones de AST sobre %s cierran, bajo Python "
+print("%s: OK - las veintisiete afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))
