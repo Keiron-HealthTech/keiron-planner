@@ -1097,6 +1097,36 @@ def _resolver_relaciones(payload):
     return (True, "")
 
 
+def _bloquear_pares(pares, key):
+    """El cableado de una pasada de bloqueos, compartido por ticket:block y por las dos
+    operaciones de resolución. El bloqueante siempre del lado issue, y esta orientación
+    es el espejo exacto de la lectura de la frontera, que saca el bloqueante de
+    inverseRelations.issue. Si esta punta escribiera invertido, un ticket bloqueado
+    aparecería como tomable.
+
+    No reintenta, por la misma razón que ticket:create: _post traga la falla de
+    transporte y una relación repetida no se puede deshacer desde acá. Corta en el
+    primer par que no confirma y NO termina el proceso: devuelve (ok, detalle, escritos)
+    con los pares que sí entraron, porque cada llamador tiene su propia remediación y la
+    de una resolución a medias no es la de un ticket:block suelto.
+
+    La constante que postea es ISSUE_RELATION_CREATE, referenciada por nombre. Ningún
+    llamador reescribe su enum: type: blocks va sin comillas adentro del cuerpo de la
+    mutation, y una segunda copia de ese literal es exactamente por donde el defecto que
+    dejó a ticket:block inservible al nacer volvería a entrar."""
+    escritos = []
+    for bloqueante, bloqueado in pares:
+        ok, detalle = _resolver_relaciones(
+            _post(ISSUE_RELATION_CREATE,
+                  {"bloqueante": bloqueante, "bloqueado": bloqueado}, key))
+        if not ok:
+            return (False,
+                    "el bloqueo de %s por %s no confirmó: %s"
+                    % (bloqueado, bloqueante, detalle), escritos)
+        escritos.append((bloqueante, bloqueado))
+    return (True, "", escritos)
+
+
 def _cambiar_estado(issue, input_, key):
     """La ÚNICA puerta de issueUpdate: escribe y resuelve, con la misma regla de tres
     casos que las otras cuatro puertas. El input llega armado desde el handler y no se
@@ -1226,25 +1256,14 @@ def cmd_ticket_create(args):
 def cmd_ticket_block(args):
     pares = _bloqueos_de(args)      # valida todo antes de tocar la red
     key = leer_key()
-    # El bloqueante siempre del lado issue, y esta orientación es el espejo exacto de
-    # la lectura de la frontera, que saca el bloqueante de inverseRelations.issue. Si
-    # esta punta escribiera invertido, un ticket bloqueado aparecería como tomable.
-    # No reintenta, por la misma razón que ticket:create: _post traga la falla de
-    # transporte y una relación repetida no se puede deshacer desde acá.
-    escritos = []
-    for bloqueante, bloqueado in pares:
-        ok, detalle = _resolver_relaciones(
-            _post(ISSUE_RELATION_CREATE,
-                  {"bloqueante": bloqueante, "bloqueado": bloqueado}, key))
-        if not ok:
-            die(SIN_KEY,
-                "el bloqueo de %s por %s no confirmó: %s. Bloqueos que SÍ quedaron "
-                "escritos en esta corrida: %s"
-                % (bloqueado, bloqueante, detalle,
-                   ", ".join("%s bloquea a %s" % par for par in escritos) or "ninguno"),
-                "volvé a correr solo los pares que faltan: esta rama no reintenta "
-                "sola, y repetir un par que ya entró duplicaría la relación")
-        escritos.append((bloqueante, bloqueado))
+    ok, detalle, escritos = _bloquear_pares(pares, key)
+    if not ok:
+        die(SIN_KEY,
+            "%s. Bloqueos que SÍ quedaron escritos en esta corrida: %s"
+            % (detalle,
+               ", ".join("%s bloquea a %s" % par for par in escritos) or "ninguno"),
+            "volvé a correr solo los pares que faltan: esta rama no reintenta "
+            "sola, y repetir un par que ya entró duplicaría la relación")
     print(json.dumps(
         {"blocks": [{"blocker": b, "blocked": d} for b, d in escritos]},
         separators=(",", ":")))
