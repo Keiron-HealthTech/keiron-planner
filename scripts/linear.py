@@ -1564,6 +1564,104 @@ def cmd_ticket_claim(args):
                      separators=(",", ":")))
 
 
+def _citar(token):
+    """Un token de una invocación que un mensaje de remediación imprime, listo para
+    copiar y pegar en una shell. Solo entrecomilla lo que lo necesita, para que la línea
+    siga siendo legible."""
+    if token and not any(c in token for c in " \"'\\$`"):
+        return token
+    return "'" + token.replace("'", "'\\''") + "'"
+
+
+def cmd_ticket_resolve(args):
+    plan = _resolucion_de(args)      # valida todo antes de tocar la red
+    ctx = plan["ctx"]
+    labels = ctx.get("labels") or {}
+    # ticket:resolve NO crea labels, y ese corte es lo que mantiene verde la afirmación
+    # 38: _crear_labels_faltantes sigue teniendo un solo llamador, cmd_ticket_create. El
+    # estado que esta guarda rechaza no ocurre en el camino normal, porque implica un
+    # workspace que nunca corrió ticket:create, o sea un mapa con cero tickets, y ese
+    # mapa tiene la frontera vacía: /map-work para en el veredicto y nunca llega acá.
+    faltan = sorted(set(n for n in [LABEL_MAPA] +
+                        [n for _, _, nombres in plan["tickets"] for n in nombres]
+                        if labels.get(n) is None)) if plan["tickets"] else []
+    if faltan:
+        die(SIN_KEY,
+            "estos labels que los --new-ticket necesitan vinieron en null en el ctx: "
+            "%s" % ", ".join(faltan),
+            "corré /map-new en este workspace: es quien crea los labels del plugin "
+            "cuando faltan, y esta operación nunca los crea por su cuenta")
+    key = leer_key()
+    issues, escritos = [], []
+    if plan["tickets"]:
+        ok, detalle, issues = _crear_tickets(ctx, args.project, labels,
+                                             plan["tickets"], key)
+        if not ok:
+            die(SIN_KEY,
+                "el issueBatchCreate no confirmó: %s. No quedó escrito nada de esta "
+                "resolución: ni los tickets nuevos, ni el cableado, ni el comentario, "
+                "ni el estado, ni el mapa" % detalle,
+                "volvé a correr la misma invocación entera: como no aterrizó nada, "
+                "repetirla no duplica nada")
+    if plan["pares"]:
+        # Los títulos se resuelven a ids recién acá, con lo que devolvió la escritura 1.
+        por_titulo = dict((i.get("title"), i.get("id")) for i in issues)
+        ok, detalle, escritos = _bloquear_pares(
+            [(por_titulo.get(a), por_titulo.get(b)) for a, b in plan["pares"]], key)
+        if not ok:
+            die(SIN_KEY,
+                "%s. Los tickets nuevos ya quedaron escritos, y de los bloqueos "
+                "entraron %s" % (detalle, len(escritos)),
+                "corré ticket:block solo con los pares que faltan, y después esta "
+                "misma invocación sin --new-ticket ni --block: el comentario, el "
+                "estado y el mapa todavía no se escribieron")
+    ok, detalle, comentario = _comentar(plan["issue"], plan["cuerpo"], key)
+    if not ok:
+        die(SIN_KEY,
+            "el comentario de resolución no se pudo escribir: %s. Los tickets nuevos y "
+            "su cableado ya quedaron escritos" % detalle,
+            "volvé a correr esta misma invocación sin --new-ticket ni --block: el "
+            "estado y el mapa todavía no se escribieron")
+    ok, detalle, issue = _cambiar_estado(plan["issue"], {"stateId": ctx["done"]}, key)
+    if not ok:
+        die(SIN_KEY,
+            "el estado no se pudo cambiar: %s. El comentario de resolución YA está "
+            "escrito en el ticket, así que repetir esta invocación lo duplicaría"
+            % detalle,
+            "cerrá el ticket a mano en Linear y después corré map:write --project %s "
+            "--append-decision con la url del ticket y el gist, para dejar la línea en "
+            "el mapa" % _citar(args.project))
+    url = issue.get("url") or ""
+    ediciones = {ANCLA_DECISIONES: ([], ["- %s: %s" % (url, plan["gist"])])}
+    if plan["graduadas"] or plan["niebla"]:
+        ediciones[ANCLA_NIEBLA] = (plan["graduadas"], plan["niebla"])
+    # Un solo intento y sin bucle propio: MAX_INTENTOS gobierna el reintento de
+    # map:write y de map:create, y una tercera referencia lo desparramaría. Acá no hace
+    # falta, porque una falla en la quinta no pierde nada y se recupera con el comando
+    # exacto que el mensaje de abajo imprime.
+    ok, detalle = _intentar_escribir(args.project, ediciones, plan["esperadas"],
+                                     False, key)
+    if not ok:
+        faltante = ["map:write", "--project", args.project,
+                    "--append-decision", url, plan["gist"]]
+        for titulo in plan["graduadas"]:
+            faltante += ["--remove-fog", titulo]
+        for vineta in plan["niebla"]:
+            faltante += ["--append-fog", vineta[2:]]
+        die(SIN_KEY,
+            "la línea del mapa no se pudo escribir: %s. Todo lo demás ya aterrizó: los "
+            "tickets nuevos, su cableado, el comentario y el ticket en Done" % detalle,
+            "corré exactamente esto para terminar a mano, y nada más: linear.py %s"
+            % " ".join(_citar(t) for t in faltante))
+    print(json.dumps(
+        {"issue": issue.get("identifier") or plan["issue"], "url": url,
+         "comment": comentario,
+         "tickets": [{"identifier": i.get("identifier"), "id": i.get("id"),
+                      "title": i.get("title"), "url": i.get("url")} for i in issues],
+         "blocks": [{"blocker": b, "blocked": d} for b, d in escritos],
+         "mapWritten": True, "noop": detalle}, separators=(",", ":")))
+
+
 def cmd_stub(args):
     die(NO_IMPLEMENTADO,
         "el subcomando %s todavía no está implementado" % args.operacion,
@@ -1673,7 +1771,7 @@ def construir_parser():
     p_ticket_resolve.add_argument("--remove-fog", action="append", default=[],
                                   metavar="TITULO")
     p_ticket_resolve.add_argument("--expect-sections")
-    p_ticket_resolve.set_defaults(func=cmd_stub)
+    p_ticket_resolve.set_defaults(func=cmd_ticket_resolve)
 
     p_ticket_rule_out = subs.add_parser("ticket:rule-out")
     p_ticket_rule_out.add_argument("--ctx", required=True)

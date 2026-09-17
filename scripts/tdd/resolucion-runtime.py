@@ -358,8 +358,140 @@ ok, detalle, url = mod._comentar("CRM-1", "x", "k")
 chequear(n, "ok", ok, False)
 chequear(n, "el detalle nombra success", "success" in detalle, True)
 
+
+# --- las cinco escrituras de cmd_ticket_resolve -----------------------------------
+
+NIEBLA_TITULO = "Los reportes del equipo clínico."
+DECISION_PREVIA = "- https://linear.app/keiron/issue/CRM-0: una decision previa"
+
+
+def overview():
+    l = ["## " + mod.ANCLAS[0], "", "que el mapa exista", ""]
+    l += ["## " + mod.ANCLAS[1], ""]
+    l += ["## " + mod.ANCLAS[2], "", DECISION_PREVIA, ""]
+    l += ["## " + mod.ANCLAS[3], "", "- **%s** todavia no se puede enunciar"
+          % NIEBLA_TITULO, ""]
+    l += ["## " + mod.ANCLAS[4], ""]
+    l += ["## " + mod.ANCLAS[5], ""]
+    l += ["## " + mod.ANTES_DEL_MAPA, "", "prosa heredada que no se toca", ""]
+    return "\n".join(l)
+
+
+IDS = dict((n, "l-%d" % i) for i, n in enumerate(mod.LABELS))
+CTX = json.dumps({"viewer": "v1", "team": "t1", "done": "s-done",
+                  "canceled": "s-canc", "default": "s-todo", "discovery": "l-d",
+                  "labels": IDS})
+SIN_DESIGN = dict(IDS)
+SIN_DESIGN["hitl:design"] = None
+CTX_SIN_DESIGN = json.dumps({"viewer": "v1", "team": "t1", "done": "s-done",
+                             "canceled": "s-canc", "default": "s-todo",
+                             "discovery": None, "labels": SIN_DESIGN})
+
+LOTE = {"data": {"issueBatchCreate": {"success": True, "issues": [
+    {"id": "i-1", "identifier": "CRM-10", "title": "Una pregunta nueva",
+     "url": "https://linear.app/keiron/issue/CRM-10"},
+    {"id": "i-2", "identifier": "CRM-11", "title": "Otra pregunta",
+     "url": "https://linear.app/keiron/issue/CRM-11"}]}}}
+RELACION = {"data": {"issueRelationCreate": {"success": True,
+                                             "issueRelation": {"id": "r-1"}}}}
+COMENTARIO = {"data": {"commentCreate": {"success": True, "comment": {
+    "id": "c-1", "url": "https://linear.app/keiron/issue/CRM-1#comment-c-1"}}}}
+COMENTARIO_NO = {"data": {"commentCreate": {"success": False, "comment": None}}}
+URL_CERRADO = "https://linear.app/keiron/issue/CRM-1"
+ESTADO = {"data": {"issueUpdate": {"success": True, "issue": {
+    "identifier": "CRM-1", "url": URL_CERRADO, "assignee": {"displayName": "Dev"},
+    "state": {"name": "Done"}}}}}
+LEIDO = {"data": {"project": {"content": overview()}}}
+ESCRITO = {"data": {"projectUpdate": {"success": True}}}
+ESCRITO_NO = {"data": {"projectUpdate": {"success": False}}}
+
+GRADUA = {"Niebla graduada": ["se graduó %s" % NIEBLA_TITULO]}
+RESOLVER = ["ticket:resolve", "--ctx", CTX, "--project", "kp", "--issue", "CRM-1"]
+EL_GIST = ["--gist", "el mapa vive en el overview del Project"]
+
+n = "resolve-feliz-seis-posts"
+rc, out, err, tr = correr(
+    n, RESOLVER + secciones(**GRADUA) + EL_GIST + T1 + T2 +
+    ["--block", "Una pregunta nueva", "Otra pregunta",
+     "--remove-fog", NIEBLA_TITULO],
+    [LOTE, RELACION, COMENTARIO, ESTADO, LEIDO, ESCRITO])
+chequear(n, "rc", rc, 0)
+chequear(n, "seis POSTs", tr.llamadas, 6)
+orden = ["issueBatchCreate", "issueRelationCreate", "commentCreate", "issueUpdate",
+         "project(id:", "projectUpdate"]
+for i, aguja in enumerate(orden):
+    chequear(n, "el POST %d lleva %s" % (i + 1, aguja),
+             aguja in (tr.queries[i] if i < len(tr.queries) else ""), True)
+if tr.llamadas == 6:
+    cuerpo = tr.variables[2].get("body") or ""
+    chequear(n, "el comentario lleva los seis encabezados en el orden de SECCIONES",
+             [l[3:] for l in cuerpo.split("\n") if l.startswith("## ")], SEIS)
+    chequear(n, "input.stateId es el done del ctx",
+             (tr.variables[3].get("input") or {}).get("stateId"), "s-done")
+    contenido = tr.variables[5].get("content") or ""
+    chequear(n, "el mapa gano la linea con la url que devolvio el issueUpdate",
+             ("- %s: %s" % (URL_CERRADO, EL_GIST[1])) in contenido, True)
+    chequear(n, "la decision previa sobrevive", DECISION_PREVIA in contenido, True)
+    chequear(n, "el mapa perdio la vineta graduada",
+             NIEBLA_TITULO in contenido, False)
+    chequear(n, "la prosa heredada sobrevive",
+             "prosa heredada que no se toca" in contenido, True)
+    # El enum, otra vez: la query de la relacion es la constante y nada mas.
+    chequear(n, "la query de la relacion es la constante, byte a byte",
+             tr.queries[1], mod.ISSUE_RELATION_CREATE)
+    chequear(n, "lleva el enum sin comillas", "type: blocks" in tr.queries[1], True)
+    chequear(n, "y no lo cita", 'type: "' in tr.queries[1], False)
+    d = json.loads(out)
+    chequear(n, "stdout nombra el ticket cerrado", d.get("issue"), "CRM-1")
+    chequear(n, "stdout nombra los dos tickets nuevos", len(d.get("tickets") or []), 2)
+
+n = "resolve-sin-new-ticket-cuatro-posts"
+rc, out, err, tr = correr(n, RESOLVER + secciones() + EL_GIST,
+                          [COMENTARIO, ESTADO, LEIDO, ESCRITO])
+chequear(n, "rc", rc, 0)
+chequear(n, "cuatro POSTs exactos", tr.llamadas, 4)
+chequear(n, "ningun issueBatchCreate",
+         [q for q in tr.queries if "issueBatchCreate" in q], [])
+chequear(n, "ningun issueRelationCreate",
+         [q for q in tr.queries if "issueRelationCreate" in q], [])
+chequear(n, "ningun issueLabelCreate",
+         [q for q in tr.queries if "issueLabelCreate" in q], [])
+
+n = "resolve-label-nulo-muere-antes-de-la-red"
+rc, out, err, tr = correr(
+    n, ["ticket:resolve", "--ctx", CTX_SIN_DESIGN, "--project", "kp",
+        "--issue", "CRM-1"] + secciones() + EL_GIST +
+    ["--new-ticket", "Una pregunta de diseño", "Su cuerpo", "hitl:design"], [])
+chequear(n, "rc", rc, mod.SIN_KEY)
+chequear(n, "transporte llamado cero veces", tr.llamadas, 0)
+chequear(n, "nombra el label que falta", "hitl:design" in err, True)
+chequear(n, "manda a map-new", "map-new" in err, True)
+
+n = "resolve-comentario-rechazado"
+rc, out, err, tr = correr(
+    n, RESOLVER + secciones() + EL_GIST + T1 +
+    [], [LOTE, COMENTARIO_NO])
+chequear(n, "rc", rc, mod.SIN_KEY)
+chequear(n, "dos POSTs", tr.llamadas, 2)
+chequear(n, "dice que los tickets ya quedaron escritos",
+         "tickets nuevos" in err, True)
+
+n = "resolve-mapa-rechazado"
+rc, out, err, tr = correr(
+    n, RESOLVER + secciones() + EL_GIST,
+    [COMENTARIO, ESTADO, LEIDO, ESCRITO_NO])
+chequear(n, "rc", rc, mod.SIN_KEY)
+chequear(n, "cuatro POSTs", tr.llamadas, 4)
+chequear(n, "stderr imprime la invocacion de map:write",
+         "map:write" in err, True)
+chequear(n, "con el mismo project", "--project kp" in err, True)
+chequear(n, "con el gist real", EL_GIST[1] in err, True)
+chequear(n, "con la url real", URL_CERRADO in err, True)
+chequear(n, "y no sugiere repetir ticket:resolve",
+         "ticket:resolve" in err, False)
+
 if FALLAS:
     for f in FALLAS:
         print("FAIL - " + f)
     sys.exit(1)
-print("OK - las secciones, el gist, la niebla, el cableado y el comentario")
+print("OK - ticket:resolve: sus guardas previas y sus cinco escrituras")
