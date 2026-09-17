@@ -763,6 +763,25 @@ def _resolucion_de(args):
             "esperadas": _esperadas_de(args)}
 
 
+def _fuera_de_alcance_de(args):
+    """La función pura de ticket:rule-out. Espeja a _resolucion_de en todo lo que las dos
+    operaciones comparten, y difiere en una sola fila: en vez de un gist recibe la viñeta
+    entera de Fuera de alcance, con su título en negrita, validada por _validar_vineta
+    reusada verbatim. Acá no existe --gist, y esa ausencia es la asimetría: la línea de
+    esta operación va a Fuera de alcance y nunca a Decisiones."""
+    ctx = _ctx_de(args)
+    issue = _issue_de(args)
+    cuerpo = _cuerpo_de_secciones(args)
+    _validar_vineta("--out-of-scope", args.out_of_scope)
+    niebla, graduadas = _niebla_de(args)
+    tickets = [_validar_ticket("--new-ticket", t, c, e) for t, c, e in args.new_ticket]
+    return {"ctx": ctx, "issue": issue, "cuerpo": cuerpo,
+            "vineta": args.out_of_scope,
+            "niebla": niebla, "graduadas": graduadas,
+            "tickets": tickets, "pares": _cableado_de(args, tickets),
+            "esperadas": _esperadas_de(args)}
+
+
 def _ediciones_de(args):
     """Las ediciones agrupadas por ancla, ya validadas: acá se rompe todo lo que se pueda
     romper sin haber tocado la red, que es lo que hace que una invocación mal formada no
@@ -1662,6 +1681,91 @@ def cmd_ticket_resolve(args):
          "mapWritten": True, "noop": detalle}, separators=(",", ":")))
 
 
+def cmd_ticket_rule_out(args):
+    # Una función aparte de cmd_ticket_resolve, y no una parametrizada por estado y por
+    # ancla. Las dos no comparten destino ni valor, y comparten menos que eso: no
+    # comparten FORMA. Una decisión es un enlace más gist con tope; una entrada de Fuera
+    # de alcance es una viñeta con título en negrita que es además su clave única. Un
+    # helper parametrizado tendría que ramificar por forma adentro, y ahí ya no es un
+    # helper; además dejaría los dos literales asimétricos en el sitio de llamada, donde
+    # el AST de este repo deliberadamente no los sigue.
+    plan = _fuera_de_alcance_de(args)   # valida todo antes de tocar la red
+    ctx = plan["ctx"]
+    labels = ctx.get("labels") or {}
+    faltan = sorted(set(n for n in [LABEL_MAPA] +
+                        [n for _, _, nombres in plan["tickets"] for n in nombres]
+                        if labels.get(n) is None)) if plan["tickets"] else []
+    if faltan:
+        die(SIN_KEY,
+            "estos labels que los --new-ticket necesitan vinieron en null en el ctx: "
+            "%s" % ", ".join(faltan),
+            "corré /map-new en este workspace: es quien crea los labels del plugin "
+            "cuando faltan, y esta operación nunca los crea por su cuenta")
+    key = leer_key()
+    issues, escritos = [], []
+    if plan["tickets"]:
+        ok, detalle, issues = _crear_tickets(ctx, args.project, labels,
+                                             plan["tickets"], key)
+        if not ok:
+            die(SIN_KEY,
+                "el issueBatchCreate no confirmó: %s. No quedó escrito nada de este "
+                "fuera de alcance: ni los tickets nuevos, ni el cableado, ni el "
+                "comentario, ni el estado, ni el mapa" % detalle,
+                "volvé a correr la misma invocación entera: como no aterrizó nada, "
+                "repetirla no duplica nada")
+    if plan["pares"]:
+        por_titulo = dict((i.get("title"), i.get("id")) for i in issues)
+        ok, detalle, escritos = _bloquear_pares(
+            [(por_titulo.get(a), por_titulo.get(b)) for a, b in plan["pares"]], key)
+        if not ok:
+            die(SIN_KEY,
+                "%s. Los tickets nuevos ya quedaron escritos, y de los bloqueos "
+                "entraron %s" % (detalle, len(escritos)),
+                "corré ticket:block solo con los pares que faltan, y después esta "
+                "misma invocación sin --new-ticket ni --block: el comentario, el "
+                "estado y el mapa todavía no se escribieron")
+    ok, detalle, comentario = _comentar(plan["issue"], plan["cuerpo"], key)
+    if not ok:
+        die(SIN_KEY,
+            "el comentario no se pudo escribir: %s. Los tickets nuevos y su cableado ya "
+            "quedaron escritos" % detalle,
+            "volvé a correr esta misma invocación sin --new-ticket ni --block: el "
+            "estado y el mapa todavía no se escribieron")
+    ok, detalle, issue = _cambiar_estado(plan["issue"],
+                                         {"stateId": ctx["canceled"]}, key)
+    if not ok:
+        die(SIN_KEY,
+            "el estado no se pudo cambiar: %s. El comentario YA está escrito en el "
+            "ticket, así que repetir esta invocación lo duplicaría" % detalle,
+            "cancelá el ticket a mano en Linear y después corré map:write --project %s "
+            "--append-out-of-scope con la viñeta, para dejar la línea en el mapa"
+            % _citar(args.project))
+    ediciones = {ANCLA_FUERA: ([], ["- %s" % plan["vineta"]])}
+    if plan["graduadas"] or plan["niebla"]:
+        ediciones[ANCLA_NIEBLA] = (plan["graduadas"], plan["niebla"])
+    ok, detalle = _intentar_escribir(args.project, ediciones, plan["esperadas"],
+                                     False, key)
+    if not ok:
+        faltante = ["map:write", "--project", args.project,
+                    "--append-out-of-scope", plan["vineta"]]
+        for titulo in plan["graduadas"]:
+            faltante += ["--remove-fog", titulo]
+        for vineta in plan["niebla"]:
+            faltante += ["--append-fog", vineta[2:]]
+        die(SIN_KEY,
+            "la línea del mapa no se pudo escribir: %s. Todo lo demás ya aterrizó: los "
+            "tickets nuevos, su cableado, el comentario y el ticket cancelado" % detalle,
+            "corré exactamente esto para terminar a mano, y nada más: linear.py %s"
+            % " ".join(_citar(t) for t in faltante))
+    print(json.dumps(
+        {"issue": issue.get("identifier") or plan["issue"],
+         "url": issue.get("url") or "", "comment": comentario,
+         "tickets": [{"identifier": i.get("identifier"), "id": i.get("id"),
+                      "title": i.get("title"), "url": i.get("url")} for i in issues],
+         "blocks": [{"blocker": b, "blocked": d} for b, d in escritos],
+         "mapWritten": True, "noop": detalle}, separators=(",", ":")))
+
+
 def cmd_stub(args):
     die(NO_IMPLEMENTADO,
         "el subcomando %s todavía no está implementado" % args.operacion,
@@ -1773,9 +1877,26 @@ def construir_parser():
     p_ticket_resolve.add_argument("--expect-sections")
     p_ticket_resolve.set_defaults(func=cmd_ticket_resolve)
 
+    # La misma superficie que ticket:resolve salvo una fila: acá va --out-of-scope y NO
+    # existe --gist. La asimetría es el punto, y argparse la hace dura: un --gist sobre
+    # ticket:rule-out no es un flag ignorado, es un error de invocación.
     p_ticket_rule_out = subs.add_parser("ticket:rule-out")
     p_ticket_rule_out.add_argument("--ctx", required=True)
-    p_ticket_rule_out.set_defaults(func=cmd_stub)
+    p_ticket_rule_out.add_argument("--project", required=True)
+    p_ticket_rule_out.add_argument("--issue", required=True, metavar="IDENTIFICADOR")
+    p_ticket_rule_out.add_argument("--section", nargs=2, action="append", default=[],
+                                   metavar=("NOMBRE", "LINEA"))
+    p_ticket_rule_out.add_argument("--out-of-scope", required=True, metavar="VINETA")
+    p_ticket_rule_out.add_argument("--new-ticket", nargs=3, action="append", default=[],
+                                   metavar=("TITULO", "CUERPO", "LABELS"))
+    p_ticket_rule_out.add_argument("--block", nargs=2, action="append", default=[],
+                                   metavar=("BLOQUEANTE", "BLOQUEADO"))
+    p_ticket_rule_out.add_argument("--append-fog", action="append", default=[],
+                                   metavar="VINETA")
+    p_ticket_rule_out.add_argument("--remove-fog", action="append", default=[],
+                                   metavar="TITULO")
+    p_ticket_rule_out.add_argument("--expect-sections")
+    p_ticket_rule_out.set_defaults(func=cmd_ticket_rule_out)
 
     p_milestone_create = subs.add_parser("milestone:create")
     p_milestone_create.set_defaults(func=cmd_stub)

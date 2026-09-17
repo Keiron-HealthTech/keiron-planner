@@ -490,8 +490,105 @@ chequear(n, "con la url real", URL_CERRADO in err, True)
 chequear(n, "y no sugiere repetir ticket:resolve",
          "ticket:resolve" in err, False)
 
+
+# --- ticket:rule-out y sus dos literales asimetricos ------------------------------
+
+VINETA = "**Los reportes del equipo clínico.** quedaron más allá del destino"
+FUERA = ["ticket:rule-out", "--ctx", CTX, "--project", "kp", "--issue", "CRM-1"]
+ESTADO_CANC = {"data": {"issueUpdate": {"success": True, "issue": {
+    "identifier": "CRM-1", "url": URL_CERRADO, "assignee": None,
+    "state": {"name": "Canceled"}}}}}
+
+n = "rule-out-feliz"
+rc, out, err, tr = correr(n, FUERA + secciones() + ["--out-of-scope", VINETA],
+                          [COMENTARIO, ESTADO_CANC, LEIDO, ESCRITO])
+chequear(n, "rc", rc, 0)
+chequear(n, "cuatro POSTs", tr.llamadas, 4)
+if tr.llamadas == 4:
+    chequear(n, "input.stateId es el canceled del ctx",
+             (tr.variables[1].get("input") or {}).get("stateId"), "s-canc")
+    contenido = tr.variables[3].get("content") or ""
+    cuerpos = mod.cortar_secciones(contenido)
+    chequear(n, "la vineta aterrizo en Fuera de alcance",
+             any(VINETA in l for l in cuerpos[mod.ANCLA_FUERA]), True)
+    chequear(n, "Decisiones hasta ahora quedo byte a byte igual",
+             cuerpos[mod.ANCLA_DECISIONES],
+             mod.cortar_secciones(overview())[mod.ANCLA_DECISIONES])
+    chequear(n, "y no se colo ninguna linea de decision",
+             any("CRM-1" in l for l in cuerpos[mod.ANCLA_DECISIONES]), False)
+
+n = "rule-out-no-acepta-gist"
+rc, out, err, tr = correr(n, FUERA + secciones() + ["--out-of-scope", VINETA,
+                                                    "--gist", "un gist"], [])
+chequear(n, "rc", rc, 2)
+chequear(n, "transporte llamado cero veces", tr.llamadas, 0)
+
+n = "rule-out-exige-out-of-scope"
+rc, out, err, tr = correr(n, FUERA + secciones(), [])
+chequear(n, "rc", rc, 2)
+
+n = "rule-out-vineta-sin-titulo"
+rc, out, err, tr = correr(n, FUERA + secciones() +
+                          ["--out-of-scope", "sin titulo en negrita"], [])
+chequear(n, "rc", rc, mod.SIN_KEY)
+chequear(n, "transporte llamado cero veces", tr.llamadas, 0)
+
+n = "rule-out-con-tickets-nuevos"
+rc, out, err, tr = correr(n, FUERA + secciones() + ["--out-of-scope", VINETA] + T1 + T2 +
+                          ["--block", "Una pregunta nueva", "Otra pregunta"],
+                          [LOTE, RELACION, COMENTARIO, ESTADO_CANC, LEIDO, ESCRITO])
+chequear(n, "rc", rc, 0)
+chequear(n, "seis POSTs, la misma forma que resolve", tr.llamadas, 6)
+if tr.llamadas == 6:
+    chequear(n, "la query de la relacion sigue siendo la constante",
+             tr.queries[1], mod.ISSUE_RELATION_CREATE)
+
+n = "rule-out-mapa-rechazado"
+rc, out, err, tr = correr(n, FUERA + secciones() + ["--out-of-scope", VINETA],
+                          [COMENTARIO, ESTADO_CANC, LEIDO, ESCRITO_NO])
+chequear(n, "rc", rc, mod.SIN_KEY)
+chequear(n, "imprime map:write con --append-out-of-scope",
+         "--append-out-of-scope" in err, True)
+chequear(n, "y nunca --append-decision", "--append-decision" in err, False)
+
+# Los dos handlers son dos funciones de nivel superior y no una parametrizada.
+import ast as _ast
+_arbol = _ast.parse(open(os.environ["KP_ADAPTER"]).read())
+_nombres = [x.name for x in _arbol.body if isinstance(x, _ast.FunctionDef)]
+chequear("asimetria", "cmd_ticket_resolve existe", "cmd_ticket_resolve" in _nombres, True)
+chequear("asimetria", "cmd_ticket_rule_out existe", "cmd_ticket_rule_out" in _nombres, True)
+# El snippet de verificacion de la delta spec busca un nombre que empiece con
+# _resolver_ticket, y eso da un FALSO POSITIVO contra el arbol vivo: _resolver_tickets
+# es la puerta de issueBatchCreate y existe desde CRM-3400. La propiedad real es que
+# ninguno de los dos handlers delegue su estado ni su ancla, asi que se mide asi.
+_cuerpos = dict((x.name, x) for x in _arbol.body if isinstance(x, _ast.FunctionDef))
+
+
+def _llama(quien, a_quien):
+    return any(isinstance(nd, _ast.Call) and getattr(nd.func, "id", None) == a_quien
+               for nd in _ast.walk(_cuerpos[quien]))
+
+
+def _nombra(quien, constante):
+    return any(isinstance(nd, _ast.Name) and nd.id == constante
+               for nd in _ast.walk(_cuerpos[quien]))
+
+
+chequear("asimetria", "resolve no delega en rule-out",
+         _llama("cmd_ticket_resolve", "cmd_ticket_rule_out"), False)
+chequear("asimetria", "rule-out no delega en resolve",
+         _llama("cmd_ticket_rule_out", "cmd_ticket_resolve"), False)
+chequear("asimetria", "resolve escribe en su propia ancla",
+         _nombra("cmd_ticket_resolve", "ANCLA_DECISIONES"), True)
+chequear("asimetria", "y no en la del otro",
+         _nombra("cmd_ticket_resolve", "ANCLA_FUERA"), False)
+chequear("asimetria", "rule-out escribe en su propia ancla",
+         _nombra("cmd_ticket_rule_out", "ANCLA_FUERA"), True)
+chequear("asimetria", "y no en la del otro",
+         _nombra("cmd_ticket_rule_out", "ANCLA_DECISIONES"), False)
+
 if FALLAS:
     for f in FALLAS:
         print("FAIL - " + f)
     sys.exit(1)
-print("OK - ticket:resolve: sus guardas previas y sus cinco escrituras")
+print("OK - ticket:resolve y ticket:rule-out: guardas, escrituras y asimetria")
