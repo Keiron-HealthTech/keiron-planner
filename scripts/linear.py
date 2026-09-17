@@ -515,6 +515,24 @@ def _validar_vineta(etiqueta, valor):
     return titulo
 
 
+def _validar_gist(etiqueta, gist):
+    """El tope de 120 caracteres del gist, y la ÚNICA casa del literal en todo el
+    archivo. La comparten el --append-decision de map:write y el --gist de la resolución,
+    y la etiqueta es un parámetro para que el mensaje nombre el flag que la persona
+    escribió, igual que en _validar_vineta.
+
+    Cubre el tope y nada más. Las otras dos guardas del valor, _sin_saltos y
+    _no_es_encabezado, las aplica cada llamador por su cuenta: en map:write se intercalan
+    con las del enlace, que viaja en el mismo flag, y meterlas acá adentro cambiaría qué
+    mensaje ve una invocación que falla por dos motivos a la vez."""
+    if len(gist) > 120:
+        die(SIN_KEY,
+            "el gist de %s tiene %s caracteres y el tope es de 120: %r"
+            % (etiqueta, len(gist), gist),
+            "acortá el gist; el detalle va en el comentario de resolución del "
+            "ticket y el mapa nunca lo repite")
+
+
 def _ediciones_de(args):
     """Las ediciones agrupadas por ancla, ya validadas: acá se rompe todo lo que se pueda
     romper sin haber tocado la red, que es lo que hace que una invocación mal formada no
@@ -533,12 +551,7 @@ def _ediciones_de(args):
                 "el enlace de --append-decision está vacío o tiene espacios: %r"
                 % enlace,
                 "pasá la URL del ticket como un solo token, sin espacios")
-        if len(gist) > 120:
-            die(SIN_KEY,
-                "el gist de --append-decision tiene %s caracteres y el tope es de 120: "
-                "%r" % (len(gist), gist),
-                "acortá el gist; el detalle va en el comentario de resolución del "
-                "ticket y el mapa nunca lo repite")
+        _validar_gist("--append-decision", gist)
         _no_es_encabezado("--append-decision", enlace)
         _no_es_encabezado("--append-decision", gist)
         anotar(ANCLA_DECISIONES, 1, "- %s: %s" % (enlace, gist))
