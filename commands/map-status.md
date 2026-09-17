@@ -70,13 +70,10 @@ the verdict derived from them would read `listo para colapsar`, which would be a
 ## The verdict and the token
 
 The derivation lives in the contract, in its `The verdict and the token` section, and this
-command is one of two that read it. Derive both from there, and restate no row of it here.
-
-Out of that table this command emits five: `next_recommended: map-work`,
-`next_recommended: release-claim`, `next_recommended: break-cycle`,
-`next_recommended: map-collapse` and `next_recommended: sdd-new`. The sixth,
-`next_recommended: map-new`, comes out of step 1 and has no verdict behind it, which is the
-no-map path already written above.
+command is one of two that read it. Derive both from there, and restate no row of it here:
+the row that matches the counts carries the token, and that row is the only place the pairing
+is written. The one token this command emits without a verdict behind it is the no-map path of
+step 1, already written above.
 
 ## The report: six blocks and no seventh
 

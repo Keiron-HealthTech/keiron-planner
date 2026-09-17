@@ -74,17 +74,37 @@ del_contrato="$(awk -v enc="$ENCABEZADO" '
 ' "$CONTRATO" | sort -u || true)"
 require_nonempty "$del_contrato" "[7] la tabla de tokens de $CONTRATO bajo su encabezado dio vacío; el encabezado se renombró o la tabla se quedó sin filas"
 
+# El recorrido de citaciones camina DOS globs: commands/*.md y skills/*/SKILL.md. El
+# segundo hace falta desde que un comando del mapa rutea a una skill y el token de cierre
+# vive allá: con un solo glob, las citaciones de una skill no las ve nadie y un token que
+# el contrato no declara pasa en verde.
+#
+# skills/_shared/ queda FUERA a propósito, y no es prolijidad: ahí vive el contrato, y si
+# cosechara sus propias citaciones la igualdad se compararía contra sí misma y no
+# asertaría nada. El -mindepth 2 ya lo dejaría afuera de por sí, porque el contrato no es
+# un SKILL.md, y la exclusión explícita es la que sobrevive a que alguien agregue uno.
+fuentes="$( { find commands -maxdepth 1 -type f -name '*.md'
+              find skills -mindepth 2 -maxdepth 2 -type f -name 'SKILL.md' \
+                ! -path 'skills/_shared/*'; } | sort || true)"
+require_nonempty "$fuentes" "[7] el recorrido de commands/ y skills/ no matcheó ningún archivo; el lado de las citaciones daría vacío y la igualdad probaría cero"
+
 # Solo la forma de citación, y nunca cualquier palabra en kebab-case entre backticks:
 # un valor de ROUTE, un nombre de archivo y una bandera viven o van a vivir en
-# commands/*.md con esa misma pinta y ninguno es un token.
-de_comandos="$(grep -ho '`next_recommended: [a-z0-9][a-z0-9-]*`' commands/*.md \
+# commands/*.md y en skills/*/SKILL.md con esa misma pinta y ninguno es un token.
+de_comandos="$(printf '%s\n' "$fuentes" \
+  | xargs grep -ho '`next_recommended: [a-z0-9][a-z0-9-]*`' \
   | sed 's/^`next_recommended: //' | sed 's/`$//' | sort -u || true)"
-require_nonempty "$de_comandos" "[7] ningún archivo de commands/ cita un token en la forma de citación; la igualdad de conjunto vacío contra conjunto vacío pasaría sin asertar nada"
+require_nonempty "$de_comandos" "[7] ningún archivo de commands/ ni de skills/ cita un token en la forma de citación; la igualdad de conjunto vacío contra conjunto vacío pasaría sin asertar nada"
+
+# Qué archivos citan, derivado y nunca escrito: es lo que deja ver de un vistazo que el
+# recorrido nuevo llega a las skills y no solo a los comandos.
+citadores="$(printf '%s\n' "$fuentes" \
+  | xargs grep -l '`next_recommended: ' 2>/dev/null | sort || true)"
 
 solo_contrato="$(comm -23 <(printf '%s\n' "$del_contrato") <(printf '%s\n' "$de_comandos") | tr '\n' ' ' || true)"
 solo_comandos="$(comm -13 <(printf '%s\n' "$del_contrato") <(printf '%s\n' "$de_comandos") | tr '\n' ' ' || true)"
 if [ -n "$solo_contrato" ] || [ -n "$solo_comandos" ]; then
-  fail "[7] los tokens de $CONTRATO y las citaciones de commands/ no son el mismo conjunto: solo en el contrato $solo_contrato, solo en los comandos $solo_comandos"
+  fail "[7] los tokens de $CONTRATO y las citaciones de commands/ y skills/ no son el mismo conjunto: solo en el contrato $solo_contrato, solo en las citaciones $solo_comandos"
 fi
 
 # --- afirmaciones 8 y 16: el recorrido de commands/ parte los ROUTE: en dos conjuntos ---
@@ -181,6 +201,8 @@ report
 # Conteos derivados y no escritos, igual que los que imprime check-language: el cardinal
 # del conjunto no vive en este archivo, se calcula acá y se muestra.
 tokens="$(printf '%s\n' "$del_contrato" | grep -c . || true)"
-archivos="$(printf '%s\n' "$lista" | grep -c . || true)"
+archivos="$(printf '%s\n' "$fuentes" | grep -c . || true)"
 ruteadores="$(printf '%s\n' "$rutean" | grep -c . || true)"
-echo "$CHECK_NAME: OK - el ROUTE: de $COMANDO es read-only y no tiene skill, los $tokens tokens de $CONTRATO son exactamente los que citan los $archivos archivos de commands/, el ROUTE: de cada archivo de commands/ que rutea a una skill apunta a una que existe, $ruteadores en total, y el flag de bootstrap vive solo en $esperado_flag"
+quienes="$(printf '%s\n' "$citadores" | tr '\n' ' ')"
+quienes="${quienes% }"
+echo "$CHECK_NAME: OK - el ROUTE: de $COMANDO es read-only y no tiene skill, los $tokens tokens de $CONTRATO son exactamente los que citan los $archivos archivos de commands/ y skills/, y quienes citan son $quienes, el ROUTE: de cada archivo de commands/ que rutea a una skill apunta a una que existe, $ruteadores en total, y el flag de bootstrap vive solo en $esperado_flag"
