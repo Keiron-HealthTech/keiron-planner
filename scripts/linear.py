@@ -217,6 +217,25 @@ mutation($bloqueante: String!, $bloqueado: String!) {
 }
 """
 
+# Una sola constante para las tres escrituras que cambian un campo de un issue que ya
+# existe: la toma, la devolución de la toma y el estado. El input viaja entero como
+# variable porque es el mismo campo de la API en los tres casos, y dos constantes serían
+# dos copias de una forma. Quien construye el input es cada handler, con su propio dict
+# literal, así que el AST sigue viendo qué clave escribe cada uno sin seguir argumentos.
+# Pedir issue de vuelta NO es verificación posterior a la escritura: es el payload de la
+# propia mutation, en el mismo round trip, y es lo único que deja reportar dónde quedó.
+# Ningún argumento de acá es un enum de GraphQL: los cuatro campos que se escriben son
+# identificadores o texto, así que el defecto del enum entrecomillado no tiene dónde
+# ocurrir. El único enum del archivo sigue viviendo en ISSUE_RELATION_CREATE.
+ISSUE_UPDATE = """
+mutation($issue: String!, $input: IssueUpdateInput!) {
+  issueUpdate(id: $issue, input: $input) {
+    success
+    issue { identifier url assignee { displayName } state { name } }
+  }
+}
+"""
+
 
 def _post(query, variables, key):
     """La ÚNICA función que toca la red. El check de runtime la rebindea desde
@@ -1057,6 +1076,22 @@ def _resolver_relaciones(payload):
     return (True, "")
 
 
+def _cambiar_estado(issue, input_, key):
+    """La ÚNICA puerta de issueUpdate: escribe y resuelve, con la misma regla de tres
+    casos que las otras cuatro puertas. El input llega armado desde el handler y no se
+    arma acá, y esa es la decisión: cada handler escribe su propio dict literal, que es
+    lo que deja ver desde afuera qué clave de la issue toca. Devuelve (ok, detalle,
+    issue), con issue el payload que la mutation devolvió en el mismo round trip."""
+    payload = _post(ISSUE_UPDATE, {"issue": issue, "input": input_}, key)
+    errores = _errores_de(payload)
+    if errores:
+        return (False, "; ".join(errores), {})
+    datos = (payload.get("data") or {}).get("issueUpdate") or {}
+    if datos.get("success") is not True:
+        return (False, "issueUpdate devolvió success=%s" % datos.get("success"), {})
+    return (True, "", datos.get("issue") or {})
+
+
 def cmd_map_read(args):
     key = leer_key()
     payload = _post(MAP_READ_QUERY, {"project": args.project}, key)
@@ -1251,6 +1286,47 @@ def cmd_frontier_query(args):
     print(json.dumps(salida, separators=(",", ":")))
 
 
+def cmd_ticket_claim(args):
+    # Primero todo lo que se puede romper sin un round trip, después la key, después la
+    # red: el mismo orden que ya usan ticket:create, ticket:block y map:write.
+    try:
+        ctx = json.loads(args.ctx)
+    except ValueError:
+        die(SIN_KEY, "--ctx no parsea como JSON: %r" % args.ctx,
+            "pasá el blob que emitió el preflight, sin editarlo")
+    _sin_saltos("--issue", args.issue)
+    if not args.issue.strip():
+        die(SIN_KEY, "--issue llegó vacío o con espacios solos: %r" % args.issue,
+            "pasá el identificador del ticket, CRM-123, tal como lo devolvió "
+            "frontier:query")
+    if ctx.get("viewer") is None:
+        die(SIN_KEY,
+            "el preflight no resolvió el viewer, así que la toma no tiene a quién "
+            "asignarse",
+            "corré el preflight de nuevo: el ctx que tenés no dice quién sos")
+    key = leer_key()
+    # El asignado sale del ctx y de ningún otro lado, y por eso no hay un --assignee:
+    # un flag dejaría tomar en nombre de otra persona, que es justo lo que la toma
+    # existe para impedir. --release es la misma escritura con el valor inverso, y no
+    # una operación decimotercera: las doce ya están fijas.
+    if args.release:
+        ok, detalle, issue = _cambiar_estado(args.issue, {"assigneeId": None}, key)
+    else:
+        ok, detalle, issue = _cambiar_estado(args.issue,
+                                             {"assigneeId": ctx["viewer"]}, key)
+    if not ok:
+        die(SIN_KEY,
+            "la %s de %s no confirmó: %s"
+            % ("devolución" if args.release else "toma", args.issue, detalle),
+            "volvé a correr la misma invocación: esta operación escribe un solo campo "
+            "y repetirla no duplica nada")
+    asignado = issue.get("assignee") or {}
+    print(json.dumps({"issue": issue.get("identifier") or args.issue,
+                      "assignee": None if args.release else ctx["viewer"],
+                      "assigneeName": asignado.get("displayName")},
+                     separators=(",", ":")))
+
+
 def cmd_stub(args):
     die(NO_IMPLEMENTADO,
         "el subcomando %s todavía no está implementado" % args.operacion,
@@ -1326,9 +1402,14 @@ def construir_parser():
     p_frontier_query.add_argument("--project", required=True)
     p_frontier_query.set_defaults(func=cmd_frontier_query)
 
+    # --issue y no --ticket: --ticket ya existe en ticket:create con nargs=3, y reusar
+    # el mismo nombre con otra aridad entre subcomandos es una trampa de lectura. No es
+    # repetible porque una sesión toma un ticket, y no hay --assignee a propósito.
     p_ticket_claim = subs.add_parser("ticket:claim")
     p_ticket_claim.add_argument("--ctx", required=True)
-    p_ticket_claim.set_defaults(func=cmd_stub)
+    p_ticket_claim.add_argument("--issue", required=True, metavar="IDENTIFICADOR")
+    p_ticket_claim.add_argument("--release", action="store_true")
+    p_ticket_claim.set_defaults(func=cmd_ticket_claim)
 
     p_ticket_resolve = subs.add_parser("ticket:resolve")
     p_ticket_resolve.add_argument("--ctx", required=True)
