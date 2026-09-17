@@ -98,21 +98,44 @@ fi
 # --- afirmación 43: las seis del comentario de resolución, en secuencia ordenada ---
 
 # Secuencia y no conjunto: la posición es parte de la afirmación, y "Lo que se cayó"
-# tercera es lo que la fila nombra. Única casa, así que se escribe acá.
-RESOLUCION="$(printf '%s\n' \
-  "La decisión" \
-  "Por qué" \
-  "Lo que se cayó" \
-  "Niebla graduada" \
-  "Tickets nuevos" \
-  "Qué corrige o empuja")"
+# tercera es lo que la fila nombra.
+#
+# Desde que el adapter escribe estas seis secciones, la lista escrita a mano dejó de ser
+# la única casa: SECCIONES de linear.py es la constante que el render itera. La secuencia
+# esperada sale de ahí, con el mismo extractor que la 9 usa para ANCLAS, así que un
+# rename en el adapter mueve las dos puntas a la vez o pone esta afirmación roja. Un
+# reformateo de la constante da vacío y corta por tercer tier, nunca en verde.
+secciones="$(awk '
+  /^SECCIONES = \[/ { dentro = 1 }
+  dentro {
+    resto = $0
+    while (match(resto, /"[^"]*"/)) {
+      print substr(resto, RSTART + 1, RLENGTH - 2)
+      resto = substr(resto, RSTART + RLENGTH)
+    }
+    if (index($0, "]")) exit
+  }
+' "$ADAPTER" || true)"
+require_nonempty "$secciones" "[43] la constante SECCIONES de $ADAPTER dio vacía; la extracción se rompió y la comparación probaría cero"
 
 resolucion="$(bloque "## El comentario de resolución" | sed -n 's/^## //p' || true)"
 require_nonempty "$resolucion" "[43] el bloque del comentario de resolución de $PLANTILLAS dio vacío"
 
-d="$(diferencia "$resolucion" "$RESOLUCION")"
+d="$(diferencia "$resolucion" "$secciones")"
 if [ -n "$d" ]; then
-  fail "[43] las secciones del comentario de resolución de $PLANTILLAS no son las seis en su orden: $d"
+  fail "[43] las secciones del comentario de resolución de $PLANTILLAS no son las de SECCIONES en $ADAPTER, en su orden: $d"
+fi
+
+# La posición que la celda Afirmación nombra, asertada contra la secuencia y no contra
+# una de las dos puntas. Sin esto, derivar la esperada del adapter PERDERÍA cobertura:
+# las dos copias podrían moverse juntas al mismo orden equivocado y la igualdad de
+# arriba seguiría en verde. Es lo único de esta fila que no se deriva, y son tres
+# nombres y no seis: los otros tres los cubre la igualdad.
+segunda="$(printf '%s\n' "$secciones" | sed -n '2p')"
+tercera="$(printf '%s\n' "$secciones" | sed -n '3p')"
+cuarta="$(printf '%s\n' "$secciones" | sed -n '4p')"
+if [ "$tercera" != "Lo que se cayó" ] || [ "$segunda" != "Por qué" ] || [ "$cuarta" != "Niebla graduada" ]; then
+  fail "[43] Lo que se cayó tiene que ir tercera, entre Por qué y Niebla graduada, y la secuencia dice: $segunda / $tercera / $cuarta"
 fi
 
 # --- afirmación 42: una decisión ocupa una línea física ---
