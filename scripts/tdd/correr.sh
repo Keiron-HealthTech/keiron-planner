@@ -47,12 +47,13 @@ correr_py() {
 
 correr_py scripts/tdd/toma-runtime.py
 correr_py scripts/tdd/vertical-map-work.py
+correr_py scripts/tdd/resolucion-runtime.py
 if ! /bin/bash scripts/tdd/estructura-map-work.sh; then
   fallados=$((fallados + 1))
 fi
 
 if [ "$fallados" -ne 0 ]; then
-  echo "correr: FAIL - $fallados de 3 andamios fallaron" >&2
+  echo "correr: FAIL - $fallados de 4 andamios fallaron" >&2
   exit 1
 fi
-echo "correr: OK - los 3 andamios de TDD en verde"
+echo "correr: OK - los 4 andamios de TDD en verde"

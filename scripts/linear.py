@@ -51,6 +51,13 @@ ANCLA_DECISIONES = ANCLAS[2]
 ANCLA_NIEBLA = ANCLAS[3]
 ANCLA_FUERA = ANCLAS[4]
 
+# Las seis secciones del comentario de resolución, sin el "## ", en su orden de
+# contrato. Misma regla que ANCLAS: el orden ES contrato, el render itera esta lista y
+# nunca el argv, y su segunda copia es el bloque de El comentario de resolución de
+# map-templates.md, que la afirmación 43 compara contra esta constante.
+SECCIONES = ["La decisión", "Por qué", "Lo que se cayó", "Niebla graduada",
+             "Tickets nuevos", "Qué corrige o empuja"]
+
 SIN_KEY = 3
 SIN_TEAM = 4
 SIN_CERRADOS = 5
@@ -213,6 +220,20 @@ mutation($bloqueante: String!, $bloqueado: String!) {
   }) {
     success
     issueRelation { id }
+  }
+}
+"""
+
+# La respuesta va como comentario y nunca en el cuerpo del ticket: la pregunta queda
+# inmutable y auditable, y la respuesta gana autor y timestamp gratis. Pide id y url de
+# vuelta, y eso NO es verificación posterior a la escritura: es el payload de la propia
+# mutation, en el mismo round trip, y es lo único que deja reportar dónde quedó. Sus dos
+# campos son un identificador y texto, así que no lleva ningún enum.
+COMMENT_CREATE = """
+mutation($issue: String!, $body: String!) {
+  commentCreate(input: { issueId: $issue, body: $body }) {
+    success
+    comment { id url }
   }
 }
 """
@@ -531,6 +552,44 @@ def _validar_gist(etiqueta, gist):
             % (etiqueta, len(gist), gist),
             "acortá el gist; el detalle va en el comentario de resolución del "
             "ticket y el mapa nunca lo repite")
+
+
+def _cuerpo_de_secciones(args):
+    """El markdown del comentario de resolución, armado por el adapter y nunca por el
+    modelo. Valida antes de renderizar: acá se rompe todo lo que se pueda romper sin
+    haber tocado la red. La comparten las dos operaciones que cierran un ticket.
+
+    El orden ADENTRO de una sección es el de la línea de comandos. El orden ENTRE
+    secciones lo pone SECCIONES y nunca el argv, así que dos invocaciones con las mismas
+    líneas en otro orden de flags producen el mismo comentario.
+
+    Las seis son obligatorias y ninguna puede venir sin líneas, y esa es la regla que
+    vuelve mecánicamente imposible saltearse la graduación de niebla en silencio: la
+    sección tiene que existir, así que el negativo hay que escribirlo a mano. El adapter
+    no puede juzgar si el contenido es correcto, pero sí puede negarse a escribir un
+    comentario con una sección vacía, y eso convierte un olvido mudo en una salida no
+    cero."""
+    lineas = {}
+    for nombre, linea in args.section:
+        if nombre not in SECCIONES:
+            die(SIN_KEY,
+                "--section recibió %r, que no es ninguna de las seis secciones del "
+                "comentario de resolución" % nombre,
+                "las seis son, en este orden: %s" % ", ".join(SECCIONES))
+        # Las dos guardas reusadas verbatim. La segunda es la que impide forjar una
+        # séptima sección desde adentro del cuerpo de otra.
+        _sin_saltos("--section", linea)
+        _no_es_encabezado("--section", linea)
+        lineas.setdefault(nombre, []).append(linea)
+    faltantes = [n for n in SECCIONES if not lineas.get(n)]
+    if faltantes:
+        die(SIN_KEY,
+            "estas secciones del comentario no recibieron ninguna línea: %s"
+            % ", ".join(faltantes),
+            "pasá al menos un --section por cada una de las seis; cuando no hay nada "
+            "que nombrar, la línea lo dice explícito, por ejemplo ninguna")
+    return "\n\n".join("## %s\n\n%s" % (nombre, "\n".join(lineas[nombre]))
+                       for nombre in SECCIONES)
 
 
 def _ediciones_de(args):
@@ -1140,6 +1199,22 @@ def _bloquear_pares(pares, key):
     return (True, "", escritos)
 
 
+def _comentar(issue, cuerpo, key):
+    """La ÚNICA puerta de commentCreate: escribe y resuelve, con la misma regla de tres
+    casos que las otras cuatro. Un commentCreate con success en false y sin errors de
+    nivel superior es un fracaso y no un éxito silencioso. Devuelve (ok, detalle, url),
+    con la url del comentario recién escrito, que la mutation devuelve en el mismo round
+    trip."""
+    payload = _post(COMMENT_CREATE, {"issue": issue, "body": cuerpo}, key)
+    errores = _errores_de(payload)
+    if errores:
+        return (False, "; ".join(errores), "")
+    datos = (payload.get("data") or {}).get("commentCreate") or {}
+    if datos.get("success") is not True:
+        return (False, "commentCreate devolvió success=%s" % datos.get("success"), "")
+    return (True, "", (datos.get("comment") or {}).get("url") or "")
+
+
 def _cambiar_estado(issue, input_, key):
     """La ÚNICA puerta de issueUpdate: escribe y resuelve, con la misma regla de tres
     casos que las otras cuatro puertas. El input llega armado desde el handler y no se
@@ -1451,8 +1526,15 @@ def construir_parser():
     p_ticket_claim.add_argument("--release", action="store_true")
     p_ticket_claim.set_defaults(func=cmd_ticket_claim)
 
+    # --section NOMBRE LINEA, repetible: el cuerpo del comentario cruza la CLI como
+    # líneas físicas y nunca como markdown. _sin_saltos ya mata cualquier valor con un
+    # salto, y un --body-file pediría un segundo open() que la afirmación 27 prohíbe.
     p_ticket_resolve = subs.add_parser("ticket:resolve")
     p_ticket_resolve.add_argument("--ctx", required=True)
+    p_ticket_resolve.add_argument("--project", required=True)
+    p_ticket_resolve.add_argument("--issue", required=True, metavar="IDENTIFICADOR")
+    p_ticket_resolve.add_argument("--section", nargs=2, action="append", default=[],
+                                  metavar=("NOMBRE", "LINEA"))
     p_ticket_resolve.set_defaults(func=cmd_stub)
 
     p_ticket_rule_out = subs.add_parser("ticket:rule-out")
