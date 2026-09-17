@@ -157,6 +157,12 @@ antes de proponer nada. Toma cuatro valores y solo cuatro:
 | listo para colapsar | Cero tickets abiertos y cero milestones. |
 | colapsado | Cero tickets abiertos y al menos un milestone. |
 
+La derivación, o sea qué conteos producen cada uno de los cuatro valores y con qué
+token sale, vive en `skills/_shared/map-contract.md` y esa es su única casa: desde
+que dos comandos la leen, dejarla en uno de los dos sería la copia que ningún check
+compara. Acá quedan los cuatro valores y qué significan, que es lo que el glosario
+debe.
+
 El veredicto **no es** el token, y la relación no es uno a uno: `trabado` mapea a
 dos tokens distintos según la causa, y un Project que resolvió y no carga ningún
 mapa emite token sin tener veredicto. Deducir cuatro tokens de cuatro veredictos es
