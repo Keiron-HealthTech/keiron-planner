@@ -47,7 +47,7 @@ genérica pasaría las cuatro sin distinguirlas. Reformular una marca sin tocar 
 mensaje, o al revés, deja el contrato y el script en desacuerdo.
 
 Los otros tres códigos que el adapter puede devolver no son fallas duras del preflight.
-El **9** es el de los stubs, los siete subcomandos que todavía no tienen cuerpo. El
+El **9** es el de los stubs, los dos subcomandos que todavía no tienen cuerpo, `milestone:create` y `work:write`. El
 **2** lo emite `argparse`, y cubre tres casos: falta el subcomando, falta un argumento
 requerido, o el subcomando no existe. El **1** queda reservado para lo que el script no
 pudo decidir.
@@ -318,3 +318,32 @@ stdout, una sola línea de JSON compacto, con siete claves siempre presentes: `i
 `url`, `comment` con el enlace del comentario recién escrito, `tickets` con los que se
 crearon, `blocks` con los pares que quedaron cableados, `mapWritten` y `noop` con los
 títulos de `--remove-fog` que no matchearon ninguna viñeta.
+
+### `ticket:rule-out`
+
+La misma superficie que `ticket:resolve` salvo una fila, y esa fila es la operación:
+
+    --out-of-scope   la viñeta entera de Fuera de alcance, con su título en negrita,
+                     validada por _validar_vineta, la misma que valida las viñetas de
+                     niebla de map:write. Requerida.
+
+**No acepta `--gist`, y la asimetría es el punto.** El flag no está declarado, así que
+pasarlo no es un argumento ignorado sino un error de invocación de `argparse`, con
+código 2. La línea de esta operación va a `## Fuera de alcance` y nunca a
+`## Decisiones hasta ahora`, y la recíproca es igual de fuerte: `ticket:resolve` no
+acepta `--append-out-of-scope`.
+
+Los otros nueve flags son los mismos, `--new-ticket` y `--block` incluidos. Sus dos
+primeras escrituras casi siempre están vacías, pero casi siempre no es siempre, y darle
+la misma forma cuesta cero: sacar un ticket de alcance puede abrir preguntas nuevas.
+
+Las cinco escrituras van en el mismo orden y con las mismas condiciones que las de
+`ticket:resolve`, y las seis fallas dicen lo mismo con dos diferencias: la escritura 4
+manda el `canceled` del ctx en vez del `done`, y la remediación de la escritura 5
+imprime un `map:write --append-out-of-scope` en vez de un `--append-decision`.
+
+Es la **única operación destructiva del adapter**: cierra un ticket sin resolverlo. El
+comentario se escribe igual, con sus seis secciones, así que la decisión de sacarlo de
+alcance queda auditable en el ticket aunque el ticket quede cancelado.
+
+stdout, la misma forma que `ticket:resolve`, con las mismas siete claves.
