@@ -24,7 +24,7 @@ para que el adapter tenga su contrato a mano.
 | `ticket:create` | Los tickets de decisión de una pasada, en una sola invocación, cada uno con un cuerpo que es la pregunta y nada más. |
 | `ticket:block` | La relación nativa de bloqueo, en una segunda pasada. |
 | `frontier:query` | Los tickets abiertos, sin bloqueantes abiertos y sin assignee. |
-| `ticket:claim` | Tomar. El primer write de la sesión. |
+| `ticket:claim` | Tomar. El primer write de la sesión, y con `--release` la escritura inversa, que devuelve la toma. |
 | `ticket:resolve` | Las cinco escrituras de una resolución, en una sola invocación. |
 | `ticket:rule-out` | Cierra un ticket sin resolverlo. La única destructiva. |
 | `milestone:create` | Un corte demoable del colapso. Nunca lleva fecha. |
@@ -208,3 +208,34 @@ línea, no prosa con saltos duros.
 Un ancla duplicada hashea la primera aparición, emite un aviso por stderr nombrándola, y
 el código de salida sigue siendo 0. Abortar por ancla ambigua es regla de escritura, y
 le toca a `map:write`.
+
+## La salida de las operaciones que escriben sobre un ticket
+
+### `ticket:claim`
+
+Una sola línea de JSON compacto, con la misma regla de separadores y de escapado a
+ASCII que las dos operaciones de lectura. Tres claves de primer nivel, las tres
+siempre presentes:
+
+    issue         string. El identificador que devolvió la mutation, CRM-3401, y el
+                  que se le pasó a --issue cuando la respuesta no lo trajo.
+    assignee      string o null. El id del usuario que quedó asignado, que es el
+                  viewer del ctx, y null después de un --release.
+    assigneeName  string o null. El displayName que la mutation devolvió en el mismo
+                  round trip. Viaja porque es lo único legible para una persona, y
+                  aparte de assignee porque quien compone el reporte necesita el id
+                  sin volver a resolverlo.
+
+El write es uno solo, un `issueUpdate` que escribe `assigneeId` y ninguna otra clave.
+No hay `--assignee`, y su ausencia es deliberada: el asignado sale de `ctx["viewer"]`
+y de ningún otro lado, para que el modelo no pueda tomar en nombre de otra persona.
+
+**La toma huérfana y la devolución deliberada son dos cosas distintas.** Una sesión
+que tomó un ticket y murió deja el ticket asignado, fuera de la frontera, y nada del
+plugin lo libera solo: ninguna corrida sin `--release` explícito limpia un assignee.
+`--release` es la otra mitad, y es un write de una sesión viva, con una persona
+mirando, para cuando el trabajo se pausa porque hace falta otro rol. Es la **única**
+vía del plugin entero que deja un `assigneeId` en nulo.
+
+No reintenta. Es un solo campo de un solo issue, así que repetir la invocación entera
+es la remediación correcta y no duplica nada.
