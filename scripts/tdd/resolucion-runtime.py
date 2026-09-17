@@ -104,7 +104,11 @@ def puro(nombre, argv, fn):
 SEIS = ["La decisión", "Por qué", "Lo que se cayó", "Niebla graduada",
         "Tickets nuevos", "Qué corrige o empuja"]
 
-BASE = ["ticket:resolve", "--ctx", "{}", "--project", "kp", "--issue", "CRM-1"]
+# --gist es requerido por el parser, asi que va en la base y los casos que lo miran
+# pasan el suyo despues: argparse se queda con el ultimo de una opcion no repetible.
+GIST = ["--gist", "el mapa vive en el overview del Project"]
+BASE = ["ticket:resolve", "--ctx", "{}", "--project", "kp",
+        "--issue", "CRM-1"] + GIST
 
 
 def secciones(**cambios):
@@ -176,6 +180,82 @@ rc, cuerpo, err = puro(n, BASE + secciones(**{"Por qué": ["## Una septima"]}),
 chequear(n, "rc", rc, mod.SIN_KEY)
 chequear(n, "es la guarda del encabezado", "encabezado" in err, True)
 
+# --- el gist, la niebla y su guarda de consistencia --------------------------------
+
+NIEBLA_OK = {"Niebla graduada": ["se graduó Los reportes del equipo clínico."]}
+
+
+def resolucion(argv):
+    return puro("x", BASE + argv, mod._resolucion_de)
+
+
+n = "gist-feliz"
+rc, valor, err = puro(n, BASE + secciones() + GIST, mod._resolucion_de)
+chequear(n, "rc", rc, 0)
+chequear(n, "el gist viaja entero", (valor or {}).get("gist"), GIST[1])
+
+n = "gist-de-121"
+rc, valor, err = puro(n, BASE + secciones() + ["--gist", "g" * 121], mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+chequear(n, "es la guarda compartida del tope", "el tope es de 120" in err, True)
+
+n = "gist-de-120"
+rc, valor, err = puro(n, BASE + secciones() + ["--gist", "g" * 120], mod._resolucion_de)
+chequear(n, "rc", rc, 0)
+
+n = "gist-vacio"
+rc, valor, err = puro(n, BASE + secciones() + ["--gist", "   "], mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+
+n = "gist-con-salto"
+rc, valor, err = puro(n, BASE + secciones() + ["--gist", "con\nsalto"], mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+
+n = "gist-que-es-encabezado"
+rc, valor, err = puro(n, BASE + secciones() + ["--gist", "## Destino"], mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+
+n = "remove-fog-nombrado-en-la-seccion"
+rc, valor, err = puro(n, BASE + secciones(**NIEBLA_OK) + GIST +
+                      ["--remove-fog", "Los reportes del equipo clínico."],
+                      mod._resolucion_de)
+chequear(n, "rc", rc, 0)
+chequear(n, "el titulo graduado viaja",
+         (valor or {}).get("graduadas"), ["Los reportes del equipo clínico."])
+
+n = "remove-fog-sin-mencion-en-la-seccion"
+rc, valor, err = puro(n, BASE + secciones() + GIST +
+                      ["--remove-fog", "Los reportes del equipo clínico."],
+                      mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+chequear(n, "nombra el titulo que no aparece",
+         "Los reportes del equipo clínico." in err, True)
+chequear(n, "nombra la seccion que lo tendria que nombrar",
+         "Niebla graduada" in err, True)
+
+n = "append-fog-sin-titulo-en-negrita"
+rc, valor, err = puro(n, BASE + secciones() + GIST +
+                      ["--append-fog", "sin titulo en negrita"], mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+
+n = "append-fog-con-titulo"
+rc, valor, err = puro(n, BASE + secciones() + GIST +
+                      ["--append-fog", "**Una niebla nueva.** con su cuerpo"],
+                      mod._resolucion_de)
+chequear(n, "rc", rc, 0)
+chequear(n, "la vineta llega renderizada con su marcador",
+         (valor or {}).get("niebla"), ["- **Una niebla nueva.** con su cuerpo"])
+
+n = "issue-vacio"
+rc, valor, err = puro(n, ["ticket:resolve", "--ctx", "{}", "--project", "kp",
+                          "--issue", "  "] + secciones() + GIST, mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+
+n = "ctx-roto"
+rc, valor, err = puro(n, ["ticket:resolve", "--ctx", "{no json", "--project", "kp",
+                          "--issue", "CRM-1"] + secciones() + GIST, mod._resolucion_de)
+chequear(n, "rc", rc, mod.SIN_KEY)
+
 # --- la puerta de commentCreate ---------------------------------------------------
 
 n = "comentar-exito"
@@ -196,4 +276,4 @@ if FALLAS:
     for f in FALLAS:
         print("FAIL - " + f)
     sys.exit(1)
-print("OK - las secciones, su render y la puerta del comentario")
+print("OK - las secciones, el gist, la niebla y la puerta del comentario")

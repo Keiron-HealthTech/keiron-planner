@@ -592,6 +592,83 @@ def _cuerpo_de_secciones(args):
                        for nombre in SECCIONES)
 
 
+def _issue_de(args):
+    """El identificador del ticket sobre el que se opera, validado. Lo comparten las tres
+    operaciones que escriben sobre un ticket ya existente."""
+    _sin_saltos("--issue", args.issue)
+    if not args.issue.strip():
+        die(SIN_KEY, "--issue llegó vacío o con espacios solos: %r" % args.issue,
+            "pasá el identificador del ticket, CRM-123, tal como lo devolvió "
+            "frontier:query")
+    return args.issue
+
+
+def _ctx_de(args):
+    """El blob del preflight parseado. Su única falla es que no parsee: el blob es opaco
+    y quien lo edita a mano ya rompió el contrato."""
+    try:
+        return json.loads(args.ctx)
+    except ValueError:
+        die(SIN_KEY, "--ctx no parsea como JSON: %r" % args.ctx,
+            "pasá el blob que emitió el preflight, sin editarlo")
+
+
+def _niebla_de(args):
+    """Las viñetas de niebla que se abren y los títulos que se gradúan, ya validados, más
+    la guarda de consistencia contra la sección que los cuenta. Devuelve (niebla,
+    graduadas), con niebla ya renderizada con su marcador.
+
+    La guarda es la mitad decidible de la regla: todo título que esta resolución saca del
+    mapa tiene que estar nombrado en alguna línea de la sección que lo cuenta. La inversa,
+    que la sección no nombre un parche que no se removió, NO es decidible acá, porque la
+    sección es prosa y un título puede nombrarse justamente para decir que NO se graduó.
+    Queda declarada como brecha, con la misma honestidad con que la afirmación 25 declara
+    la suya."""
+    niebla = []
+    for valor in args.append_fog:
+        _validar_vineta("--append-fog", valor)
+        niebla.append("- %s" % valor)
+    graduadas = []
+    for titulo in args.remove_fog:
+        _sin_saltos("--remove-fog", titulo)
+        if not titulo.strip():
+            die(SIN_KEY, "--remove-fog recibió un título vacío",
+                "pasá el título de la viñeta, sin los asteriscos")
+        graduadas.append(titulo)
+    # Por posición y nunca reescrito, igual que ANCLA_DECISIONES sale de ANCLAS: el
+    # orden de SECCIONES ya es contrato y una segunda copia del texto se desincroniza en
+    # el primer rename.
+    contadas = [linea for nombre, linea in args.section if nombre == SECCIONES[3]]
+    mudas = [t for t in graduadas if not any(t in linea for linea in contadas)]
+    if mudas:
+        die(SIN_KEY,
+            "estos títulos se gradúan del mapa y no los nombra ninguna línea de la "
+            "sección %s del comentario: %s" % (SECCIONES[3], ", ".join(mudas)),
+            "nombralos en esa sección, o sacá el --remove-fog: una niebla que se va del "
+            "mapa sin que el comentario diga por qué no deja rastro de la graduación")
+    return niebla, graduadas
+
+
+def _resolucion_de(args):
+    """Todo lo que ticket:resolve puede romper sin un round trip, roto acá y en un solo
+    lugar, antes del primer POST. Mismo orden que ticket:create y ticket:block ya usan:
+    la función pura primero, después leer_key, y recién entonces la red."""
+    ctx = _ctx_de(args)
+    issue = _issue_de(args)
+    cuerpo = _cuerpo_de_secciones(args)
+    _sin_saltos("--gist", args.gist)
+    if not args.gist.strip():
+        die(SIN_KEY, "--gist llegó vacío o con espacios solos: %r" % args.gist,
+            "el gist es la línea que el mapa va a mostrar de esta decisión, así que "
+            "tiene que decir algo")
+    _validar_gist("--gist", args.gist)
+    _no_es_encabezado("--gist", args.gist)
+    niebla, graduadas = _niebla_de(args)
+    return {"ctx": ctx, "issue": issue, "cuerpo": cuerpo, "gist": args.gist,
+            "niebla": niebla, "graduadas": graduadas,
+            "esperadas": _esperadas_de(args)}
+
+
 def _ediciones_de(args):
     """Las ediciones agrupadas por ancla, ya validadas: acá se rompe todo lo que se pueda
     romper sin haber tocado la red, que es lo que hace que una invocación mal formada no
@@ -1535,6 +1612,15 @@ def construir_parser():
     p_ticket_resolve.add_argument("--issue", required=True, metavar="IDENTIFICADOR")
     p_ticket_resolve.add_argument("--section", nargs=2, action="append", default=[],
                                   metavar=("NOMBRE", "LINEA"))
+    # Sin --append-decision: el enlace de la línea del mapa sale del payload de la
+    # propia escritura del estado, en el mismo round trip, así que no hay forma de que
+    # la línea apunte a un ticket distinto del que se acaba de cerrar.
+    p_ticket_resolve.add_argument("--gist", required=True)
+    p_ticket_resolve.add_argument("--append-fog", action="append", default=[],
+                                  metavar="VINETA")
+    p_ticket_resolve.add_argument("--remove-fog", action="append", default=[],
+                                  metavar="TITULO")
+    p_ticket_resolve.add_argument("--expect-sections")
     p_ticket_resolve.set_defaults(func=cmd_stub)
 
     p_ticket_rule_out = subs.add_parser("ticket:rule-out")
