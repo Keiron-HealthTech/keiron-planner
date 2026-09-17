@@ -58,6 +58,10 @@ grep -qF "ticket:resolve --ctx" "$SKILL" || n "$SKILL no invoca ticket:resolve e
 grep -qF "ticket:rule-out" "$SKILL" || n "$SKILL no nombra ticket:rule-out en su paso 8"
 # La rama de otro rol suelta la toma y NUNCA resuelve.
 grep -qF "ticket:claim --ctx <the blob from step 1> --issue <the chosen ticket> --release" "$SKILL" || n "$SKILL no suelta la toma en la rama de otro rol"
+# Ninguna de las tres escrituras reintenta a las otras, asi que una falla en cualquiera
+# deja la toma sin soltar: la rama tiene que decir eso y prohibir soltarla fuera de orden.
+grep -qF "the claim from step 6 is still yours to release until the third one" "$SKILL" || n "$SKILL no dice que una falla en la secuencia de tres deja la toma sin soltar"
+grep -qF "Never run the release out of order" "$SKILL" || n "$SKILL no prohibe soltar la toma antes de que ticket:block aterrice"
 grep -q -- "--bootstrap" "$SKILL" && n "$SKILL nombra --bootstrap"
 grep -qF "research-subagent.md" "$SKILL" && n "$SKILL nombra un archivo que no existe"
 grep -qF "| Condition | Verdict | Token |" "$SKILL" && n "$SKILL repite la tabla del veredicto en vez de citarla"

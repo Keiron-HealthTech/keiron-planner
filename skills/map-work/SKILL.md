@@ -212,4 +212,16 @@ and blocked, which is to say off the frontier until the blocker is resolved. Han
 claim back is what `--release` exists for, and it is the difference between a pause and the
 orphan claim that nobody ever releases.
 
+None of the three retries the other two, and `ticket:block`'s own failure message only
+knows about missing pairs, never about this sequence: it cannot tell you the release is
+still outstanding, because it is shared with a standalone `ticket:block` that never
+promised one. So when any of the three exits non-zero, relay its stderr as step 1 of this
+file already says, but before stopping add, in your own words, which of the three landed
+and which did not: the claim from step 6 is still yours to release until the third one
+actually runs, and an unreleased claim here is exactly the orphan claim step 5 exists to
+prevent. Never run the release out of order to close that gap early: releasing before
+`ticket:block` lands sends the ticket back to the frontier looking freely takeable, with
+the question that blocks it invisible, because nothing yet says it is blocked. Finish the
+sequence by hand instead, in order, starting from whichever of the three is still missing.
+
 Close with `next_recommended: map-work`: the ticket that was just opened is born takeable.
