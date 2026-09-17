@@ -239,3 +239,82 @@ vía del plugin entero que deja un `assigneeId` en nulo.
 
 No reintenta. Es un solo campo de un solo issue, así que repetir la invocación entera
 es la remediación correcta y no duplica nada.
+
+### `ticket:resolve`
+
+Diez flags, y `--ctx`, `--project`, `--issue` y `--gist` son los cuatro requeridos:
+
+    --ctx              el blob del preflight, opaco.
+    --project          el Project cuyo overview lleva el mapa, en cualquiera de las
+                       tres formas que el adapter resuelve.
+    --issue            el identificador del ticket que se resuelve, CRM-3401, tal como
+                       lo devolvió frontier:query y sin tipearlo de nuevo.
+    --section          NOMBRE LINEA, repetible. NOMBRE es una de las seis secciones de
+                       la constante SECCIONES y LINEA es una línea física de su cuerpo.
+                       Las seis son obligatorias y ninguna puede quedar sin líneas.
+    --gist             la línea que el mapa va a mostrar de esta decisión, con tope de
+                       120 caracteres, validada por la misma función que aplica el tope
+                       al --append-decision de map:write.
+    --new-ticket       TITULO CUERPO LABELS, repetible. La misma forma exacta que el
+                       --ticket de ticket:create.
+    --block            BLOQUEANTE BLOQUEADO, repetible. Cada lado es el TÍTULO de un
+                       --new-ticket de esta misma invocación, nunca un id: los ids no
+                       existen hasta que la primera escritura vuelve.
+    --append-fog       una viñeta de niebla nueva, con su título en negrita.
+    --remove-fog       el título de una viñeta que esta resolución graduó. Tiene que
+                       estar nombrado en alguna línea de --section "Niebla graduada".
+    --expect-sections  el JSON de huellas que map:read emitió, para el aviso de deriva.
+
+No hay `--append-decision`, y su ausencia es la decisión: el enlace de la línea del
+mapa sale de `issue.url`, que la escritura 4 devuelve en su propio round trip. Así es
+imposible que la línea del mapa apunte a un ticket distinto del que se acaba de cerrar,
+y el modelo nunca tipea una URL.
+
+El cuerpo del comentario cruza la CLI como líneas y nunca como markdown. El adapter lo
+arma: `## <Nombre>`, línea en blanco, las líneas de esa sección unidas por salto, y una
+línea en blanco entre secciones. El orden adentro de una sección es el de la línea de
+comandos; el orden entre secciones lo pone `SECCIONES` y jamás el argv.
+
+Las cinco escrituras van adentro de una sola invocación y en este orden, que el adapter
+garantiza y ninguna combinación de flags reordena:
+
+| Nº | Mutation | Cuándo |
+| --- | --- | --- |
+| 1 | `issueBatchCreate` | solo si hay al menos un `--new-ticket` |
+| 2 | `issueRelationCreate` | solo si hay al menos un `--block` |
+| 3 | `commentCreate` | siempre |
+| 4 | `issueUpdate` | siempre, con `stateId` en el `done` del ctx |
+| 5 | `projectUpdate` | siempre, precedida de su relectura del overview |
+
+Las dos primeras son condicionales porque un batch vacío es un round trip desperdiciado
+y Linear puede rechazarlo. El comentario va antes que el estado porque una sesión que
+muere entre los dos deja el ticket abierto con la respuesta ya escrita, mientras que el
+orden inverso deja un ticket en Done sin respuesta, que es un agujero que nadie ve. El
+mapa va último porque es el único recurso compartido entre corridas.
+
+Ninguna de las cinco reintenta, y la quinta llama a `_intentar_escribir` una sola vez y
+sin bucle propio. `_post` traga la falla de transporte, así que ninguna rama puede
+distinguir "no llegó" de "llegó y se perdió la respuesta", y las tres primeras crean
+recursos que nada en el plugin sabe deshacer.
+
+Todo abort sale con `SIN_KEY`, que es 3, y ninguno acuña un código nuevo. Lo que
+distingue a cada uno es qué dice que aterrizó y cómo terminar a mano:
+
+| Falla en | Qué quedó escrito | Remediación que imprime |
+| --- | --- | --- |
+| antes de la red | nada | corregir la invocación; el transporte no se llamó ni una vez |
+| 1, `issueBatchCreate` | nada | volver a correr la misma invocación entera |
+| 2, `issueRelationCreate` | los tickets nuevos, y cuántos bloqueos entraron | `ticket:block` con los pares que faltan, y después esta misma invocación sin `--new-ticket` ni `--block` |
+| 3, `commentCreate` | los tickets y su cableado | esta misma invocación sin `--new-ticket` ni `--block` |
+| 4, `issueUpdate` | los tickets, el cableado y **el comentario** | cerrar el ticket a mano y correr `map:write`: repetir la invocación duplicaría el comentario |
+| 5, `projectUpdate` | todo menos la línea del mapa | **la invocación exacta de `map:write` que falta**, impresa con su `--project`, la url real, el gist y los `--remove-fog` que correspondan |
+
+La última fila es la mejor remediación del archivo y es gratis: en ese punto el adapter
+ya tiene el project, la url que le devolvió el `issueUpdate` y el gist. Es también la
+razón por la que la quinta no reintenta. El mensaje nunca sugiere repetir
+`ticket:resolve`, que recrearía los tickets nuevos y volvería a postear el comentario.
+
+stdout, una sola línea de JSON compacto, con siete claves siempre presentes: `issue`,
+`url`, `comment` con el enlace del comentario recién escrito, `tickets` con los que se
+crearon, `blocks` con los pares que quedaron cableados, `mapWritten` y `noop` con los
+títulos de `--remove-fog` que no matchearon ninguna viñeta.
