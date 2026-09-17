@@ -1013,6 +1013,27 @@ def _crear_labels_faltantes(ctx, key):
     return labels, creados
 
 
+def _crear_tickets(ctx, project, labels, tickets, key):
+    """La escritura del lote de tickets de decisión, en una sola llamada atómica. Recibe
+    el dict de labels YA resuelto y NO crea ninguno: la única casa que crea labels sigue
+    siendo _crear_labels_faltantes, y quien la llama sigue siendo solo cmd_ticket_create.
+    Cortar acá es lo que deja que las operaciones de resolución reusen esta escritura sin
+    convertirse en una segunda creadora de labels. Devuelve (ok, detalle, issues)."""
+    # Discovery se usa cuando está y se saltea en silencio cuando no. Nunca se crea.
+    comunes = [labels[LABEL_MAPA]]
+    if ctx.get("discovery") is not None:
+        comunes.append(ctx["discovery"])
+    entradas = []
+    for titulo, cuerpo, nombres in tickets:
+        # stateId explícito: sin él la issue nace en Triage. estimate en cero: un
+        # ticket de decisión no se estima.
+        entradas.append({"teamId": ctx["team"], "projectId": project,
+                         "title": titulo, "description": cuerpo,
+                         "stateId": ctx["default"], "estimate": 0,
+                         "labelIds": comunes + [labels[n] for n in nombres]})
+    return _resolver_tickets(_post(ISSUE_BATCH_CREATE, {"issues": entradas}, key))
+
+
 def _bloqueos_de(args):
     """Los pares ya validados: acá se rompe todo lo que se pueda romper sin haber
     tocado la red. Un par cuyos dos ids son iguales aborta, y eso no es celo: un ticket
@@ -1189,20 +1210,7 @@ def cmd_ticket_create(args):
     # puede distinguir "no llegó" de "llegó y se perdió la respuesta", y un
     # issueBatchCreate repetido deja N tickets hermanos que nada sabe deshacer.
     labels, creados = _crear_labels_faltantes(ctx, key)
-    # Discovery se usa cuando está y se saltea en silencio cuando no. Nunca se crea.
-    comunes = [labels[LABEL_MAPA]]
-    if ctx.get("discovery") is not None:
-        comunes.append(ctx["discovery"])
-    entradas = []
-    for titulo, cuerpo, nombres in tickets:
-        # stateId explícito: sin él la issue nace en Triage. estimate en cero: un
-        # ticket de decisión no se estima.
-        entradas.append({"teamId": ctx["team"], "projectId": args.project,
-                         "title": titulo, "description": cuerpo,
-                         "stateId": ctx["default"], "estimate": 0,
-                         "labelIds": comunes + [labels[n] for n in nombres]})
-    ok, detalle, issues = _resolver_tickets(
-        _post(ISSUE_BATCH_CREATE, {"issues": entradas}, key))
+    ok, detalle, issues = _crear_tickets(ctx, args.project, labels, tickets, key)
     if not ok:
         die(SIN_KEY,
             "el issueBatchCreate no confirmó: %s. Labels que SÍ quedaron creados en "
