@@ -37,11 +37,15 @@ fm "$SKILL" | grep -qE '^lang: en$' || n "$SKILL no declara lang: en"
 for puntero in "CONTRACT:" "TEMPLATES:" "ADAPTER:"; do
   grep -q "^$puntero" "$SKILL" || n "$SKILL no abre con el puntero $puntero"
 done
-for op in preflight "map:read" "frontier:query" "ticket:claim" "ticket:create" "ticket:block" "ticket:resolve" "ticket:rule-out"; do
+for op in preflight "map:read" "frontier:query" "ticket:claim" "ticket:create" "ticket:block" "ticket:resolve" "ticket:rule-out" "map:write"; do
   grep -qF "$op" "$SKILL" || n "el puntero ADAPTER de $SKILL no nombra $op"
 done
-for prohibida in "map:write" "map:create" "milestone:create" "work:write"; do
-  grep -qF "$prohibida" "$SKILL" && n "$SKILL nombra $prohibida, que no es una de sus ocho operaciones"
+# map:write es la novena y entro por la rama de research del paso 8: el padre escribe el
+# mapa porque ahi ninguna resolucion suya lo hace. En cualquier otro camino la quinta
+# escritura sigue viviendo adentro de ticket:resolve, y por eso la rama se nombra aparte.
+grep -qF "belongs to the research branch of step 8 and to no other path" "$SKILL" || n "$SKILL nombra map:write sin acotarlo a la rama de research"
+for prohibida in "map:create" "milestone:create" "work:write"; do
+  grep -qF "$prohibida" "$SKILL" && n "$SKILL nombra $prohibida, que no es una de sus nueve operaciones"
 done
 for paso in 1 2 3 4 5 6 7 8; do
   grep -qE "^## Step $paso," "$SKILL" || n "$SKILL no lleva el paso $paso"
@@ -49,9 +53,14 @@ done
 for paso in 9 10; do
   grep -qE "^## Step $paso," "$SKILL" && n "$SKILL lleva el paso $paso, que es de un corte posterior"
 done
-# El paso 7 no rechaza un map:research y dice por que la excepcion todavia no licencia nada.
-grep -qF "map:research" "$SKILL" || n "$SKILL no nombra map:research en su paso 7"
-grep -qF "one per session" "$SKILL" || n "$SKILL no dice que un map:research se trabaja uno por sesion"
+# El paso 7 despacha el fan-out de research, y esa es la unica excepcion a uno por sesion.
+# Las dos mitades se afirman por separado a proposito: que la regla sigue valiendo para todo
+# lo que se trabaja en conversacion, y cual es el unico tipo que la rompe. Afirmar solo la
+# primera dejaria pasar un archivo que borro la excepcion; solo la segunda, uno que aflojo
+# la regla para todos.
+grep -qF "map:research" "$SKILL" || n "$SKILL no nombra map:research en su rama de fan-out"
+grep -qF "one per session" "$SKILL" || n "$SKILL no dice que cada tipo trabajado en conversacion sigue siendo uno por sesion"
+grep -qF "is the one exception" "$SKILL" || n "$SKILL no nombra a map:research como la excepcion a uno por sesion"
 # El paso 8 pide confirmacion UNA vez y nombra el negativo explicito de la niebla.
 grep -qF '`ninguna`' "$SKILL" || n "$SKILL no nombra el negativo explicito de la seccion de niebla"
 grep -qF "ticket:resolve --ctx" "$SKILL" || n "$SKILL no invoca ticket:resolve en su paso 8"
@@ -63,7 +72,7 @@ grep -qF "ticket:claim --ctx <the blob from step 1> --issue <the chosen ticket> 
 grep -qF "the claim from step 6 is still yours to release until the third one" "$SKILL" || n "$SKILL no dice que una falla en la secuencia de tres deja la toma sin soltar"
 grep -qF "Never run the release out of order" "$SKILL" || n "$SKILL no prohibe soltar la toma antes de que ticket:block aterrice"
 grep -q -- "--bootstrap" "$SKILL" && n "$SKILL nombra --bootstrap"
-grep -qF "research-subagent.md" "$SKILL" && n "$SKILL nombra un archivo que no existe"
+grep -qF "skills/_shared/research-subagent.md" "$SKILL" || n "$SKILL no nombra por su ruta el prompt del subagente de research que su paso 7 despacha"
 grep -qF "| Condition | Verdict | Token |" "$SKILL" && n "$SKILL repite la tabla del veredicto en vez de citarla"
 for tok in map-new release-claim break-cycle map-collapse sdd-new; do
   grep -qF "\`next_recommended: $tok\`" "$SKILL" || n "$SKILL no cita el token $tok que sus pasos 2 y 3 emiten"
