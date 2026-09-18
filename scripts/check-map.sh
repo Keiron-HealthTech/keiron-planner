@@ -1075,6 +1075,13 @@ def caso_24():
     chequear(n, "NUNCA sugiere repetir ticket:resolve", "ticket:resolve" in err, False)
 
 
+# Lo que la corrida diferida imprimió, para que los casos que la comparan lo hagan
+# contra una salida del programa y nunca contra un formato escrito acá. Un check que
+# escribiera la línea esperada estaría verificando su propia copia, que es exactamente
+# la copia número tres que este cambio existe para no agregar.
+DIFERIDO = {}
+
+
 def caso_25():
     """--defer-map: las cuatro escrituras del ticket y ninguna del mapa, con la línea y
     los mapArgs impresos en el stdout de siempre. Es la mitad que el AST no puede ver:
@@ -1095,15 +1102,162 @@ def caso_25():
     chequear(n, "mapLine no viene vacia", bool(d.get("mapLine")), True)
     chequear(n, "mapArgs empieza con --append-decision",
              (d.get("mapArgs") or [])[:1], ["--append-decision"])
+    DIFERIDO["resolve"] = d
 
 
-CASOS = [("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
+def caso_26():
+    """La MISMA argv del caso 25 sin el flag: seis POSTs, y la línea que la corrida
+    diferida imprimió está byte a byte adentro del content que viajó al projectUpdate.
+    Es la pata que vuelve no tautológica a toda la fila, porque compara dos salidas del
+    programa: una cadena que un proceso imprimió por stdout contra los bytes que otro
+    proceso mandó por el transporte. El check nunca escribe el formato de la línea."""
+    n = "26-la-misma-argv-sin-el-flag-escribe-lo-que-la-otra-imprimio"
+    d = DIFERIDO.get("resolve") or {}
+    if not d.get("mapLine"):
+        anotar("%s: el caso 25 no dejo ninguna mapLine, asi que no hay contra que "
+               "comparar y esta pata no puede pasar en verde" % n)
+        return
+    rc, out, err, tr = correr(
+        n, RESOLVER + secciones() + GIST + NUEVOS + CABLE,
+        [NUEVOS_OK, RELACION_OK, COMENTADO, CERRADO, leido(overview()), ESCRITO_OK])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "SEIS llamadas al transporte", tr.llamadas, 6)
+    if tr.llamadas != 6:
+        return
+    cuerpos = mod.cortar_secciones(tr.variables[5].get("content") or "")
+    chequear(n, "la linea diferida esta BYTE A BYTE bajo Decisiones hasta ahora",
+             d["mapLine"] in cuerpos[mod.ANCLA_DECISIONES], True)
+    e = json_de(n, out)
+    chequear(n, "la corrida escrita imprime la MISMA mapLine",
+             e.get("mapLine"), d["mapLine"])
+    chequear(n, "y los MISMOS mapArgs", e.get("mapArgs"), d.get("mapArgs"))
+    chequear(n, "con mapWritten en true", e.get("mapWritten"), True)
+
+
+def caso_27():
+    """La tercera punta, desde el cable: map:write con los mapArgs que la corrida
+    diferida devolvió deja bajo el ancla la MISMA línea que esa corrida imprimió. Es la
+    casa única del formato asertada desde el transporte y no desde el AST, y es el
+    camino exacto que recorre el padre cuando un subagente le devuelve su bloque."""
+    n = "27-map-write-con-los-mapargs-del-diferido"
+    d = DIFERIDO.get("resolve") or {}
+    if not d.get("mapArgs"):
+        anotar("%s: el caso 25 no dejo ningunos mapArgs que pasarle a map:write" % n)
+        return
+    rc, out, err, tr = correr(n, ["map:write", "--project", "p-1"] +
+                              list(d["mapArgs"]), [leido(overview()), ESCRITO_OK])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "DOS llamadas al transporte", tr.llamadas, 2)
+    if tr.llamadas != 2:
+        return
+    cuerpos = mod.cortar_secciones(tr.variables[1].get("content") or "")
+    chequear(n, "la linea que el mapa gana es la que el diferido imprimio",
+             d["mapLine"] in cuerpos[mod.ANCLA_DECISIONES], True)
+    chequear(n, "la decision previa sobrevive",
+             DECISION_PREVIA in cuerpos[mod.ANCLA_DECISIONES], True)
+
+
+def caso_28():
+    """ticket:rule-out --defer-map contra su corrida hermana sin el flag: cuatro POSTs
+    contra seis, mapArgs que empieza con --append-out-of-scope, y la viñeta diferida
+    byte a byte bajo Fuera de alcance y NUNCA bajo Decisiones. La asimetría de las dos
+    operaciones también viaja en el reparto."""
+    n = "28-ticket-rule-out-defer-map"
+    argv = FUERA + secciones() + ["--out-of-scope", VINETA_FUERA] + NUEVOS + CABLE
+    rc, out, err, tr = correr(n, argv + ["--defer-map"],
+                              [NUEVOS_OK, RELACION_OK, COMENTADO, CANCELADO])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "stderr vacio", err, "")
+    chequear(n, "CUATRO llamadas al transporte", tr.llamadas, 4)
+    for prohibida in ("project(id:", "projectUpdate"):
+        chequear(n, "ninguna query lleva " + prohibida,
+                 [q for q in tr.queries if prohibida in q], [])
+    d = json_de(n, out)
+    chequear(n, "mapWritten es false", d.get("mapWritten"), False)
+    chequear(n, "mapArgs empieza con --append-out-of-scope",
+             (d.get("mapArgs") or [])[:1], ["--append-out-of-scope"])
+    if not d.get("mapLine"):
+        anotar("%s: la corrida diferida no imprimio ninguna mapLine" % n)
+        return
+
+    h = n + "-HERMANA-sin-el-flag"
+    rc, out, err, tr = correr(h, argv, [NUEVOS_OK, RELACION_OK, COMENTADO, CANCELADO,
+                                        leido(overview()), ESCRITO_OK])
+    chequear(h, "rc", rc, 0)
+    chequear(h, "SEIS llamadas al transporte", tr.llamadas, 6)
+    if tr.llamadas != 6:
+        return
+    cuerpos = mod.cortar_secciones(tr.variables[5].get("content") or "")
+    chequear(h, "la vineta diferida esta BYTE A BYTE bajo Fuera de alcance",
+             d["mapLine"] in cuerpos[mod.ANCLA_FUERA], True)
+    chequear(h, "y NUNCA bajo Decisiones hasta ahora",
+             d["mapLine"] in cuerpos[mod.ANCLA_DECISIONES], False)
+
+
+def caso_29():
+    """La niebla viaja en mapArgs y no se pierde en silencio: los tres grupos de flags
+    en el orden fijado, el --append-fog SIN su marcador, y ni --project ni
+    --expect-sections adentro. Y la guarda de _niebla_de sigue abortando antes de la
+    red, con el transporte en cero, cuando la sección que cuenta la graduación no
+    nombra el título: el flag no aflojó ninguna validación previa."""
+    n = "29-defer-map-con-niebla-graduada-y-nueva"
+    nueva = "**Una niebla nueva.** que abre esta resolucion"
+    rc, out, err, tr = correr(
+        n, RESOLVER + secciones(**{SEIS[3]: ["se graduo " + GRADUADA]}) + GIST +
+        ["--remove-fog", GRADUADA, "--append-fog", nueva, "--defer-map"],
+        [COMENTADO, CERRADO])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "DOS llamadas al transporte", tr.llamadas, 2)
+    d = json_de(n, out)
+    args = d.get("mapArgs") or []
+    chequear(n, "mapArgs lleva los tres grupos en el orden del contrato",
+             [a for a in args if a.startswith("--")],
+             ["--append-decision", "--remove-fog", "--append-fog"])
+    chequear(n, "el --remove-fog lleva el titulo exacto",
+             args[args.index("--remove-fog") + 1] if "--remove-fog" in args else None,
+             GRADUADA)
+    chequear(n, "el --append-fog viaja SIN marcador",
+             args[args.index("--append-fog") + 1] if "--append-fog" in args else None,
+             nueva)
+    for prohibido in ("--project", "--expect-sections"):
+        chequear(n, "mapArgs NO lleva " + prohibido, prohibido in args, False)
+
+    g = n + "-CONTROL-graduada-que-la-seccion-no-nombra"
+    rc, out, err, tr = correr(
+        g, RESOLVER + secciones() + GIST + ["--remove-fog", GRADUADA, "--defer-map"],
+        [])
+    chequear(g, "rc", rc, mod.SIN_KEY)
+    chequear(g, "stdout vacio", out, "")
+    chequear(g, "stderr nombra el titulo que la seccion no menciona",
+             GRADUADA in err, True)
+    chequear(g, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+
+def caso_30():
+    """El comentario rechazado con success false y el flag puesto: código no cero,
+    stdout VACÍO y stderr nombrando lo que ya aterrizó. Es el caso que sostiene la regla
+    con la que el padre decide si un retorno sirve: stdout con contenido implica éxito,
+    stdout vacío implica falla, y con --defer-map esa regla no se afloja."""
+    n = "30-defer-map-con-el-comentario-rechazado"
+    rc, out, err, tr = correr(
+        n, RESOLVER + secciones() + GIST + NUEVOS + CABLE + ["--defer-map"],
+        [NUEVOS_OK, RELACION_OK, COMENTADO_FALSO])
+    chequear(n, "rc", rc, mod.SIN_KEY)
+    chequear(n, "stdout vacio", out, "")
+    chequear(n, "TRES llamadas al transporte", tr.llamadas, 3)
+    chequear(n, "stderr nombra success", "success" in err, True)
+    chequear(n, "stderr dice que los tickets ya quedaron escritos",
+             "tickets nuevos" in err, True)
+
+
+CASOS =[("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("60", caso_5), ("60", caso_6), ("60", caso_7), ("60", caso_8),
          ("60", caso_9), ("47", caso_10), ("47", caso_11), ("47", caso_12),
          ("60", caso_13), ("61", caso_14), ("61", caso_15), ("61", caso_16),
          ("61", caso_17), ("61", caso_18), ("61", caso_19), ("61", caso_20),
          ("61", caso_21), ("61", caso_22), ("61", caso_23), ("61", caso_24),
-         ("66", caso_25)]
+         ("66", caso_25), ("66", caso_26), ("66", caso_27), ("66", caso_28),
+         ("66", caso_29), ("66", caso_30)]
 for _afirmacion, _caso in CASOS:
     AFIRMACION[0] = _afirmacion
     _caso()
