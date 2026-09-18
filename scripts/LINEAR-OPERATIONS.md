@@ -25,8 +25,8 @@ para que el adapter tenga su contrato a mano.
 | `ticket:block` | La relación nativa de bloqueo, en una segunda pasada. |
 | `frontier:query` | Los tickets abiertos, sin bloqueantes abiertos y sin assignee. |
 | `ticket:claim` | Tomar. El primer write de la sesión, y con `--release` la escritura inversa, que devuelve la toma. |
-| `ticket:resolve` | Las cinco escrituras de una resolución, en una sola invocación. |
-| `ticket:rule-out` | Cierra un ticket sin resolverlo. La única destructiva. |
+| `ticket:resolve` | Las cinco escrituras de una resolución, en una sola invocación, y con `--defer-map` solo las cuatro primeras: la quinta no se manda y la línea que le tocaba sale por stdout. |
+| `ticket:rule-out` | Cierra un ticket sin resolverlo. La única destructiva. Acepta `--defer-map` con el mismo efecto. |
 | `milestone:create` | Un corte demoable del colapso. Nunca lleva fecha. |
 | `work:write` | Lo que produce un colapso o un aterrizaje, en una sola invocación. |
 
@@ -242,7 +242,7 @@ es la remediación correcta y no duplica nada.
 
 ### `ticket:resolve`
 
-Diez flags, y `--ctx`, `--project`, `--issue` y `--gist` son los cuatro requeridos:
+Once flags, y `--ctx`, `--project`, `--issue` y `--gist` son los cuatro requeridos:
 
     --ctx              el blob del preflight, opaco.
     --project          el Project cuyo overview lleva el mapa, en cualquiera de las
@@ -264,6 +264,11 @@ Diez flags, y `--ctx`, `--project`, `--issue` y `--gist` son los cuatro requerid
     --remove-fog       el título de una viñeta que esta resolución graduó. Tiene que
                        estar nombrado en alguna línea de --section "Niebla graduada".
     --expect-sections  el JSON de huellas que map:read emitió, para el aviso de deriva.
+    --defer-map        booleano. Difiere la quinta escritura a otro conductor: las
+                       cuatro primeras corren igual, la quinta no se manda, y la línea
+                       que le tocaba sale por stdout en mapLine y mapArgs. Con el flag
+                       puesto, --expect-sections queda sin uso y no avisa nada, porque
+                       su único consumidor vive adentro de la escritura que no ocurre.
 
 No hay `--append-decision`, y su ausencia es la decisión: el enlace de la línea del
 mapa sale de `issue.url`, que la escritura 4 devuelve en su propio round trip. Así es
@@ -284,7 +289,7 @@ garantiza y ninguna combinación de flags reordena:
 | 2 | `issueRelationCreate` | solo si hay al menos un `--block` |
 | 3 | `commentCreate` | siempre |
 | 4 | `issueUpdate` | siempre, con `stateId` en el `done` del ctx |
-| 5 | `projectUpdate` | siempre, precedida de su relectura del overview |
+| 5 | `projectUpdate` | siempre salvo con `--defer-map`, precedida de su relectura del overview |
 
 Las dos primeras son condicionales porque un batch vacío es un round trip desperdiciado
 y Linear puede rechazarlo. El comentario va antes que el estado porque una sesión que
@@ -321,10 +326,25 @@ ya tiene el project, la url que le devolvió el `issueUpdate` y el gist. Es tamb
 razón por la que la quinta no reintenta. El mensaje nunca sugiere repetir
 `ticket:resolve`, que recrearía los tickets nuevos y volvería a postear el comentario.
 
-stdout, una sola línea de JSON compacto, con siete claves siempre presentes: `issue`,
+stdout, una sola línea de JSON compacto, con nueve claves siempre presentes: `issue`,
 `url`, `comment` con el enlace del comentario recién escrito, `tickets` con los que se
-crearon, `blocks` con los pares que quedaron cableados, `mapWritten` y `noop` con los
-títulos de `--remove-fog` que no matchearon ninguna viñeta.
+crearon, `blocks` con los pares que quedaron cableados, `mapWritten`, `mapLine`,
+`mapArgs` y `noop` con los títulos de `--remove-fog` que no matchearon ninguna viñeta.
+
+`mapWritten` dice si la quinta escritura ocurrió de verdad en esa corrida: `true` sin el
+flag, `false` con él. `mapLine` es la línea completa del mapa, con su marcador, la misma
+que se habría escrito; es lo que se le muestra a una persona antes de escribir. `mapArgs`
+es esa misma línea como lista de tokens de argv, lista para concatenar adentro de una
+única invocación de `map:write`: lleva el `--append-decision` con su enlace y su gist,
+después un `--remove-fog` por título graduado, y después un `--append-fog` por viñeta
+nueva, ya sin marcador. Es lo que se ejecuta, y hacen falta las dos porque no existe
+ningún flag de `map:write` que reciba una línea ya renderizada.
+
+Las dos vienen siempre, con el flag y sin él, y con el mismo valor: la línea se calcula
+una sola vez, antes de la bifurcación, así que lo que se imprime y lo que se escribe no
+son dos construcciones que puedan divergir sino una con dos destinos. Ni `--project` ni
+`--expect-sections` viajan en `mapArgs`: son del conductor que escribe el mapa, que ya
+los tiene de primera mano.
 
 ### `ticket:rule-out`
 
@@ -340,7 +360,8 @@ código 2. La línea de esta operación va a `## Fuera de alcance` y nunca a
 `## Decisiones hasta ahora`, y la recíproca es igual de fuerte: `ticket:resolve` no
 acepta `--append-out-of-scope`.
 
-Los otros nueve flags son los mismos, `--new-ticket` y `--block` incluidos. Sus dos
+Los otros diez flags son los mismos, `--new-ticket`, `--block` y `--defer-map`
+incluidos. Sus dos
 primeras escrituras casi siempre están vacías, pero casi siempre no es siempre, y darle
 la misma forma cuesta cero: sacar un ticket de alcance puede abrir preguntas nuevas.
 
@@ -356,4 +377,7 @@ Es la **única operación destructiva del adapter**: cierra un ticket sin resolv
 comentario se escribe igual, con sus seis secciones, así que la decisión de sacarlo de
 alcance queda auditable en el ticket aunque el ticket quede cancelado.
 
-stdout, la misma forma que `ticket:resolve`, con las mismas siete claves.
+stdout, la misma forma que `ticket:resolve`, con las mismas nueve claves. Con
+`--defer-map`, `mapLine` es la viñeta entera con su marcador y `mapArgs` empieza con
+`--append-out-of-scope`: la línea de esta operación va a `## Fuera de alcance` también
+cuando el mapa lo escribe otro conductor.
