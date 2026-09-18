@@ -23,20 +23,33 @@ piece of text a person ends up reading in Linear, and that text is in Spanish. N
 of those shapes from memory.
 
 ADAPTER: `${CLAUDE_PLUGIN_ROOT}/scripts/linear.py`, invoked with Bash and written `linear.py`
-below. This skill runs eight of its operations and no other: `preflight`, `map:read`,
-`frontier:query`, `ticket:claim`, `ticket:create`, `ticket:block`, `ticket:resolve` and
-`ticket:rule-out`. Never compose GraphQL yourself and never touch the Linear API directly.
+below. This skill runs nine of its operations and no other: `preflight`, `map:read`,
+`frontier:query`, `ticket:claim`, `ticket:create`, `ticket:block`, `ticket:resolve`,
+`ticket:rule-out` and `map:write`. Never compose GraphQL yourself and never touch the Linear
+API directly.
 
-Writing the map is not on that list, and the absence is the point: the write that adds the
-line to the map happens inside the operation that resolves the ticket, so the map lands last
-and exactly once by construction rather than by your discipline.
+The ninth, `map:write`, belongs to the research branch of step 8 and to no other path. A
+ticket of any other type still reaches the map through the operation that resolves it, and
+this skill never invokes `map:write` on that path.
+
+The map lands last and exactly once, by construction rather than by your discipline, and
+there are two constructions because there are two branches. On the normal path the write
+that adds the line lives inside `ticket:resolve` or `ticket:rule-out`, so no step of this
+file can reorder it or run it twice. On the research path the instance runs its resolution
+with `--defer-map`, which is the adapter refusing to let it write the map at all, and the
+parent runs one `map:write` after the last return. Neither construction rests on you
+remembering not to write the map twice: the first puts the write out of reach inside another
+operation, and the second takes it away from the instance with a flag.
 
 When any invocation exits non-zero, relay its stderr as it is, add nothing to it, and stop. Do
 not reformulate the remediation and do not turn the failure into a token: every hard failure
 already carries its own remediation, written by the operation that produced it.
 
-One ticket per session, always. The steps below run in order. Nothing here is optional and
-nothing reorders.
+Every type worked in conversation is still one per session, and that is the rule this file is
+built around. A ticket typed `map:research` is the one exception, because it is not worked in
+conversation at all: it is handed to an instance of its own. This cut dispatches exactly one
+of them; dispatching every research ticket of the frontier at once is a later cut. The steps
+below run in order. Nothing here is optional and nothing reorders.
 
 ## Step 1, the preflight
 
@@ -126,6 +139,16 @@ typed from memory.
 Pass no `--release` here. That flag hands a claim back on purpose, and it belongs to the
 branch of step 8 that pauses a ticket rather than to the one that takes it.
 
+When the ticket step 4 picked is typed `map:research`, this claim still runs here, from this
+session, and it runs BEFORE step 7 dispatches anything. The instance never claims its own
+ticket, in either direction. Three reasons, and the third makes it obligatory: the order
+step 5 protects is the order of this file and moving the claim into step 7 would bend it for
+one type only; the claim is what takes the ticket off the frontier, and the frontier was
+read here, so a claim written after the dispatch leaves a window where another session reads
+the same frontier and dispatches the same ticket; and a claim the parent wrote is a claim the
+parent can name when an instance fails, which it could not do if an instance that died early
+might or might not have claimed anything.
+
 ## Step 7, run the discipline the type asks for
 
 The contract's ticket type to discipline table decides, and this file does not copy it. It
@@ -135,17 +158,25 @@ negotiable. Read it there and run what it names for the label this ticket carrie
 `map:task` names no discipline, and that is not an omission: it does instead of deciding, so
 there is nothing to conduct. Do the work and carry what it produced into step 8.
 
-A ticket typed `map:research` is worked here **exactly like any other AFK ticket, one per
-session, by the normal path**. Do not dispatch a subagent, do not run anything in parallel,
-and above all do not refuse the ticket. Dispatching every research ticket of the frontier at
-once is a later cut and does not exist yet; what that cut adds is the parallelism, never the
-ability to resolve one, because resolving is what step 8 already does and step 8 does not
-look at the type. The tickets typed `map:research` simply wait on the frontier, and the
-person resolves them through the normal path, one per session.
+A ticket typed `map:research` is the one type this step does not conduct itself. It is AFK,
+there is no conversation to run, and what step 7 does with it is dispatch it.
 
-So the rule that says research is the one exception to one ticket per session is describing
-a **future** exception. Until the parallel dispatch exists there is nothing for it to
-license, and in this cut one ticket per session holds with no exception at all.
+With the one `map:research` ticket step 6 already claimed, dispatch ONE instance of
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/research-subagent.md` and wait for it to come back.
+Hand it the five things that file says it receives, and nothing else: the identifier
+verbatim as `frontier:query` returned it, the URL and the title, the identifier of the
+Project, the fog titles that step 2 read off the map, and the team key. Never hand it the
+`--ctx` blob of step 1. A preflight runs once per driver and the instance is a driver, so it
+runs its own.
+
+For that ticket, do not invoke `ticket:resolve`, `ticket:rule-out`, `ticket:create` or
+`ticket:block` yourself. Those are the instance's, and running one of them here would write
+the resolution twice.
+
+This cut dispatches exactly one instance, the ticket step 4 picked. Dispatching every
+`map:research` ticket of the frontier at once, with no numeric cap and one single wait for
+all of them, is a later cut, and so is what the parent does when an instance fails or comes
+back with something it cannot parse. Do not improvise either one.
 
 ## Step 8, show it, confirm once, and write
 
@@ -186,7 +217,32 @@ than the one ticket just resolved, that token is `next_recommended: map-work`. R
 frontier again, landing the decision and reporting the close are steps 9 and 10, and they
 belong to a later cut.
 
-One ticket per session, always, `map:research` included.
+Every type worked in conversation is still one per session, and `map:research` is the one
+exception, worked by an instance of its own.
+
+### The research branch
+
+When step 7 dispatched an instance, none of the above runs. The instance already wrote the
+four writes of its ticket: the new tickets, their wiring, the resolution comment and the
+close. There is no confirmation to ask for here, because the irreversible batch of this
+branch was the dispatch itself and step 7 already asked.
+
+What is missing is the map, and only the map. Take the fenced block the instance returned,
+parse the single line of JSON inside it, and read `mapArgs` out of it. Then run exactly one
+invocation:
+
+    linear.py map:write --project <the project> \
+      --expect-sections <the fingerprints from step 2> <the mapArgs of the instance>
+
+`--expect-sections` carries the fingerprints that the `map:read` of step 2 already returned.
+Step 7 did not read the map again, so those are the ones that belong here.
+
+Concatenate `mapArgs` as it came, token by token. Never rebuild the line yourself, never
+deduce it from the prose the instance wrote around the block, and never ask the instance to
+repeat it. The adapter is the one house of that format, which is why the instance returns
+argv and not markdown.
+
+Then report what landed and close with one token, the same way the normal path does.
 
 ### The other-role branch
 
