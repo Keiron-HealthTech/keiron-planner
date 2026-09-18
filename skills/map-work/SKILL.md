@@ -251,27 +251,64 @@ exception, worked by an instance of its own.
 
 ### The research branch
 
-When step 7 dispatched an instance, none of the above runs. The instance already wrote the
-four writes of its ticket: the new tickets, their wiring, the resolution comment and the
-close. There is no confirmation to ask for here, because the irreversible batch of this
-branch was the dispatch itself and step 7 already asked.
+When step 7 dispatched a fan-out, none of the above runs. Each instance already wrote the four
+writes of its own ticket: the new tickets, their wiring, the resolution comment and the close.
+There is no confirmation to ask for here, because the irreversible batch of this branch was
+the dispatch itself and step 7 already asked.
 
-What is missing is the map, and only the map. Take the fenced block the instance returned,
-parse the single line of JSON inside it, and read `mapArgs` out of it. Then run exactly one
-invocation:
+What is missing is the map, and only the map.
+
+A return is sane when, and only when, it carries a fenced block that parses as the single line
+of JSON a resolution run with `--defer-map` prints, with `mapWritten` false and a `mapArgs`
+that is not empty. Anything else is malformed: prose with no fenced block, JSON that does not
+parse, `mapArgs` missing or empty, `mapWritten` true. A malformed return is treated exactly
+like an instance that failed or never came back, and there is no second policy for it. A
+return you cannot use and an invocation that never landed leave the same state behind, a
+ticket whose line is not reaching the map in this session.
+
+With every instance finished, sane or not, run exactly one invocation:
 
     linear.py map:write --project <the project> \
-      --expect-sections <the fingerprints from step 2> <the mapArgs of the instance>
+      --expect-sections <the fingerprints from step 2> \
+      <the mapArgs of every instance that came back sane>
 
-`--expect-sections` carries the fingerprints that the `map:read` of step 2 already returned.
-Step 7 did not read the map again, so those are the ones that belong here.
+One invocation for the whole fan-out and never one per instance, with the `mapArgs`
+concatenated token by token in the order you dispatched. `--expect-sections` carries the
+fingerprints that the `map:read` of step 2 already returned. Step 7 did not read the map
+again, so those are the ones that belong here.
 
-Concatenate `mapArgs` as it came, token by token. Never rebuild the line yourself, never
-deduce it from the prose the instance wrote around the block, and never ask the instance to
-repeat it. The adapter is the one house of that format, which is why the instance returns
-argv and not markdown.
+When no instance came back sane, do not run `map:write` at all. The adapter aborts when it
+receives no edit, so an empty invocation is a failure this session would have manufactured
+for itself.
 
-Then report what landed and close with one token, the same way the normal path does.
+Never rebuild the line yourself, never deduce it from the prose an instance wrote around the
+block, and never ask an instance to repeat it. The adapter is the one house of that format,
+which is why an instance returns argv and not markdown.
+
+Of a ticket whose instance failed or came back malformed, three things are done by not doing
+them. Do not run `ticket:claim --release`: handing the claim back erases the evidence that
+this research was attempted and returns the ticket to the frontier looking fresh. Do not run
+`ticket:resolve` or `ticket:rule-out` in its name: this session did not do the research and
+has nothing to put in the six sections. And write no line of its own in the map: a decision
+with no resolution has no line.
+
+Then report, naming these in this order:
+
+1. which research came back well, and what line each one left in the map;
+2. which ones did not, by identifier;
+3. that each of those is still claimed by you and unreleased;
+4. that the ticket stays open and off the frontier until the claim is handed back or the
+   research is completed;
+5. what to do about it, which is to run `/map-work` on that ticket to finish it, or to hand
+   the claim back with `ticket:claim --release` if it is being left.
+
+That is the same policy the other-role branch below already follows when one of its three
+writes fails: name what landed, name the claim, do not release it, and say how to finish by
+hand. It is not a second policy for the same problem.
+
+With at least one research that did not land, close with `next_recommended: map-work`: that
+ticket is open and it is what there is to work. With every one of them landed, report what
+landed and close with one token, the same way the normal path does.
 
 ### The other-role branch
 
