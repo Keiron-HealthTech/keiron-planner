@@ -47,9 +47,9 @@ already carries its own remediation, written by the operation that produced it.
 
 Every type worked in conversation is still one per session, and that is the rule this file is
 built around. A ticket typed `map:research` is the one exception, because it is not worked in
-conversation at all: it is handed to an instance of its own. This cut dispatches exactly one
-of them; dispatching every research ticket of the frontier at once is a later cut. The steps
-below run in order. Nothing here is optional and nothing reorders.
+conversation at all: it is handed to an instance of its own, and a session takes every one of
+them the frontier holds rather than one. The steps below run in order. Nothing here is
+optional and nothing reorders.
 
 ## Step 1, the preflight
 
@@ -107,13 +107,22 @@ a ticket instead of the URL of the Project, say exactly that, ask for the URL of
 and stop: the adapter resolves no Project from the URL of an issue, and that limit is the
 contract's.
 
-With the Project, take the FIRST entry of `tickets`. The adapter already ordered them by
-`createdAt` ascending, so do not re-sort them and do not apply a criterion of your own. Name
-which one you took and why it was first.
+With the Project, look at `tickets` for the type label `map:research` before anything else.
+When at least one carries it, take EVERY one of them: they are the fan-out of this session.
+Do not apply the first by `createdAt` criterion to them, and do not take one and leave the
+rest. They are the only type not worked in conversation, so several of them cost this session
+one turn instead of one session each. Tickets of any other type on that same frontier are not
+worked in this run and wait for a session of their own, exactly as before.
 
-When `$ARGUMENTS` names one specific ticket and that ticket is not in `tickets`, say why it is
-not takeable, which `notTakeable` already tells you: it is claimed, it is blocked, or it is
-closed. Then stop. Never substitute another ticket for the one that was named.
+With the Project and no `map:research` on the frontier, take the FIRST entry of `tickets`. The
+adapter already ordered them by `createdAt` ascending, so do not re-sort them and do not apply
+a criterion of your own. Name which one you took and why it was first.
+
+When `$ARGUMENTS` names one specific ticket, that ticket is the whole of this session, whatever
+its type: a `map:research` named by the argument is dispatched alone and the rest of the
+frontier is not touched. And when that ticket is not in `tickets`, say why it is not takeable,
+which `notTakeable` already tells you: it is claimed, it is blocked, or it is closed. Then
+stop. Never substitute another ticket for the one that was named.
 
 ## Step 5, the role check, before claiming
 
@@ -123,6 +132,12 @@ grilling with a developer is never interrupted by this question.
 
 When it does fire, ask whether the person on the other side is that role, or can speak for it.
 If the answer is no, stop without claiming and say which role the ticket needs.
+
+It fires per ticket and by the label, never by the type, and that is what makes it harmless to
+a fan-out. A `map:research` carries no `hitl:` role by default, because that type is AFK, so
+a frontier of research asks nothing here at all. One that does carry a role is treated like
+any other ticket that carries it: it is asked about, and a no leaves that one unclaimed and
+undispatched while the rest of the fan-out goes on untouched.
 
 The order is the whole point: claiming and then refusing leaves an orphan claim, and an orphan
 claim is exactly the thing nobody releases. The write that is not made is the write that does
@@ -139,9 +154,10 @@ typed from memory.
 Pass no `--release` here. That flag hands a claim back on purpose, and it belongs to the
 branch of step 8 that pauses a ticket rather than to the one that takes it.
 
-When the ticket step 4 picked is typed `map:research`, this claim still runs here, from this
-session, and it runs BEFORE step 7 dispatches anything. The instance never claims its own
-ticket, in either direction. Three reasons, and the third makes it obligatory: the order
+When step 4 picked `map:research`, this invocation runs once per ticket it picked, all of them
+here, from this session, and all of them BEFORE step 7 dispatches anything. An instance never
+claims its own ticket, in either direction. Three reasons, and the third makes it obligatory:
+the order
 step 5 protects is the order of this file and moving the claim into step 7 would bend it for
 one type only; the claim is what takes the ticket off the frontier, and the frontier was
 read here, so a claim written after the dispatch leaves a window where another session reads
@@ -161,28 +177,41 @@ there is nothing to conduct. Do the work and carry what it produced into step 8.
 A ticket typed `map:research` is the one type this step does not conduct itself. It is AFK,
 there is no conversation to run, and what step 7 does with it is dispatch it.
 
-With the one `map:research` ticket step 6 already claimed, dispatch ONE instance of
-`${CLAUDE_PLUGIN_ROOT}/skills/_shared/research-subagent.md` and wait for it to come back.
-Hand it the five things that file says it receives, and nothing else: the identifier
-verbatim as `frontier:query` returned it, the URL and the title, the identifier of the
-Project, the fog titles that step 2 read off the map, and the team key. Never hand it the
-`--ctx` blob of step 1. A preflight runs once per driver and the instance is a driver, so it
-runs its own.
+The dispatch is the irreversible batch of this branch: every instance writes a comment and
+closes a ticket, and neither of those has an undo. So show which tickets are about to be
+dispatched, by identifier and title, and ask for confirmation ONCE, before dispatching
+anything. That is the same single confirmation step 8 asks for on the normal path, moved to
+where the batch actually is. After it, do not ask again, not while they run and not before the
+`map:write` of step 8.
 
-For that ticket, do not invoke `ticket:resolve`, `ticket:rule-out`, `ticket:create` or
+Then dispatch one instance of
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/research-subagent.md` per ticket step 6 claimed, all of
+them in the same turn. Hand each one the five things that file says it receives, and nothing
+else: its identifier verbatim as `frontier:query` returned it, its URL and its title, the
+identifier of the Project, the fog titles that step 2 read off the map, and the team key.
+Never hand it the `--ctx` blob of step 1. A preflight runs once per driver and an instance is
+a driver, so it runs its own.
+
+There is no numeric cap on how many go out at once. The bound is the frontier that step 2
+read, and a cap of any other size would be a constant nobody measured, which is the one thing
+the contract refuses to carry. An instance costs a preflight and at most four writes, because
+`--defer-map` takes the fifth away from it.
+
+Wait for every one of them to come back before doing anything else. Do not write the map with
+the ones that already answered, do not reorder them, do not retry one, and do not abort the
+ones still running because one failed.
+
+For those tickets, do not invoke `ticket:resolve`, `ticket:rule-out`, `ticket:create` or
 `ticket:block` yourself. Those are the instance's, and running one of them here would write
 the resolution twice.
 
-This cut dispatches exactly one instance, the ticket step 4 picked. Dispatching every
-`map:research` ticket of the frontier at once, with no numeric cap and one single wait for
-all of them, is a later cut, and so is what the parent does when an instance fails or comes
-back with something it cannot parse. Do not improvise either one.
-
 ## Step 8, show it, confirm once, and write
 
-This is the only irreversible batch of the session. Five writes, and not one of them has an
-undo: not a ticket created, not a relation, not a comment, not a close, not a line of the
-map. So show the whole thing and ask for confirmation ONCE, before invoking anything.
+On the normal path this is the only irreversible batch of the session. Five writes, and not
+one of them has an undo: not a ticket created, not a relation, not a comment, not a close, not
+a line of the map. So show the whole thing and ask for confirmation ONCE, before invoking
+anything. On the research branch the batch was the dispatch and step 7 already asked, which is
+the same single confirmation standing where the writes are.
 
 Show five things, and show them as they will read rather than as a summary:
 
