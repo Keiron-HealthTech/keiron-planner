@@ -202,10 +202,24 @@ if [ -n "$colapsables" ]; then
   fail "[46] estos archivos llevan <details> o <summary>, y el índice colapsable se comía dos tercios del documento con diez entradas: $colapsables"
 fi
 
+# --- afirmación 68: el paso 6 de /map-new ya no dice que no existe ---
+
+MAP_NEW=skills/map-new/SKILL.md
+STUB="This step does not exist yet"
+
+# La guarda de existencia no es prolijidad: un grep de ausencia sobre un archivo que
+# falta pasa en verde sin haber mirado nada, que es exactamente la vacuidad que este
+# repo persigue. Con el archivo presente, el literal es lo único que se mide.
+if [ ! -f "$MAP_NEW" ]; then
+  fail "[68] falta $MAP_NEW; la ausencia del literal del stub del paso 6 se probaría sobre un archivo que no está"
+elif grep -qF "$STUB" "$MAP_NEW"; then
+  fail "[68] $MAP_NEW todavía lleva el literal del stub del paso 6, y el paso no puede decir que no existe al lado del despacho que lo implementa"
+fi
+
 report
 
 # Cardinales derivados y no escritos, igual que los de check-language y check-roster.
 n_anclas="$(printf '%s\n' "$anclas" | grep -c . || true)"
 n_resolucion="$(printf '%s\n' "$resolucion" | grep -c . || true)"
 n_comandos="$(printf '%s\n' "$comandos" | grep -c . || true)"
-echo "$CHECK_NAME: OK - $PLANTILLAS lleva las $n_anclas anclas del DD que escribe $ADAPTER, las secciones del cuerpo de ejecución y las $n_resolucion del comentario de resolución en su orden, una decisión por línea física y $n_titulos títulos de niebla distintos, y ni las plantillas ni los $n_comandos archivos de commands/ llevan bloques colapsables"
+echo "$CHECK_NAME: OK - $PLANTILLAS lleva las $n_anclas anclas del DD que escribe $ADAPTER, las secciones del cuerpo de ejecución y las $n_resolucion del comentario de resolución en su orden, una decisión por línea física y $n_titulos títulos de niebla distintos, ni las plantillas ni los $n_comandos archivos de commands/ llevan bloques colapsables, y el paso 6 de $MAP_NEW ya no lleva el literal del stub"
