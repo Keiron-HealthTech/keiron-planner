@@ -155,7 +155,7 @@ CREAR = ["map:create", "--ctx", CTX, "--destino", DESTINO]
 # Dos acumuladores y no uno: este harness lleva los desenlaces de dos afirmaciones, y
 # un [N] que no distinga cuál falló manda a leer el script equivocado. La afirmación en
 # curso la fija el bucle del final, así que ningún caso puede anotar en el balde ajeno.
-FALLAS = {"60": [], "47": [], "61": []}
+FALLAS = {"60": [], "47": [], "61": [], "66": []}
 AFIRMACION = ["60"]
 
 
@@ -1075,22 +1075,45 @@ def caso_24():
     chequear(n, "NUNCA sugiere repetir ticket:resolve", "ticket:resolve" in err, False)
 
 
+def caso_25():
+    """--defer-map: las cuatro escrituras del ticket y ninguna del mapa, con la línea y
+    los mapArgs impresos en el stdout de siempre. Es la mitad que el AST no puede ver:
+    que ninguna query alcance el mapa de verdad, y no solo que haya un Return escrito
+    arriba de la sentencia que lo escribe."""
+    n = "25-ticket-resolve-defer-map-feliz"
+    rc, out, err, tr = correr(
+        n, RESOLVER + secciones() + GIST + NUEVOS + CABLE + ["--defer-map"],
+        [NUEVOS_OK, RELACION_OK, COMENTADO, CERRADO])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "stderr vacio", err, "")
+    chequear(n, "CUATRO llamadas al transporte", tr.llamadas, 4)
+    for prohibida in ("project(id:", "projectUpdate"):
+        chequear(n, "ninguna query lleva " + prohibida,
+                 [q for q in tr.queries if prohibida in q], [])
+    d = json_de(n, out)
+    chequear(n, "mapWritten es false", d.get("mapWritten"), False)
+    chequear(n, "mapLine no viene vacia", bool(d.get("mapLine")), True)
+    chequear(n, "mapArgs empieza con --append-decision",
+             (d.get("mapArgs") or [])[:1], ["--append-decision"])
+
+
 CASOS = [("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("60", caso_5), ("60", caso_6), ("60", caso_7), ("60", caso_8),
          ("60", caso_9), ("47", caso_10), ("47", caso_11), ("47", caso_12),
          ("60", caso_13), ("61", caso_14), ("61", caso_15), ("61", caso_16),
          ("61", caso_17), ("61", caso_18), ("61", caso_19), ("61", caso_20),
-         ("61", caso_21), ("61", caso_22), ("61", caso_23), ("61", caso_24)]
+         ("61", caso_21), ("61", caso_22), ("61", caso_23), ("61", caso_24),
+         ("66", caso_25)]
 for _afirmacion, _caso in CASOS:
     AFIRMACION[0] = _afirmacion
     _caso()
 
-for _afirmacion in ("60", "47", "61"):
+for _afirmacion in ("60", "47", "61", "66"):
     print("casos%s=%d" % (_afirmacion,
                           len([c for c in CASOS if c[0] == _afirmacion])))
     print("fallas%s=%s" % (_afirmacion, plano(FALLAS[_afirmacion])
                            if FALLAS[_afirmacion] else "ninguna"))
-sys.exit(1 if FALLAS["60"] or FALLAS["47"] or FALLAS["61"] else 0)
+sys.exit(1 if [b for b in FALLAS.values() if b] else 0)
 PY
 )"
 
@@ -1103,7 +1126,8 @@ PY
 # una línea del protocolo del harness y el lector no sabe qué check abrió el archivo.
 if printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas60=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas47=ninguna' \
-   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas61=ninguna'; then
+   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas61=ninguna' \
+   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas66=ninguna'; then
   :
 else
   echo "$CHECK_NAME: la corrida del harness dijo:" >&2
@@ -1120,6 +1144,10 @@ fi
 
 if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas61=ninguna'; then
   fail "[61] ticket:claim, ticket:resolve y ticket:rule-out no distinguen sus desenlaces de runtime con el transporte mockeado, o las cinco escrituras de una resolución no viajan en el orden del contrato"
+fi
+
+if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas66=ninguna'; then
+  fail "[66] con --defer-map las dos resoluciones no distinguen sus desenlaces de runtime con el transporte mockeado, o alguna query sigue alcanzando el mapa"
 fi
 
 report
