@@ -196,6 +196,32 @@ if [ "$esperado_flag" != "$obtenido_flag" ]; then
   fail "[39] el literal --bootstrap tiene que aparecer en map-new.md y en ningún otro archivo de commands/, y los que lo llevan son: ${obtenido_flag:-ninguno}"
 fi
 
+# --- afirmación 67: el prompt del subagente de research y sus dos únicas puntas ---
+
+SUBAGENTE=skills/_shared/research-subagent.md
+
+# No es tercer tier: que el archivo falte y que nadie lo cite son dos fallas distintas,
+# y una corrida tiene que poder nombrar las dos. Cortar acá sepultaría la segunda.
+if [ ! -f "$SUBAGENTE" ]; then
+  fail "[67] falta $SUBAGENTE, que es el único prompt de research; las skills que lo citen apuntan a un archivo ausente"
+fi
+
+# Reusa $fuentes, el mismo recorrido de dos globs que la afirmación 7 ya arma. Una
+# segunda extracción sería una segunda copia del alcance del roster, y las dos podrían
+# divergir. skills/_shared/ queda afuera de ese recorrido, así que el archivo no se
+# cosecha a sí mismo y la igualdad no se compara contra su propia ruta.
+citan="$(printf '%s\n' "$fuentes" \
+  | xargs grep -lF "$SUBAGENTE" 2>/dev/null | sort || true)"
+require_nonempty "$citan" "[67] ningún archivo de commands/ ni de skills/ nombra $SUBAGENTE por su ruta; la igualdad de abajo probaría sobre el conjunto vacío"
+
+# Igualdad y no pertenencia, por el mismo motivo que la 39a: un check que solo mirara
+# que las dos skills lo nombran pasaría en verde con una tercera punta copiándolo sin
+# pedir permiso, y la afirmación probaría la mitad de lo que enuncia.
+esperado_subagente="$(printf 'skills/map-new/SKILL.md\nskills/map-work/SKILL.md\n' | sort)"
+if [ "$citan" != "$esperado_subagente" ]; then
+  fail "[67] a $SUBAGENTE lo tienen que nombrar skills/map-new/SKILL.md y skills/map-work/SKILL.md, y lo nombran: $(printf '%s\n' "$citan" | tr '\n' ' ')"
+fi
+
 report
 
 # Conteos derivados y no escritos, igual que los que imprime check-language: el cardinal
@@ -205,4 +231,6 @@ archivos="$(printf '%s\n' "$fuentes" | grep -c . || true)"
 ruteadores="$(printf '%s\n' "$rutean" | grep -c . || true)"
 quienes="$(printf '%s\n' "$citadores" | tr '\n' ' ')"
 quienes="${quienes% }"
-echo "$CHECK_NAME: OK - el ROUTE: de $COMANDO es read-only y no tiene skill, los $tokens tokens de $CONTRATO son exactamente los que citan los $archivos archivos de commands/ y skills/, y quienes citan son $quienes, el ROUTE: de cada archivo de commands/ que rutea a una skill apunta a una que existe, $ruteadores en total, y el flag de bootstrap vive solo en $esperado_flag"
+subagentistas="$(printf '%s\n' "$citan" | tr '\n' ' ')"
+subagentistas="${subagentistas% }"
+echo "$CHECK_NAME: OK - el ROUTE: de $COMANDO es read-only y no tiene skill, los $tokens tokens de $CONTRATO son exactamente los que citan los $archivos archivos de commands/ y skills/, y quienes citan son $quienes, el ROUTE: de cada archivo de commands/ que rutea a una skill apunta a una que existe, $ruteadores en total, el flag de bootstrap vive solo en $esperado_flag, y a $SUBAGENTE lo nombran por su ruta exactamente $subagentistas"
