@@ -1416,6 +1416,6 @@ for _lit65, _casa65, _puntas65 in CASAS_65:
              "%s" % (_casa65, _faltan65))
 
 report()
-print("%s: OK - las veintisiete afirmaciones de AST sobre %s cierran, bajo Python "
+print("%s: OK - las veintinueve afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))
