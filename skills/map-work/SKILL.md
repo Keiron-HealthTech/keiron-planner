@@ -273,9 +273,13 @@ With every instance finished, sane or not, run exactly one invocation:
       <the mapArgs of every instance that came back sane>
 
 One invocation for the whole fan-out and never one per instance, with the `mapArgs`
-concatenated token by token in the order you dispatched. `--expect-sections` carries the
-fingerprints that the `map:read` of step 2 already returned. Step 7 did not read the map
-again, so those are the ones that belong here.
+concatenated token by token in the order you dispatched. Every token arrives raw: the
+adapter never quotes it, and a gist or a fog bullet can carry any character a shell
+reads specially, `;` and `|` included. Quote each token yourself before pasting it into
+the line, no exception even for a token that is a flag name: wrap it in single quotes,
+and if it already contains one, close the quote, write `'\''`, and reopen it.
+`--expect-sections` carries the fingerprints that the `map:read` of step 2 already
+returned. Step 7 did not read the map again, so those are the ones that belong here.
 
 When no instance came back sane, do not run `map:write` at all. The adapter aborts when it
 receives no edit, so an empty invocation is a failure this session would have manufactured
@@ -297,10 +301,17 @@ Then report, naming these in this order:
 1. which research came back well, and what line each one left in the map;
 2. which ones did not, by identifier;
 3. that each of those is still claimed by you and unreleased;
-4. that the ticket stays open and off the frontier until the claim is handed back or the
-   research is completed;
-5. what to do about it, which is to run `/map-work` on that ticket to finish it, or to hand
-   the claim back with `ticket:claim --release` if it is being left.
+4. that whether the ticket is actually still open cannot be told from here: a malformed
+   or missing return most often means the four writes of its own ticket already landed
+   and only the relay back to you, or the `--defer-map` flag itself, is what failed, so
+   the ticket is probably already Done or Canceled with its six-section resolution
+   comment posted;
+5. what to do about it, which is to open that ticket and read its resolution comment
+   first: the url and the gist the missing `map:write --append-decision` needs are
+   already sitting there, so the one call can be rebuilt by hand from the comment. Only
+   when the comment itself never landed either is the ticket genuinely unresolved, and
+   then `/map-work` on it, or `ticket:claim --release` to hand the claim back, is what
+   applies.
 
 That is the same policy the other-role branch below already follows when one of its three
 writes fails: name what landed, name the claim, do not release it, and say how to finish by

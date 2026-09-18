@@ -340,6 +340,14 @@ después un `--remove-fog` por título graduado, y después un `--append-fog` po
 nueva, ya sin marcador. Es lo que se ejecuta, y hacen falta las dos porque no existe
 ningún flag de `map:write` que reciba una línea ya renderizada.
 
+**Cada token de `mapArgs` llega crudo: el adapter no lo entrecomilla.** Un gist o una
+viñeta de niebla los escribió una persona o un modelo, y pueden traer cualquier
+carácter, incluidos los que una shell interpreta (`;`, `|`, comillas, backticks). Quien
+concatena los tokens en una línea de shell tiene que entrecomillar cada uno antes de
+pegarlo, sin excepción y aunque el token sea el nombre de un flag: envolverlo en
+comillas simples y, si ya trae una comilla simple adentro, cerrar la comilla, escribir
+`'\''` y volver a abrirla.
+
 Las dos vienen siempre, con el flag y sin él, y con el mismo valor: la línea se calcula
 una sola vez, antes de la bifurcación, así que lo que se imprime y lo que se escribe no
 son dos construcciones que puedan divergir sino una con dos destinos. Ni `--project` ni

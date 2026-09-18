@@ -152,8 +152,12 @@ wrote around its block, and never ask an instance to repeat it: the adapter is t
 house of that format, which is why an instance returns argv and not markdown.
 
 Of a ticket whose instance failed or came back malformed: do not release its claim, do not
-resolve it in its name, and write no line of its own in the map. It stays claimed, open
-and off the frontier, and step 8 is where it gets named.
+resolve it in its name, and write no line of its own in the map. Whether it is actually
+still open cannot be told from here: a malformed or missing return most often means the
+four writes of its own ticket already landed and only the relay back to you, or the
+`--defer-map` flag itself, is what failed, so the ticket is probably already Done or
+Canceled with its six-section resolution comment posted. The claim stays with you either
+way, unreleased, and step 8 is where it gets named.
 
 ## Step 7, write the map
 
@@ -168,6 +172,12 @@ The `mapArgs` of step 6 travel inside this same invocation, concatenated token b
 the order the instances were dispatched, and they are the reason a research answered in
 this run reaches the map without a second write. There is still exactly one write of the
 map in the whole session, and this is it.
+
+Every one of those tokens arrives raw: the adapter never quotes it, and a gist can carry
+any character a shell reads specially, `;` and `|` included. Quote each token yourself
+before pasting it into the line, no exception even for a token that is a flag name: wrap
+it in single quotes, and if it already contains one, close the quote, write `'\''`, and
+reopen it.
 
 When this pass has no edit at all to make, no decision, no fog, no out of scope bullet and
 no `mapArgs` that came back sane, do not invoke `map:write`. The adapter refuses an
@@ -189,10 +199,15 @@ person put beyond the destination goes to out of scope, which never graduates.
 Report, in one block: the destination, how many decision tickets were opened, which ones are
 takeable now, and what stayed as fog. When step 6 dispatched anything, the same block names
 which research answered and what line each one left in the map, and then, by identifier,
-which ones did not: each of those is still claimed by you and unreleased, open and off the
-frontier until its research is completed or the claim is handed back. Say how to finish one
-by hand, which is to run `/map-work` on that ticket, or to release it with
-`ticket:claim --release` if it is being left.
+which ones did not: each of those is still claimed by you and unreleased, and whether it is
+actually still open cannot be told from here. A malformed or missing return most often means
+the four writes of its own ticket already landed and only the relay, or the `--defer-map`
+flag itself, is what failed, so the ticket is probably already Done or Canceled with its
+six-section resolution comment posted. Say to open that ticket's resolution comment first:
+the url and the gist the missing `map:write --append-decision` needs are already sitting
+there, so the one call can be rebuilt by hand from the comment. Only when the comment itself
+never landed either is the ticket genuinely unresolved, and then `/map-work` on it, or
+`ticket:claim --release` to hand the claim back, is what applies.
 
 Then close with exactly one token from the contract's closed set, in its citation form:
 
