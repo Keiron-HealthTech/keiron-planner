@@ -554,6 +554,22 @@ def _validar_gist(etiqueta, gist):
             "ticket y el mapa nunca lo repite")
 
 
+def _linea_de_decision(enlace, gist):
+    """La ÚNICA casa del formato de una línea de Decisiones hasta ahora: marcador,
+    enlace, dos puntos y gist. La comparten las tres puntas que la necesitan, el
+    --append-decision de map:write, la quinta escritura de ticket:resolve y la impresión
+    que la reemplaza con --defer-map, así que ninguna la escribe a mano y no pueden
+    divergir. Misma regla que _validar_gist, que es la única casa del literal 120."""
+    return "- %s: %s" % (enlace, gist)
+
+
+def _linea_de_vineta(valor):
+    """La ÚNICA casa del marcador de una viñeta del mapa, la de niebla y la de Fuera de
+    alcance. Recibe el valor ya validado por _validar_vineta y solo le pone el
+    marcador."""
+    return "- %s" % valor
+
+
 def _cuerpo_de_secciones(args):
     """El markdown del comentario de resolución, armado por el adapter y nunca por el
     modelo. Valida antes de renderizar: acá se rompe todo lo que se pueda romper sin
@@ -719,7 +735,7 @@ def _niebla_de(args):
     niebla = []
     for valor in args.append_fog:
         _validar_vineta("--append-fog", valor)
-        niebla.append("- %s" % valor)
+        niebla.append(_linea_de_vineta(valor))
     graduadas = []
     for titulo in args.remove_fog:
         _sin_saltos("--remove-fog", titulo)
@@ -803,11 +819,11 @@ def _ediciones_de(args):
         _validar_gist("--append-decision", gist)
         _no_es_encabezado("--append-decision", enlace)
         _no_es_encabezado("--append-decision", gist)
-        anotar(ANCLA_DECISIONES, 1, "- %s: %s" % (enlace, gist))
+        anotar(ANCLA_DECISIONES, 1, _linea_de_decision(enlace, gist))
 
     for valor in args.append_fog:
         _validar_vineta("--append-fog", valor)
-        anotar(ANCLA_NIEBLA, 1, "- %s" % valor)
+        anotar(ANCLA_NIEBLA, 1, _linea_de_vineta(valor))
 
     for titulo in args.remove_fog:
         _sin_saltos("--remove-fog", titulo)
@@ -822,7 +838,7 @@ def _ediciones_de(args):
         # así que la idempotencia funcionaba o no según cómo la persona hubiera escrito
         # el texto. Era el único de los tres flags con esa dependencia silenciosa.
         _validar_vineta("--append-out-of-scope", valor)
-        anotar(ANCLA_FUERA, 1, "- %s" % valor)
+        anotar(ANCLA_FUERA, 1, _linea_de_vineta(valor))
 
     if not ediciones:
         die(SIN_KEY,
@@ -1666,7 +1682,7 @@ def cmd_ticket_resolve(args):
             "con la url del ticket y el gist, para dejar la línea en el mapa"
             % _citar(args.project))
     url = issue.get("url") or ""
-    ediciones = {ANCLA_DECISIONES: ([], ["- %s: %s" % (url, plan["gist"])])}
+    ediciones = {ANCLA_DECISIONES: ([], [_linea_de_decision(url, plan["gist"])])}
     if plan["graduadas"] or plan["niebla"]:
         ediciones[ANCLA_NIEBLA] = (plan["graduadas"], plan["niebla"])
     # Un solo intento y sin bucle propio: MAX_INTENTOS gobierna el reintento de
@@ -1766,7 +1782,7 @@ def cmd_ticket_rule_out(args):
             "fijate en Linear si el ticket ya quedó cancelado antes de tocarlo; si no, "
             "cancelalo a mano. Después corré exactamente esto para dejar la línea en "
             "el mapa: linear.py %s" % " ".join(_citar(t) for t in faltante))
-    ediciones = {ANCLA_FUERA: ([], ["- %s" % plan["vineta"]])}
+    ediciones = {ANCLA_FUERA: ([], [_linea_de_vineta(plan["vineta"])])}
     if plan["graduadas"] or plan["niebla"]:
         ediciones[ANCLA_NIEBLA] = (plan["graduadas"], plan["niebla"])
     ok, detalle = _intentar_escribir(args.project, ediciones, plan["esperadas"],
