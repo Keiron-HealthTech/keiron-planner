@@ -1320,7 +1320,102 @@ if _OTROS_NULOS:
     fail("[63] estas funciones aparean assigneeId con None fuera de %s: %s"
          % (_CLAIM, _OTROS_NULOS))
 
+# --- afirmación 64: --defer-map gobierna una sola condición por handler ----------
+
+# Mismo mecanismo que la 39b, generalizado de un subparser a dos. El BIND no ve un
+# add_argument sobre un grupo mutuamente excluyente, y por eso el flag tiene prohibido
+# vivir ahí: adentro de un grupo esta afirmación probaría sobre el conjunto vacío.
+_ADD_DEFER = [n for n in ast.walk(ARBOL) if isinstance(n, ast.Call)
+              and isinstance(n.func, ast.Attribute)
+              and n.func.attr == "add_argument"
+              and n.args and isinstance(n.args[0], ast.Constant)
+              and n.args[0].value == "--defer-map"]
+if len(_ADD_DEFER) != 2:
+    fail("[64] hay %d declaraciones de --defer-map y tiene que haber dos, una por "
+         "resolución" % len(_ADD_DEFER))
+else:
+    _SOBRE_DEFER = sorted(set(BIND.get(getattr(n.func.value, "id", ""), "?")
+                              for n in _ADD_DEFER))
+    if _SOBRE_DEFER != ["ticket:resolve", "ticket:rule-out"]:
+        fail("[64] --defer-map se declara sobre %s y tiene que declararse sobre "
+             "ticket:resolve y ticket:rule-out, y sobre ningún otro subcomando"
+             % _SOBRE_DEFER)
+    for _n64 in _ADD_DEFER:
+        _kws64 = dict((k.arg, k.value) for k in _n64.keywords)
+        _accion64 = _kws64.get("action")
+        if not (isinstance(_accion64, ast.Constant)
+                and _accion64.value == "store_true"):
+            fail("[64] una declaración de --defer-map no lleva action=store_true, así "
+                 "que el flag no es el booleano puro que la rama supone")
+        _propios64 = sorted(k for k in ("required", "dest") if k in _kws64)
+        if _propios64:
+            fail("[64] una declaración de --defer-map lleva %s, y el flag es un "
+                 "booleano puro sin ninguno de los dos" % _propios64)
+
+for _op64 in ("ticket:resolve", "ticket:rule-out"):
+    _h64 = handler.get(_op64)
+    if _h64 not in FUNCS:
+        fail("[64] el subparser de %s no resuelve a ningún FunctionDef del módulo; el "
+             "handler volvió a ser un stub y la afirmación probaría cero" % _op64)
+        continue
+    _ifs64 = [n for n in ast.walk(FUNCS[_h64]) if isinstance(n, ast.If)
+              and any(isinstance(x, ast.Attribute) and x.attr == "defer_map"
+                      for x in ast.walk(n.test))]
+    if len(_ifs64) != 1:
+        fail("[64] el valor de --defer-map gobierna %d condiciones del cuerpo de %s, y "
+             "tiene que gobernar exactamente una" % (len(_ifs64), _h64))
+        continue
+    _rama64 = _ifs64[0]
+    if not any(isinstance(st, ast.Return) for st in _rama64.body):
+        fail("[64] la condición de --defer-map de %s no lleva un Return de primer "
+             "nivel, así que no corta antes de la escritura del mapa" % _h64)
+    if _alcanza_mutation(_rama64, "projectUpdate"):
+        fail("[64] la condición de --defer-map de %s alcanza projectUpdate, que es "
+             "exactamente la escritura que la rama existe para saltear" % _h64)
+
+# --- afirmación 65: la casa única del formato de la línea y del marcador ---------
+
+# Mismo mecanismo que la 45, que ya exige que el literal 120 aparezca una sola vez en
+# todo el archivo, portado a dos literales de string. Cada fila lleva el literal, la
+# función que tiene que ser su única casa, y las puntas que tienen que llamarla por
+# Name en vez de armar la cadena por su cuenta.
+CASAS_65 = [("- %s: %s", "_linea_de_decision",
+             ["_ediciones_de", "cmd_ticket_resolve"]),
+            ("- %s", "_linea_de_vineta",
+             ["_niebla_de", "_ediciones_de", "cmd_ticket_rule_out"])]
+
+for _lit65, _casa65, _puntas65 in CASAS_65:
+    _nodos65 = [n for n in ast.walk(ARBOL) if isinstance(n, ast.Constant)
+                and isinstance(n.value, str) and n.value == _lit65]
+    if len(_nodos65) != 1:
+        fail("[65] el literal %r aparece %d veces en %s y tiene que aparecer una sola "
+             "vez, adentro de %s" % (_lit65, len(_nodos65), ADAPTER, _casa65))
+        continue
+    # Identidad de nodo y no valor: es lo que ata el literal a la función que lo
+    # contiene sin volver a buscarlo por texto.
+    _duenos65 = sorted(nm for nm in FUNCS
+                       if any(x is _nodos65[0] for x in ast.walk(FUNCS[nm])))
+    if _duenos65 != [_casa65]:
+        fail("[65] el literal %r vive en %s y su única casa tiene que ser %s"
+             % (_lit65, _duenos65, _casa65))
+        continue
+    if not [n for n in ast.walk(FUNCS[_casa65]) if isinstance(n, ast.Return)
+            and any(x is _nodos65[0] for x in ast.walk(n))]:
+        fail("[65] %s no devuelve el literal %r, así que no es la casa que arma la "
+             "cadena sino un sitio que la nombra de paso" % (_casa65, _lit65))
+    _llaman65 = sorted(nm for nm in FUNCS
+                       if any(isinstance(n, ast.Call) and invocado(n.func) == _casa65
+                              for n in ast.walk(FUNCS[nm])))
+    require_nonempty(_llaman65,
+                     "[65] ninguna función de %s llama a %s por Name; la casa única "
+                     "quedó sin puntas y la afirmación probaría sobre el conjunto "
+                     "vacío" % (ADAPTER, _casa65))
+    _faltan65 = [nm for nm in _puntas65 if nm not in _llaman65]
+    if _faltan65:
+        fail("[65] estas puntas no llaman a %s, así que arman la cadena por su cuenta: "
+             "%s" % (_casa65, _faltan65))
+
 report()
-print("%s: OK - las veintisiete afirmaciones de AST sobre %s cierran, bajo Python "
+print("%s: OK - las veintinueve afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))

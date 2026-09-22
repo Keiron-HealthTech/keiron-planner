@@ -554,6 +554,22 @@ def _validar_gist(etiqueta, gist):
             "ticket y el mapa nunca lo repite")
 
 
+def _linea_de_decision(enlace, gist):
+    """La ÚNICA casa del formato de una línea de Decisiones hasta ahora: marcador,
+    enlace, dos puntos y gist. La comparten las tres puntas que la necesitan, el
+    --append-decision de map:write, la quinta escritura de ticket:resolve y la impresión
+    que la reemplaza con --defer-map, así que ninguna la escribe a mano y no pueden
+    divergir. Misma regla que _validar_gist, que es la única casa del literal 120."""
+    return "- %s: %s" % (enlace, gist)
+
+
+def _linea_de_vineta(valor):
+    """La ÚNICA casa del marcador de una viñeta del mapa, la de niebla y la de Fuera de
+    alcance. Recibe el valor ya validado por _validar_vineta y solo le pone el
+    marcador."""
+    return "- %s" % valor
+
+
 def _cuerpo_de_secciones(args):
     """El markdown del comentario de resolución, armado por el adapter y nunca por el
     modelo. Valida antes de renderizar: acá se rompe todo lo que se pueda romper sin
@@ -719,7 +735,7 @@ def _niebla_de(args):
     niebla = []
     for valor in args.append_fog:
         _validar_vineta("--append-fog", valor)
-        niebla.append("- %s" % valor)
+        niebla.append(_linea_de_vineta(valor))
     graduadas = []
     for titulo in args.remove_fog:
         _sin_saltos("--remove-fog", titulo)
@@ -803,11 +819,11 @@ def _ediciones_de(args):
         _validar_gist("--append-decision", gist)
         _no_es_encabezado("--append-decision", enlace)
         _no_es_encabezado("--append-decision", gist)
-        anotar(ANCLA_DECISIONES, 1, "- %s: %s" % (enlace, gist))
+        anotar(ANCLA_DECISIONES, 1, _linea_de_decision(enlace, gist))
 
     for valor in args.append_fog:
         _validar_vineta("--append-fog", valor)
-        anotar(ANCLA_NIEBLA, 1, "- %s" % valor)
+        anotar(ANCLA_NIEBLA, 1, _linea_de_vineta(valor))
 
     for titulo in args.remove_fog:
         _sin_saltos("--remove-fog", titulo)
@@ -822,7 +838,7 @@ def _ediciones_de(args):
         # así que la idempotencia funcionaba o no según cómo la persona hubiera escrito
         # el texto. Era el único de los tres flags con esa dependencia silenciosa.
         _validar_vineta("--append-out-of-scope", valor)
-        anotar(ANCLA_FUERA, 1, "- %s" % valor)
+        anotar(ANCLA_FUERA, 1, _linea_de_vineta(valor))
 
     if not ediciones:
         die(SIN_KEY,
@@ -1666,7 +1682,33 @@ def cmd_ticket_resolve(args):
             "con la url del ticket y el gist, para dejar la línea en el mapa"
             % _citar(args.project))
     url = issue.get("url") or ""
-    ediciones = {ANCLA_DECISIONES: ([], ["- %s: %s" % (url, plan["gist"])])}
+    # La línea y los flags se arman antes de la bifurcación, así que lo que se imprime
+    # y lo que se escribe es el mismo valor: una construcción y dos destinos, y no dos
+    # construcciones que puedan divergir. Ni --project ni --expect-sections viajan en
+    # mapArgs: el primero es uno solo para toda la invocación del llamador, y el
+    # segundo es la huella de una lectura del mapa que esta operación nunca hizo.
+    linea = _linea_de_decision(url, plan["gist"])
+    flags = ["--append-decision", url, plan["gist"]]
+    for titulo in plan["graduadas"]:
+        flags += ["--remove-fog", titulo]
+    for vineta in plan["niebla"]:
+        flags += ["--append-fog", vineta[2:]]
+    salida = {"issue": issue.get("identifier") or plan["issue"], "url": url,
+              "comment": comentario,
+              "tickets": [{"identifier": i.get("identifier"), "id": i.get("id"),
+                           "title": i.get("title"), "url": i.get("url")}
+                          for i in issues],
+              "blocks": [{"blocker": b, "blocked": d} for b, d in escritos],
+              "mapWritten": not args.defer_map, "mapLine": linea, "mapArgs": flags,
+              "noop": []}
+    if args.defer_map:
+        # Las cuatro escrituras del ticket ya aterrizaron; la quinta, que es la única
+        # sobre el recurso compartido, la hace quien despachó esta invocación con los
+        # mapArgs de acá. El noop viene vacío porque ningún intento de escritura corrió
+        # y por lo tanto ninguno pudo detectar una línea ya aplicada.
+        print(json.dumps(salida, separators=(",", ":")))
+        return
+    ediciones = {ANCLA_DECISIONES: ([], [linea])}
     if plan["graduadas"] or plan["niebla"]:
         ediciones[ANCLA_NIEBLA] = (plan["graduadas"], plan["niebla"])
     # Un solo intento y sin bucle propio: MAX_INTENTOS gobierna el reintento de
@@ -1687,13 +1729,8 @@ def cmd_ticket_resolve(args):
             "tickets nuevos, su cableado, el comentario y el ticket en Done" % detalle,
             "corré exactamente esto para terminar a mano, y nada más: linear.py %s"
             % " ".join(_citar(t) for t in faltante))
-    print(json.dumps(
-        {"issue": issue.get("identifier") or plan["issue"], "url": url,
-         "comment": comentario,
-         "tickets": [{"identifier": i.get("identifier"), "id": i.get("id"),
-                      "title": i.get("title"), "url": i.get("url")} for i in issues],
-         "blocks": [{"blocker": b, "blocked": d} for b, d in escritos],
-         "mapWritten": True, "noop": detalle}, separators=(",", ":")))
+    salida["noop"] = detalle
+    print(json.dumps(salida, separators=(",", ":")))
 
 
 def cmd_ticket_rule_out(args):
@@ -1766,7 +1803,27 @@ def cmd_ticket_rule_out(args):
             "fijate en Linear si el ticket ya quedó cancelado antes de tocarlo; si no, "
             "cancelalo a mano. Después corré exactamente esto para dejar la línea en "
             "el mapa: linear.py %s" % " ".join(_citar(t) for t in faltante))
-    ediciones = {ANCLA_FUERA: ([], ["- %s" % plan["vineta"]])}
+    # Misma forma que en cmd_ticket_resolve y con sus literales propios, escrita dos
+    # veces a propósito: un helper compartido se llevaría ANCLA_FUERA al sitio de
+    # llamada y la afirmación 62 dejaría de ver la asimetría de los dos handlers.
+    linea = _linea_de_vineta(plan["vineta"])
+    flags = ["--append-out-of-scope", plan["vineta"]]
+    for titulo in plan["graduadas"]:
+        flags += ["--remove-fog", titulo]
+    for vineta in plan["niebla"]:
+        flags += ["--append-fog", vineta[2:]]
+    salida = {"issue": issue.get("identifier") or plan["issue"],
+              "url": issue.get("url") or "", "comment": comentario,
+              "tickets": [{"identifier": i.get("identifier"), "id": i.get("id"),
+                           "title": i.get("title"), "url": i.get("url")}
+                          for i in issues],
+              "blocks": [{"blocker": b, "blocked": d} for b, d in escritos],
+              "mapWritten": not args.defer_map, "mapLine": linea, "mapArgs": flags,
+              "noop": []}
+    if args.defer_map:
+        print(json.dumps(salida, separators=(",", ":")))
+        return
+    ediciones = {ANCLA_FUERA: ([], [linea])}
     if plan["graduadas"] or plan["niebla"]:
         ediciones[ANCLA_NIEBLA] = (plan["graduadas"], plan["niebla"])
     ok, detalle = _intentar_escribir(args.project, ediciones, plan["esperadas"],
@@ -1783,13 +1840,8 @@ def cmd_ticket_rule_out(args):
             "tickets nuevos, su cableado, el comentario y el ticket cancelado" % detalle,
             "corré exactamente esto para terminar a mano, y nada más: linear.py %s"
             % " ".join(_citar(t) for t in faltante))
-    print(json.dumps(
-        {"issue": issue.get("identifier") or plan["issue"],
-         "url": issue.get("url") or "", "comment": comentario,
-         "tickets": [{"identifier": i.get("identifier"), "id": i.get("id"),
-                      "title": i.get("title"), "url": i.get("url")} for i in issues],
-         "blocks": [{"blocker": b, "blocked": d} for b, d in escritos],
-         "mapWritten": True, "noop": detalle}, separators=(",", ":")))
+    salida["noop"] = detalle
+    print(json.dumps(salida, separators=(",", ":")))
 
 
 def cmd_stub(args):
@@ -1901,6 +1953,11 @@ def construir_parser():
     p_ticket_resolve.add_argument("--remove-fog", action="append", default=[],
                                   metavar="TITULO")
     p_ticket_resolve.add_argument("--expect-sections")
+    # Directo del subparser y NUNCA adentro de un grupo mutuamente excluyente: ahí el
+    # extractor de check-adapter.py no lo vería y la afirmación 64 probaría sobre el
+    # conjunto vacío, que es el mismo motivo por el que --project y --name de
+    # map:create no pueden sostener ninguna.
+    p_ticket_resolve.add_argument("--defer-map", action="store_true")
     p_ticket_resolve.set_defaults(func=cmd_ticket_resolve)
 
     # La misma superficie que ticket:resolve salvo una fila: acá va --out-of-scope y NO
@@ -1922,6 +1979,7 @@ def construir_parser():
     p_ticket_rule_out.add_argument("--remove-fog", action="append", default=[],
                                    metavar="TITULO")
     p_ticket_rule_out.add_argument("--expect-sections")
+    p_ticket_rule_out.add_argument("--defer-map", action="store_true")
     p_ticket_rule_out.set_defaults(func=cmd_ticket_rule_out)
 
     p_milestone_create = subs.add_parser("milestone:create")
