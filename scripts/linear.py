@@ -192,6 +192,25 @@ mutation($team: String!, $name: String!, $content: String!) {
 """
 
 
+# Sin targetDate en ninguno de los dos lados, y eso es la afirmación 13 entera. En el
+# input porque un milestone del mapa nunca es un corte temporal y la fecha es lo único
+# que habilita que status se ponga en overdue. Y en la selección de vuelta porque pedir
+# un campo que este archivo se niega a escribir es pedirle a la API que confirme un
+# nulo: no lo consume nadie, y su sola presencia volvería vacua la afirmación que
+# prohíbe el campo. status tampoco se pide: es derivado, y quien lo necesita lo lee por
+# frontier:query antes de escribir, nunca después.
+PROJECT_MILESTONE_CREATE = """
+mutation($name: String!, $project: String!, $description: String!, $orden: Float!) {
+  projectMilestoneCreate(input: {
+    name: $name, projectId: $project, description: $description, sortOrder: $orden
+  }) {
+    success
+    projectMilestone { id name sortOrder }
+  }
+}
+"""
+
+
 ISSUE_LABEL_CREATE = """
 mutation($nombre: String!) {
   issueLabelCreate(input: { name: $nombre }) {
@@ -1064,6 +1083,41 @@ def _resolver_creacion(payload):
     return (True, "", datos.get("project") or {})
 
 
+def _orden_de(args):
+    """El --sort-order ya validado: float y distinto de cero. Cero es el único valor
+    que Linear reinterpreta -lo manda al final de la lista en vez de respetarlo
+    literal-, así que se rechaza en vez de dejarlo pasar. Vive aparte del handler para
+    que el mensaje de la remediación tenga una sola casa y para que la guarda corra
+    antes de leer_key(), igual que _destino_de, _ediciones_de y _tickets_de."""
+    try:
+        orden = float(args.sort_order)
+    except ValueError:
+        die(SIN_KEY,
+            "--sort-order recibió %r y no parsea como número" % args.sort_order,
+            "pasá un valor numérico, distinto de cero")
+    if orden == 0.0:
+        die(SIN_KEY,
+            "--sort-order recibió 0, y es el único valor que Linear reinterpreta: lo "
+            "manda al final de la lista en vez de respetarlo literal",
+            "pasá un valor distinto de cero, calculado a partir de una lectura fresca "
+            "de los milestones vecinos")
+    return orden
+
+
+def _resolver_hito(payload):
+    """La puerta de projectMilestoneCreate: la misma regla de tres casos que
+    _resolver_creacion, _resolver_label y _resolver_tickets, sobre su propia clave del
+    payload. Devuelve (ok, detalle, hito)."""
+    errores = _errores_de(payload)
+    if errores:
+        return (False, "; ".join(errores), {})
+    datos = (payload.get("data") or {}).get("projectMilestoneCreate") or {}
+    if datos.get("success") is not True:
+        return (False,
+                "projectMilestoneCreate devolvió success=%s" % datos.get("success"), {})
+    return (True, "", datos.get("projectMilestone") or {})
+
+
 def tiene_las_seis(rangos):
     """True si el overview lleva las seis anclas, que es la forma que esqueleto produce.
     Un solo sitio de definición porque tiene dos consumidores que TIENEN que coincidir:
@@ -1844,6 +1898,23 @@ def cmd_ticket_rule_out(args):
     print(json.dumps(salida, separators=(",", ":")))
 
 
+def cmd_milestone_create(args):
+    orden = _orden_de(args)     # valida antes de tocar la red: float y distinto de cero
+    _sin_saltos("--name", args.name)
+    key = leer_key()
+    ok, detalle, hito = _resolver_hito(
+        _post(PROJECT_MILESTONE_CREATE,
+              {"name": args.name, "project": args.project,
+               "description": args.description, "orden": orden}, key))
+    if not ok:
+        die(SIN_KEY, "el milestone %s no se pudo crear: %s" % (args.name, detalle),
+            "mirá en Linear si el corte quedó hecho ANTES de reintentar: esta "
+            "operación no reintenta sola, y un segundo intento sobre un corte que ya "
+            "nació deja dos hermanos con el mismo nombre que nada sabe deshacer")
+    print(json.dumps({"id": hito.get("id"), "name": hito.get("name"),
+                      "sortOrder": hito.get("sortOrder")}, separators=(",", ":")))
+
+
 def cmd_stub(args):
     die(NO_IMPLEMENTADO,
         "el subcomando %s todavía no está implementado" % args.operacion,
@@ -1982,8 +2053,17 @@ def construir_parser():
     p_ticket_rule_out.add_argument("--defer-map", action="store_true")
     p_ticket_rule_out.set_defaults(func=cmd_ticket_rule_out)
 
+    # Sin --ctx a propósito: milestone:create es una de las cinco operaciones que no
+    # lo consumen. --sort-order es requerido y nunca omitido: el cero es el único
+    # valor que Linear reinterpreta, así que _orden_de lo rechaza en vez de dejarlo
+    # pasar. Ningún flag de fecha, con ningún nombre: targetDate no tiene superficie
+    # de CLI, así que no hay forma de pasarlo ni por accidente.
     p_milestone_create = subs.add_parser("milestone:create")
-    p_milestone_create.set_defaults(func=cmd_stub)
+    p_milestone_create.add_argument("--project", required=True)
+    p_milestone_create.add_argument("--name", required=True)
+    p_milestone_create.add_argument("--description", required=True)
+    p_milestone_create.add_argument("--sort-order", required=True, metavar="ORDEN")
+    p_milestone_create.set_defaults(func=cmd_milestone_create)
 
     p_work_write = subs.add_parser("work:write")
     p_work_write.add_argument("--ctx", required=True)
