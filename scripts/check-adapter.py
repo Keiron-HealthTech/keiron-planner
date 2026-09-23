@@ -1569,6 +1569,6 @@ else:
              "constante con type: related: %s" % _RELATED_ELSEWHERE)
 
 report()
-print("%s: OK - las veintinueve afirmaciones de AST sobre %s cierran, bajo Python "
+print("%s: OK - las treinta y tres afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))
