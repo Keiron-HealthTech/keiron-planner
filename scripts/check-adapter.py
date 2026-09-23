@@ -1454,6 +1454,120 @@ for _lit65, _casa65, _puntas65 in CASAS_65:
         fail("[65] estas puntas no llaman a %s, así que arman la cadena por su cuenta: "
              "%s" % (_casa65, _faltan65))
 
+# --- la ruta de work:write, raíz compartida por las tres de este change ------------
+
+# Mismo mecanismo que la 23 y la 13: el handler real por set_defaults, el grafo por
+# alcanzable(). Se define una sola vez y las tres afirmaciones de abajo la citan.
+WORK_ROUTE = alcanzable(handler.get("work:write"))
+require_nonempty(WORK_ROUTE,
+                 "[51] el grafo alcanzable desde el handler de work:write dio vacío; "
+                 "el handler volvió a ser un stub y las tres afirmaciones probarían "
+                 "cero")
+
+# --- afirmación 48: ninguna ruta de work:write agrega el label map ---------------
+
+_WORK_CREATORS = sorted(nm for nm in WORK_ROUTE
+                        if _post_con(FUNCS[nm], "issueBatchCreate"))
+require_nonempty(_WORK_CREATORS,
+                 "[48] ninguna función del grafo de work:write le pasa a _post una "
+                 "constante que contenga issueBatchCreate; la afirmación probaría "
+                 "sobre el conjunto vacío")
+_WITH_LABEL_IDS = [nm for nm in _WORK_CREATORS if _valores_de_clave(nm, "labelIds")]
+if _WITH_LABEL_IDS:
+    fail("[48] estas rutas de creación de issues de ejecución construyen labelIds: "
+         "%s" % _WITH_LABEL_IDS)
+_NAME_MAP_LABEL = [nm for nm in sorted(WORK_ROUTE)
+                   if any((isinstance(n, ast.Name) and n.id == "LABEL_MAPA")
+                          or (isinstance(n, ast.Constant) and n.value == "map")
+                          for n in ast.walk(FUNCS[nm]))]
+if _NAME_MAP_LABEL:
+    fail("[48] estas funciones del grafo de work:write nombran el label del mapa: "
+         "%s" % _NAME_MAP_LABEL)
+
+# --- afirmación 51: con la lista vacía no se llama a issueBatchCreate ------------
+
+_WORK_HANDLER = handler.get("work:write")
+_WORK_BODY = FUNCS[_WORK_HANDLER].body
+_WORK_STATEMENT_INDEXES = [i for i, st in enumerate(_WORK_BODY)
+                           if _alcanza_mutation(st, "issueBatchCreate")]
+require_nonempty(_WORK_STATEMENT_INDEXES,
+                 "[51] ninguna sentencia de primer nivel de %s alcanza "
+                 "issueBatchCreate; el handler volvió a ser un stub o perdió su "
+                 "escritura" % _WORK_HANDLER)
+_UNGUARDED = [i for i in _WORK_STATEMENT_INDEXES
+             if not isinstance(_WORK_BODY[i], ast.If)]
+if _UNGUARDED:
+    fail("[51] en %s las sentencias %s alcanzan issueBatchCreate y NO son un If, así "
+         "que la llamada no está adentro de ninguna guarda"
+         % (_WORK_HANDLER, _UNGUARDED))
+for _i51 in _WORK_STATEMENT_INDEXES:
+    if isinstance(_WORK_BODY[_i51], ast.If):
+        _test51 = _WORK_BODY[_i51].test
+        _guards_issues = any(
+            (isinstance(n, ast.Subscript) and isinstance(n.slice, ast.Constant)
+             and n.slice.value == "issues")
+            or (isinstance(n, ast.Attribute) and n.attr == "issue"
+                and isinstance(n.value, ast.Name) and n.value.id == "args")
+            for n in ast.walk(_test51))
+        if not _guards_issues:
+            fail("[51] en %s la guarda de la sentencia %d no nombra la lista de "
+                 "issues, ni como plan[\"issues\"] ni como args.issue, así que "
+                 "guarda otra cosa" % (_WORK_HANDLER, _i51))
+
+# --- afirmación 52: el ticket de decisión del lado issueId -----------------------
+
+# Precedente: la 65 por atar un literal a su única casa, y la 53 por partir un
+# conjunto de funciones en dos por lo que nombran.
+_RELATED_CONSTS = sorted(nm for nm, valor in STRCONSTS.items()
+                         if "issueRelationCreate" in valor
+                         and "type: related" in valor)
+require_nonempty(_RELATED_CONSTS,
+                 "[52] ninguna constante de string del módulo contiene "
+                 "issueRelationCreate con type: related; la afirmación probaría "
+                 "sobre el conjunto vacío")
+if len(_RELATED_CONSTS) != 1:
+    fail("[52] estas constantes contienen issueRelationCreate con type: related, y "
+         "tiene que ser una sola: %s" % _RELATED_CONSTS)
+else:
+    _RELATED_CONST = _RELATED_CONSTS[0]
+    # Espacios colapsados: el mismo criterio que la 65 aplicaría si mirara texto en
+    # vez de identidad de nodo, acá hace falta porque la mutation es multilínea.
+    _RELATED_TEXT = " ".join(STRCONSTS[_RELATED_CONST].split())
+    if "issueId: $decision" not in _RELATED_TEXT:
+        fail("[52] %s no aparea issueId con $decision; el ticket de decisión tiene "
+             "que ir del lado issueId" % _RELATED_CONST)
+    if "relatedIssueId: $trabajo" not in _RELATED_TEXT:
+        fail("[52] %s no aparea relatedIssueId con $trabajo; la issue de ejecución "
+             "tiene que ir del lado relatedIssueId" % _RELATED_CONST)
+    _RELATED_CALLS = [n for nm in sorted(WORK_ROUTE) for n in ast.walk(FUNCS[nm])
+                      if isinstance(n, ast.Call) and invocado(n.func) == "_post"
+                      and n.args and isinstance(n.args[0], ast.Name)
+                      and n.args[0].id == _RELATED_CONST]
+    require_nonempty(_RELATED_CALLS,
+                     "[52] ningún _post del grafo de work:write pasa %s como primer "
+                     "argumento; la afirmación probaría sobre el conjunto vacío"
+                     % _RELATED_CONST)
+    for _n52 in _RELATED_CALLS:
+        _dict52 = _n52.args[1] if len(_n52.args) > 1 else None
+        _keys52 = sorted(k.value for k in
+                         (_dict52.keys if isinstance(_dict52, ast.Dict) else [])
+                         if isinstance(k, ast.Constant))
+        if _keys52 != ["decision", "trabajo"]:
+            fail("[52] un _post de %s pasa las claves %s, y tienen que ser "
+                 "exactamente decision y trabajo" % (_RELATED_CONST, _keys52))
+    _BLOCKS_IN_WORK_ROUTE = [nm for nm in sorted(WORK_ROUTE)
+                            if _post_con(FUNCS[nm], "type: blocks")]
+    if _BLOCKS_IN_WORK_ROUTE:
+        fail("[52] estas funciones del grafo de work:write postean una constante "
+             "con type: blocks: %s" % _BLOCKS_IN_WORK_ROUTE)
+    _RELATED_ELSEWHERE = sorted(
+        nm for _op52 in ("ticket:block", "ticket:resolve", "ticket:rule-out")
+        for nm in alcanzable(handler.get(_op52))
+        if _post_con(FUNCS[nm], "type: related"))
+    if _RELATED_ELSEWHERE:
+        fail("[52] estas funciones de ticket:block/resolve/rule-out postean una "
+             "constante con type: related: %s" % _RELATED_ELSEWHERE)
+
 report()
 print("%s: OK - las veintinueve afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
