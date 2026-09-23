@@ -1518,9 +1518,9 @@ for _i51 in _WORK_STATEMENT_INDEXES:
 
 # Precedente: la 65 por atar un literal a su única casa, y la 53 por partir un
 # conjunto de funciones en dos por lo que nombran.
-_RELATED_CONSTS = sorted(nm for nm, valor in STRCONSTS.items()
-                         if "issueRelationCreate" in valor
-                         and "type: related" in valor)
+_RELATED_CONSTS = sorted(nm for nm, value in STRCONSTS.items()
+                         if "issueRelationCreate" in value
+                         and "type: related" in value)
 require_nonempty(_RELATED_CONSTS,
                  "[52] ninguna constante de string del módulo contiene "
                  "issueRelationCreate con type: related; la afirmación probaría "

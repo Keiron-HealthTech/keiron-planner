@@ -1138,14 +1138,14 @@ def _resolve_milestone(payload):
     """La puerta de projectMilestoneCreate: la misma regla de tres casos que
     _resolver_creacion, _resolver_label y _resolver_tickets, sobre su propia clave del
     payload. Devuelve (ok, detalle, hito)."""
-    errores = _errores_de(payload)
-    if errores:
-        return (False, "; ".join(errores), {})
-    datos = (payload.get("data") or {}).get("projectMilestoneCreate") or {}
-    if datos.get("success") is not True:
+    errors = _errores_de(payload)
+    if errors:
+        return (False, "; ".join(errors), {})
+    data = (payload.get("data") or {}).get("projectMilestoneCreate") or {}
+    if data.get("success") is not True:
         return (False,
-                "projectMilestoneCreate devolvió success=%s" % datos.get("success"), {})
-    return (True, "", datos.get("projectMilestone") or {})
+                "projectMilestoneCreate devolvió success=%s" % data.get("success"), {})
+    return (True, "", data.get("projectMilestone") or {})
 
 
 def tiene_las_seis(rangos):
@@ -1932,17 +1932,17 @@ def cmd_milestone_create(args):
     sort_order = _sort_order_from(args)  # valida antes de tocar la red: float y distinto de cero
     _sin_saltos("--name", args.name)
     key = leer_key()
-    ok, detalle, hito = _resolve_milestone(
+    ok, detail, milestone = _resolve_milestone(
         _post(PROJECT_MILESTONE_CREATE,
               {"name": args.name, "project": args.project,
                "description": args.description, "orden": sort_order}, key))
     if not ok:
-        die(SIN_KEY, "el milestone %s no se pudo crear: %s" % (args.name, detalle),
+        die(SIN_KEY, "el milestone %s no se pudo crear: %s" % (args.name, detail),
             "mirá en Linear si el corte quedó hecho ANTES de reintentar: esta "
             "operación no reintenta sola, y un segundo intento sobre un corte que ya "
             "nació deja dos hermanos con el mismo nombre que nada sabe deshacer")
-    print(json.dumps({"id": hito.get("id"), "name": hito.get("name"),
-                      "sortOrder": hito.get("sortOrder")}, separators=(",", ":")))
+    print(json.dumps({"id": milestone.get("id"), "name": milestone.get("name"),
+                      "sortOrder": milestone.get("sortOrder")}, separators=(",", ":")))
 
 
 def _work_from(args):
@@ -1954,17 +1954,17 @@ def _work_from(args):
     y ticket:block sin --block."""
     ctx = _ctx_de(args)
     issues = []
-    for titulo, cuerpo, milestone_id in args.issue:
-        _sin_saltos("--issue", titulo)
-        _sin_saltos("--issue", cuerpo)
+    for title, body, milestone_id in args.issue:
+        _sin_saltos("--issue", title)
+        _sin_saltos("--issue", body)
         _sin_saltos("--issue", milestone_id)
-        if not titulo.strip() or not cuerpo.strip() or not milestone_id.strip():
+        if not title.strip() or not body.strip() or not milestone_id.strip():
             die(SIN_KEY,
                 "--issue recibió un título, un cuerpo o un corte vacío: %r"
-                % ((titulo, cuerpo, milestone_id),),
+                % ((title, body, milestone_id),),
                 "los tres campos de --issue son obligatorios: título, cuerpo y el id "
                 "del milestone donde nace")
-        issues.append((titulo, cuerpo, milestone_id))
+        issues.append((title, body, milestone_id))
     relations = []
     for decision, target in args.relate:
         _sin_saltos("--relate", decision)
@@ -2008,16 +2008,16 @@ def _create_execution(ctx, project, issues, key):
     crea labels: la única casa que los crea sigue siendo _crear_labels_faltantes, con
     su único llamador cmd_ticket_create, que es lo que mantiene verde la afirmación
     38."""
-    entradas = []
-    for titulo, cuerpo, milestone_id in issues:
+    entries = []
+    for title, body, milestone_id in issues:
         # stateId explícito: sin él la issue nace en Triage, medido. Sin estimate,
         # porque un agente adivinando fibonacci es precisión falsa. Y SIN labelIds de
         # ninguna clase: una issue de ejecución no lleva label map, y eso es lo que
         # hace que frontier:query siga funcionando igual después del colapso.
-        entradas.append({"teamId": ctx["team"], "projectId": project,
-                         "projectMilestoneId": milestone_id, "title": titulo,
-                         "description": cuerpo, "stateId": ctx["default"]})
-    return _resolver_tickets(_post(ISSUE_BATCH_CREATE, {"issues": entradas}, key))
+        entries.append({"teamId": ctx["team"], "projectId": project,
+                        "projectMilestoneId": milestone_id, "title": title,
+                        "description": body, "stateId": ctx["default"]})
+    return _resolver_tickets(_post(ISSUE_BATCH_CREATE, {"issues": entries}, key))
 
 
 def _link_decisions(relations, issues, key):
@@ -2031,13 +2031,13 @@ def _link_decisions(relations, issues, key):
     linked = []
     for decision, target in relations:
         issue_id = issues[int(target) - 1]["id"] if target.isdigit() else target
-        ok, detalle = _resolver_relaciones(
+        ok, detail = _resolver_relaciones(
             _post(ISSUE_RELATION_RELATED,
                   {"decision": decision, "trabajo": issue_id}, key))
         if not ok:
             return (False,
                     "la relación de %s con %s no confirmó: %s"
-                    % (decision, issue_id, detalle), linked)
+                    % (decision, issue_id, detail), linked)
         linked.append((decision, issue_id))
     return (True, "", linked)
 
@@ -2045,12 +2045,12 @@ def _link_decisions(relations, issues, key):
 def _resolve_add_label(payload):
     """La puerta de issueAddLabel: la misma regla de tres casos que las demás, sin
     objeto anidado que devolver. Devuelve (ok, detalle)."""
-    errores = _errores_de(payload)
-    if errores:
-        return (False, "; ".join(errores))
-    datos = (payload.get("data") or {}).get("issueAddLabel") or {}
-    if datos.get("success") is not True:
-        return (False, "issueAddLabel devolvió success=%s" % datos.get("success"))
+    errors = _errores_de(payload)
+    if errors:
+        return (False, "; ".join(errors))
+    data = (payload.get("data") or {}).get("issueAddLabel") or {}
+    if data.get("success") is not True:
+        return (False, "issueAddLabel devolvió success=%s" % data.get("success"))
     return (True, "")
 
 
@@ -2076,30 +2076,30 @@ def cmd_work_write(args):
     if plan["issues"]:
         # La guarda de la afirmación 51: medido, la API rechaza la lista vacía con
         # Argument Validation Error y el constraint arrayNotEmpty.
-        ok, detalle, issues = _create_execution(ctx, args.project, plan["issues"], key)
+        ok, detail, issues = _create_execution(ctx, args.project, plan["issues"], key)
         if not ok:
             die(SIN_KEY,
                 "el issueBatchCreate no confirmó: %s. No quedó escrito nada de este "
-                "aterrizaje: ni las issues, ni las relaciones, ni el label" % detalle,
+                "aterrizaje: ni las issues, ni las relaciones, ni el label" % detail,
                 "volvé a correr la misma invocación entera: como no aterrizó nada, "
                 "repetirla no duplica nada")
     linked = []
     if plan["relations"]:
-        ok, detalle, linked = _link_decisions(plan["relations"], issues, key)
+        ok, detail, linked = _link_decisions(plan["relations"], issues, key)
         if not ok:
             die(SIN_KEY,
                 "%s. Las issues ya quedaron escritas, y de las relaciones entraron "
-                "%s" % (detalle, len(linked)),
+                "%s" % (detail, len(linked)),
                 "volvé a correr esta misma invocación sin --issue y solo con los "
                 "--relate que faltan: repetir una relación que ya entró la "
                 "duplicaría")
     marked = None
     if args.no_landing:
-        ok, detalle = _mark_no_landing(ctx, args.no_landing, key)
+        ok, detail = _mark_no_landing(ctx, args.no_landing, key)
         if not ok:
             die(SIN_KEY,
                 "el label map:no-landing no se pudo aplicar a %s: %s"
-                % (args.no_landing, detalle),
+                % (args.no_landing, detail),
                 "aplicalo a mano en Linear, o volvé a correr esta invocación solo "
                 "con --no-landing: aplicar dos veces el mismo label no duplica nada")
         marked = args.no_landing
