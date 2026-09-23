@@ -119,8 +119,9 @@ query($team: String!, $labels: [String!]!) {
 
 # Los tamaños de página van adentro del string y nunca en una constante: así la
 # query y la medición de complejidad que la aprobó no pueden divergir. relations
-# viaja sin nodes a propósito: el predicado no la lee, y no pedirla deja el payload
-# incapaz de entregar un bloqueante por la conexión equivocada.
+# gana nodes con type: el predicado de unlanded_decisions la lee para descartar
+# una decisión ya ligada a trabajo de ejecución, y no pedirla dejaría el payload
+# incapaz de distinguirla de una que nunca aterrizó.
 FRONTIER_QUERY = """
 query($project: String!, $label: String!) {
   project(id: $project) {
@@ -131,11 +132,13 @@ query($project: String!, $label: String!) {
         title
         url
         createdAt
+        completedAt
         state { id name }
         assignee { displayName }
         labels { nodes { name } }
         relations(first: 10) {
           pageInfo { hasNextPage }
+          nodes { type }
         }
         inverseRelations(first: 10) {
           pageInfo { hasNextPage }
@@ -145,7 +148,7 @@ query($project: String!, $label: String!) {
     }
     projectMilestones(first: 10) {
       pageInfo { hasNextPage }
-      nodes { id }
+      nodes { id createdAt }
     }
   }
 }
@@ -1273,6 +1276,33 @@ def truncadas(proyecto):
     return cortadas
 
 
+def unlanded_decisions(nodes, closed_ids, oldest_milestone_created_at):
+    """Los tickets de decisión cerrados que no aterrizaron. NUNCA nombra
+    inverseRelations ni issue: los bloqueos salen de bloqueantes_abiertos y de
+    ninguna otra función, y mezclar las dos acá pondría roja la afirmación 53."""
+    unlanded = []
+    for n in sorted(nodes, key=lambda n: (n.get("completedAt") or "",
+                                          n.get("identifier") or "")):
+        if (n.get("state") or {}).get("id") not in closed_ids:
+            continue
+        names = [label.get("name") for label
+                in ((n.get("labels") or {}).get("nodes") or [])]
+        if not any(t in names for t in TIPOS[1:3]):   # map:prototype y map:grilling
+            continue
+        if LABELS[8] in names:                         # map:no-landing
+            continue
+        closed_at = n.get("completedAt")
+        if (not closed_at or not oldest_milestone_created_at
+                or closed_at <= oldest_milestone_created_at):
+            continue
+        if any(relation.get("type") == "related"
+               for relation in ((n.get("relations") or {}).get("nodes") or [])):
+            continue
+        unlanded.append({"identifier": n.get("identifier"), "title": n.get("title"),
+                         "url": n.get("url"), "completedAt": closed_at})
+    return unlanded
+
+
 def _tickets_de(args):
     """El ctx parseado y los tickets ya validados: acá se rompe todo lo que se pueda
     romper sin haber tocado la red, que es lo que hace que una invocación mal formada
@@ -1607,17 +1637,19 @@ def cmd_frontier_query(args):
     proyecto = resolver_datos(payload)
     if proyecto is None:
         # found es lo único que separa un --project que no resolvió de un mapa ya
-        # colapsado: los dos llevan los conteos en cero y las dos listas vacías.
+        # colapsado: los dos llevan los conteos en cero y las tres listas vacías.
         salida = {"found": False, "truncated": [],
                   "counts": {"open": 0, "takeable": 0, "milestones": 0},
-                  "tickets": [], "notTakeable": []}
+                  "tickets": [], "notTakeable": [], "unlanded": []}
     else:
         cortadas = truncadas(proyecto)
         # Cada conexión cortada miente distinto: decirle a quien perdió relations
         # que un ticket bloqueado puede parecer tomable sería falso.
         consecuencias = {
-            "issues": "los dos conteos son cotas inferiores y falta frontera",
-            "relations": "no afecta la frontera: el predicado no lee esta conexión",
+            "issues": "los dos conteos son cotas inferiores y falta frontera, y la "
+                     "lista de decisiones sin aterrizar es una cota inferior",
+            "relations": "no afecta la frontera, pero una decisión con más de diez "
+                        "relaciones puede aparecer como sin aterrizar",
             "inverseRelations": "un ticket bloqueado puede parecer tomable, y la "
                                 "lista de bloqueantes de una entrada puede venir "
                                 "incompleta",
@@ -1631,14 +1663,20 @@ def cmd_frontier_query(args):
         for nombre in cortadas:
             print("aviso: %s vino truncada: %s" % (nombre, consecuencias[nombre]),
                   file=sys.stderr)
-        tomables, no_tomables = clasificar_frontera(
-            (proyecto.get("issues") or {}).get("nodes") or [], cerrados)
+        issue_nodes = (proyecto.get("issues") or {}).get("nodes") or []
+        tomables, no_tomables = clasificar_frontera(issue_nodes, cerrados)
         nodos_hitos = (proyecto.get("projectMilestones") or {}).get("nodes") or []
+        oldest_milestone_created_at = min(
+            (n.get("createdAt") for n in nodos_hitos if n.get("createdAt")),
+            default=None)
+        unlanded = unlanded_decisions(issue_nodes, cerrados,
+                                      oldest_milestone_created_at)
         salida = {"found": True, "truncated": cortadas,
                   "counts": {"open": len(tomables) + len(no_tomables),
                              "takeable": len(tomables),
                              "milestones": len(nodos_hitos)},
-                  "tickets": tomables, "notTakeable": no_tomables}
+                  "tickets": tomables, "notTakeable": no_tomables,
+                  "unlanded": unlanded}
     print(json.dumps(salida, separators=(",", ":")))
 
 
