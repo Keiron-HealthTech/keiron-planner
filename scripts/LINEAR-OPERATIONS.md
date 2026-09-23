@@ -62,15 +62,18 @@ mapa, que es lo que la vuelve utilizable como ancla.
 
 ### `frontier:query`
 
-Cinco claves de primer nivel, las cinco siempre presentes:
+Seis claves de primer nivel, las seis siempre presentes:
 
     found        bool. false cuando el Project no resolvió. Con found en false los tres
-                 conteos son cero y las dos listas están vacías, que es la misma forma
+                 conteos son cero y las tres listas están vacías, que es la misma forma
                  que tiene un mapa ya terminado: found es lo único que los separa.
     truncated    lista de string. Subconjunto de issues, relations, inverseRelations y
                  projectMilestones, en ese orden fijo. Vacía si ninguna conexión vino
                  cortada. Cada nombre que aparece acá lleva además una línea a stderr, y
-                 el código de salida sigue siendo 0 en todos los casos.
+                 el código de salida sigue siendo 0 en todos los casos. Con issues
+                 truncada, unlanded también queda como cota inferior; con relations
+                 truncada, una decisión con más de diez relaciones puede aparecer en
+                 unlanded aunque ya esté ligada a trabajo de ejecución.
     counts       objeto de tres claves enteras, open, takeable y milestones. open cuenta
                  los tickets cuyo state.id no es ninguno de los dos ids cerrados del
                  ctx. takeable cuenta los que además pasan las otras dos condiciones.
@@ -79,6 +82,13 @@ Cinco claves de primer nivel, las cinco siempre presentes:
                  cuando esa conexión vino cortada.
     tickets      lista de objeto. Los abiertos tomables, createdAt ascendente.
     notTakeable  lista de objeto. Los abiertos no tomables, createdAt ascendente.
+    unlanded     lista de objeto. Los tickets de decisión CERRADOS cuyo label de tipo es
+                 map:grilling o map:prototype, cerrados después del createdAt del
+                 milestone más viejo del Project, sin ninguna relación related en
+                 relations y sin el label map:no-landing. completedAt ascendente. Vacía
+                 cuando no hay ninguno o cuando el Project no tiene ningún milestone
+                 todavía (sin milestone no hay umbral de nacimiento, así que nada puede
+                 estar sin aterrizar).
 
 No hay campo de veredicto, con ningún nombre. Ni `verdict`, ni `stuck`, ni
 `readyToCollapse`, ni un booleano equivalente: el veredicto se deriva de los tres
@@ -127,6 +137,18 @@ Dos invariantes que el consumidor puede asertar gratis:
 
     len(tickets) == counts.takeable
     len(tickets) + len(notTakeable) == counts.open
+
+Una entrada de `unlanded` lleva cuatro claves, las cuatro siempre presentes:
+
+    identifier   string. El identificador de Linear del ticket de decisión.
+    title        string. El nombre del ticket.
+    url          string. El enlace de Linear.
+    completedAt  string. ISO 8601 en Z con milisegundos: cuándo se cerró.
+
+`unlanded` es un ticket **cerrado**, así que no repite `labels`: quien lo necesita ya sabe,
+por estar en esta lista, que lleva el label de tipo `map:grilling` o `map:prototype` y no
+lleva `map:no-landing`. Y no repite `createdAt`: `completedAt` es el dato que importa acá,
+igual que `blockers` no repite el `state` de su bloqueante.
 
 ### `map:read`
 
