@@ -389,3 +389,26 @@ stdout, la misma forma que `ticket:resolve`, con las mismas nueve claves. Con
 `--defer-map`, `mapLine` es la viñeta entera con su marcador y `mapArgs` empieza con
 `--append-out-of-scope`: la línea de esta operación va a `## Fuera de alcance` también
 cuando el mapa lo escribe otro conductor.
+
+## La salida de las operaciones que escriben sobre el colapso
+
+### `milestone:create`
+
+Una sola línea de JSON compacto, con la misma regla de separadores y de escapado a
+ASCII que las demás. Tres claves de primer nivel, las tres siempre presentes:
+
+    id         string. El id que devolvió la mutation.
+    name       string. El nombre que devolvió la mutation, igual al que se pasó.
+    sortOrder  number. El sortOrder que devolvió la mutation, y NUNCA el que se pidió:
+               es la regla de las anclas. Con `--sort-order` en cero la mutation
+               falla del lado del adapter antes de tocar la red, así que el valor que
+               vuelve siempre coincide con el pedido salvo por redondeo del lado de
+               la API.
+
+El write es un solo `projectMilestoneCreate`, sin `targetDate` en ninguna rama: es lo
+que sostiene la afirmación 13. `status` no se pide de vuelta: es derivado, tiene lag,
+y quien lo necesita lo lee por `frontier:query` antes de escribir, nunca después.
+
+No reintenta: `_post` traga la falla de transporte y no distingue "no llegó" de
+"llegó y se perdió la respuesta", y el plugin no tiene ninguna operación para borrar
+un milestone.
