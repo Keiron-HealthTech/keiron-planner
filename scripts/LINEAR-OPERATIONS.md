@@ -412,3 +412,49 @@ y quien lo necesita lo lee por `frontier:query` antes de escribir, nunca despué
 No reintenta: `_post` traga la falla de transporte y no distingue "no llegó" de
 "llegó y se perdió la respuesta", y el plugin no tiene ninguna operación para borrar
 un milestone.
+
+### `work:write`
+
+Una sola línea de JSON compacto, con la misma regla de separadores y de escapado a
+ASCII que las demás. Tres claves de primer nivel, las tres siempre presentes:
+
+    issues      lista de objeto. Las issues de ejecución que se crearon en esta
+                corrida, vacía cuando la invocación no traía ningún `--issue`. Cada
+                una lleva cuatro claves, las cuatro siempre presentes: identifier, id,
+                title y url, la misma forma que `tickets` de `ticket:resolve`.
+    related     lista de objeto. Las relaciones `related` que confirmaron, en el
+                orden en que entraron, vacía cuando la invocación no traía ningún
+                `--relate`. Cada una lleva dos claves: decision, el ticket de decisión,
+                e issue, el id de la issue de ejecución del otro lado, ya resuelto
+                (sea que `--relate` lo haya nombrado por índice o por id existente).
+    noLanding   string o null. El identificador que recibió el label
+                `map:no-landing`, y null en los otros dos desenlaces.
+
+Las tres siempre presentes y nunca omitidas: los tres desenlaces tienen la misma forma
+y se distinguen por el contenido.
+
+Las tres escrituras van adentro de una sola invocación y en este orden, que el adapter
+garantiza y ninguna combinación de flags reordena:
+
+| Nº | Mutation | Cuándo |
+| --- | --- | --- |
+| 1 | `issueBatchCreate` | solo si hay al menos un `--issue` |
+| 2 | `issueRelationCreate` con `type: related` | solo si hay al menos un `--relate` |
+| 3 | `issueAddLabel` | solo con `--no-landing` |
+
+Las dos primeras son condicionales por la misma razón que en `ticket:resolve`: la API
+rechaza un `issueBatchCreate` con la lista vacía. Las relaciones van después de las
+issues porque necesitan los ids que devuelve la primera escritura; el label va último
+porque es el único desenlace que convive con cero de las otras dos.
+
+Las issues de ejecución que crea no llevan `estimate` ni ningún `labelIds`: no son
+tickets de decisión, así que no llevan el label `map`, y `frontier:query` sigue
+funcionando igual después de que aterrizan. Toda `issueRelationCreate` que emite pone
+el ticket de decisión del lado `issueId`, al revés que `ticket:block`, para que la
+relación caiga en `relations` y no en `inverseRelations`.
+
+No reintenta ninguna de las tres. `_post` traga la falla de transporte, así que
+ninguna rama puede distinguir "no llegó" de "llegó y se perdió la respuesta", y
+repetir la invocación entera solo es seguro cuando nada quedó escrito: con parte de la
+secuencia ya confirmada, la remediación que cada falla imprime dice exactamente qué
+repetir y qué no.
