@@ -557,6 +557,45 @@ if sucios_map:
          "constantes de string que el grafo referencia por nombre, contienen una "
          "mutation" % len(sucios_map))
 
+# --- afirmación 13: milestone:create nunca pasa targetDate -----------------------
+
+# Mismo mecanismo que la 23: el handler real por set_defaults, el grafo por
+# alcanzable(), y STRCONSTS para mirar dentro de las constantes de módulo que el grafo
+# referencia por nombre y no solo los literales inline de su propio subárbol.
+RUTA_MILESTONE = alcanzable(handler.get("milestone:create"))
+require_nonempty(RUTA_MILESTONE,
+                 "[13] el grafo alcanzable desde el handler de milestone:create dio "
+                 "vacío; el handler volvió a ser un stub y la afirmación probaría "
+                 "cero")
+REFERIDAS_MILESTONE = sorted(set(n.id for nm in RUTA_MILESTONE for n in ast.walk(FUNCS[nm])
+                                 if isinstance(n, ast.Name) and n.id in STRCONSTS))
+require_nonempty(REFERIDAS_MILESTONE,
+                 "[13] el grafo de milestone:create no referencia ninguna constante "
+                 "de string del módulo, así que la mitad de la prohibición probaría "
+                 "sobre el conjunto vacío")
+# La cláusula positiva: sin ella, un handler que no postea nada pasaría en verde la
+# prohibición de un campo que nunca pudo pasar.
+if not any("projectMilestoneCreate" in STRCONSTS[nm] for nm in REFERIDAS_MILESTONE):
+    fail("[13] ninguna constante que el grafo de milestone:create referencia por "
+         "nombre contiene projectMilestoneCreate; el handler no postea la mutation "
+         "que la afirmación espera")
+# El literal, en cualquier ast.Constant de string del grafo: ast.walk ya visita las
+# claves de un ast.Dict como sus propios nodos Constant, así que esto cubre a la vez
+# un string suelto y una clave de dict apareada, sin necesitar una segunda cláusula.
+_TARGETDATE_LITERAL = sorted(set(
+    nm for nm in RUTA_MILESTONE for n in ast.walk(FUNCS[nm])
+    if isinstance(n, ast.Constant) and n.value == "targetDate"))
+if _TARGETDATE_LITERAL:
+    fail("[13] estas funciones del grafo de milestone:create nombran el literal "
+         "targetDate: %s" % _TARGETDATE_LITERAL)
+# Y como subcadena de las constantes referenciadas: es lo que hace que la afirmación
+# siga siendo verdad cuando el campo entre por la puerta de la constante de GraphQL,
+# que es por donde entraría de verdad.
+_TARGETDATE_CONST = [nm for nm in REFERIDAS_MILESTONE if "targetDate" in STRCONSTS[nm]]
+if _TARGETDATE_CONST:
+    fail("[13] estas constantes de string que el grafo de milestone:create "
+         "referencia por nombre contienen targetDate: %s" % _TARGETDATE_CONST)
+
 # --- afirmación 59: counts.milestones es un conteo y nunca un veredicto ----------
 
 # La raíz es la misma que la de la 53, o sea el grafo alcanzable desde el handler que
