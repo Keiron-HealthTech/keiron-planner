@@ -1083,28 +1083,28 @@ def _resolver_creacion(payload):
     return (True, "", datos.get("project") or {})
 
 
-def _orden_de(args):
+def _sort_order_from(args):
     """El --sort-order ya validado: float y distinto de cero. Cero es el único valor
     que Linear reinterpreta -lo manda al final de la lista en vez de respetarlo
     literal-, así que se rechaza en vez de dejarlo pasar. Vive aparte del handler para
     que el mensaje de la remediación tenga una sola casa y para que la guarda corra
     antes de leer_key(), igual que _destino_de, _ediciones_de y _tickets_de."""
     try:
-        orden = float(args.sort_order)
+        sort_order = float(args.sort_order)
     except ValueError:
         die(SIN_KEY,
             "--sort-order recibió %r y no parsea como número" % args.sort_order,
             "pasá un valor numérico, distinto de cero")
-    if orden == 0.0:
+    if sort_order == 0.0:
         die(SIN_KEY,
             "--sort-order recibió 0, y es el único valor que Linear reinterpreta: lo "
             "manda al final de la lista en vez de respetarlo literal",
             "pasá un valor distinto de cero, calculado a partir de una lectura fresca "
             "de los milestones vecinos")
-    return orden
+    return sort_order
 
 
-def _resolver_hito(payload):
+def _resolve_milestone(payload):
     """La puerta de projectMilestoneCreate: la misma regla de tres casos que
     _resolver_creacion, _resolver_label y _resolver_tickets, sobre su propia clave del
     payload. Devuelve (ok, detalle, hito)."""
@@ -1899,13 +1899,13 @@ def cmd_ticket_rule_out(args):
 
 
 def cmd_milestone_create(args):
-    orden = _orden_de(args)     # valida antes de tocar la red: float y distinto de cero
+    sort_order = _sort_order_from(args)  # valida antes de tocar la red: float y distinto de cero
     _sin_saltos("--name", args.name)
     key = leer_key()
-    ok, detalle, hito = _resolver_hito(
+    ok, detalle, hito = _resolve_milestone(
         _post(PROJECT_MILESTONE_CREATE,
               {"name": args.name, "project": args.project,
-               "description": args.description, "orden": orden}, key))
+               "description": args.description, "orden": sort_order}, key))
     if not ok:
         die(SIN_KEY, "el milestone %s no se pudo crear: %s" % (args.name, detalle),
             "mirá en Linear si el corte quedó hecho ANTES de reintentar: esta "
@@ -2055,8 +2055,8 @@ def construir_parser():
 
     # Sin --ctx a propósito: milestone:create es una de las cinco operaciones que no
     # lo consumen. --sort-order es requerido y nunca omitido: el cero es el único
-    # valor que Linear reinterpreta, así que _orden_de lo rechaza en vez de dejarlo
-    # pasar. Ningún flag de fecha, con ningún nombre: targetDate no tiene superficie
+    # valor que Linear reinterpreta, así que _sort_order_from lo rechaza en vez de
+    # dejarlo pasar. Ningún flag de fecha, con ningún nombre: targetDate no tiene superficie
     # de CLI, así que no hay forma de pasarlo ni por accidente.
     p_milestone_create = subs.add_parser("milestone:create")
     p_milestone_create.add_argument("--project", required=True)

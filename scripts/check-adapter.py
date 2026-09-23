@@ -562,20 +562,20 @@ if sucios_map:
 # Mismo mecanismo que la 23: el handler real por set_defaults, el grafo por
 # alcanzable(), y STRCONSTS para mirar dentro de las constantes de módulo que el grafo
 # referencia por nombre y no solo los literales inline de su propio subárbol.
-RUTA_MILESTONE = alcanzable(handler.get("milestone:create"))
-require_nonempty(RUTA_MILESTONE,
+MILESTONE_ROUTE = alcanzable(handler.get("milestone:create"))
+require_nonempty(MILESTONE_ROUTE,
                  "[13] el grafo alcanzable desde el handler de milestone:create dio "
                  "vacío; el handler volvió a ser un stub y la afirmación probaría "
                  "cero")
-REFERIDAS_MILESTONE = sorted(set(n.id for nm in RUTA_MILESTONE for n in ast.walk(FUNCS[nm])
+MILESTONE_REFERENCED = sorted(set(n.id for nm in MILESTONE_ROUTE for n in ast.walk(FUNCS[nm])
                                  if isinstance(n, ast.Name) and n.id in STRCONSTS))
-require_nonempty(REFERIDAS_MILESTONE,
+require_nonempty(MILESTONE_REFERENCED,
                  "[13] el grafo de milestone:create no referencia ninguna constante "
                  "de string del módulo, así que la mitad de la prohibición probaría "
                  "sobre el conjunto vacío")
 # La cláusula positiva: sin ella, un handler que no postea nada pasaría en verde la
 # prohibición de un campo que nunca pudo pasar.
-if not any("projectMilestoneCreate" in STRCONSTS[nm] for nm in REFERIDAS_MILESTONE):
+if not any("projectMilestoneCreate" in STRCONSTS[nm] for nm in MILESTONE_REFERENCED):
     fail("[13] ninguna constante que el grafo de milestone:create referencia por "
          "nombre contiene projectMilestoneCreate; el handler no postea la mutation "
          "que la afirmación espera")
@@ -583,7 +583,7 @@ if not any("projectMilestoneCreate" in STRCONSTS[nm] for nm in REFERIDAS_MILESTO
 # claves de un ast.Dict como sus propios nodos Constant, así que esto cubre a la vez
 # un string suelto y una clave de dict apareada, sin necesitar una segunda cláusula.
 _TARGETDATE_LITERAL = sorted(set(
-    nm for nm in RUTA_MILESTONE for n in ast.walk(FUNCS[nm])
+    nm for nm in MILESTONE_ROUTE for n in ast.walk(FUNCS[nm])
     if isinstance(n, ast.Constant) and n.value == "targetDate"))
 if _TARGETDATE_LITERAL:
     fail("[13] estas funciones del grafo de milestone:create nombran el literal "
@@ -591,7 +591,7 @@ if _TARGETDATE_LITERAL:
 # Y como subcadena de las constantes referenciadas: es lo que hace que la afirmación
 # siga siendo verdad cuando el campo entre por la puerta de la constante de GraphQL,
 # que es por donde entraría de verdad.
-_TARGETDATE_CONST = [nm for nm in REFERIDAS_MILESTONE if "targetDate" in STRCONSTS[nm]]
+_TARGETDATE_CONST = [nm for nm in MILESTONE_REFERENCED if "targetDate" in STRCONSTS[nm]]
 if _TARGETDATE_CONST:
     fail("[13] estas constantes de string que el grafo de milestone:create "
          "referencia por nombre contienen targetDate: %s" % _TARGETDATE_CONST)
