@@ -148,7 +148,7 @@ query($project: String!, $label: String!) {
     }
     projectMilestones(first: 10) {
       pageInfo { hasNextPage }
-      nodes { id createdAt }
+      nodes { id name sortOrder status createdAt issues(first: 1) { nodes { id } } }
     }
   }
 }
@@ -1637,10 +1637,10 @@ def cmd_frontier_query(args):
     proyecto = resolver_datos(payload)
     if proyecto is None:
         # found es lo único que separa un --project que no resolvió de un mapa ya
-        # colapsado: los dos llevan los conteos en cero y las tres listas vacías.
+        # colapsado: los dos llevan los conteos en cero y las cuatro listas vacías.
         salida = {"found": False, "truncated": [],
                   "counts": {"open": 0, "takeable": 0, "milestones": 0},
-                  "tickets": [], "notTakeable": [], "unlanded": []}
+                  "tickets": [], "notTakeable": [], "milestones": [], "unlanded": []}
     else:
         cortadas = truncadas(proyecto)
         # Cada conexión cortada miente distinto: decirle a quien perdió relations
@@ -1657,8 +1657,10 @@ def cmd_frontier_query(args):
             # contra más de cero, y una página cortada trajo al menos un nodo. Lo
             # que sí queda mal es el número.
             "projectMilestones": "el veredicto no cambia, porque solo distingue "
-                                 "cero de más de cero, pero counts.milestones "
-                                 "queda como cota inferior",
+                                 "cero de más de cero, pero counts.milestones y "
+                                 "milestones quedan como cota inferior, y el "
+                                 "vecino que hace falta para insertar un corte en "
+                                 "el medio puede no estar en la lista",
         }
         for nombre in cortadas:
             print("aviso: %s vino truncada: %s" % (nombre, consecuencias[nombre]),
@@ -1669,6 +1671,15 @@ def cmd_frontier_query(args):
         oldest_milestone_created_at = min(
             (n.get("createdAt") for n in nodos_hitos if n.get("createdAt")),
             default=None)
+        milestones = []
+        for milestone in nodos_hitos:
+            has_issues = bool((milestone.get("issues") or {}).get("nodes"))
+            milestones.append({
+                "id": milestone.get("id"), "name": milestone.get("name"),
+                "sortOrder": milestone.get("sortOrder"),
+                "status": milestone.get("status"),
+                "createdAt": milestone.get("createdAt"), "hasIssues": has_issues})
+        milestones.sort(key=lambda m: m["sortOrder"])
         unlanded = unlanded_decisions(issue_nodes, cerrados,
                                       oldest_milestone_created_at)
         salida = {"found": True, "truncated": cortadas,
@@ -1676,7 +1687,7 @@ def cmd_frontier_query(args):
                              "takeable": len(tomables),
                              "milestones": len(nodos_hitos)},
                   "tickets": tomables, "notTakeable": no_tomables,
-                  "unlanded": unlanded}
+                  "milestones": milestones, "unlanded": unlanded}
     print(json.dumps(salida, separators=(",", ":")))
 
 
