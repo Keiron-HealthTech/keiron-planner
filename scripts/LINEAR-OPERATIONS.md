@@ -62,18 +62,21 @@ mapa, que es lo que la vuelve utilizable como ancla.
 
 ### `frontier:query`
 
-Seis claves de primer nivel, las seis siempre presentes:
+Siete claves de primer nivel, las siete siempre presentes:
 
     found        bool. false cuando el Project no resolvió. Con found en false los tres
-                 conteos son cero y las tres listas están vacías, que es la misma forma
-                 que tiene un mapa ya terminado: found es lo único que los separa.
+                 conteos son cero y las cuatro listas están vacías, que es la misma
+                 forma que tiene un mapa ya terminado: found es lo único que los separa.
     truncated    lista de string. Subconjunto de issues, relations, inverseRelations y
                  projectMilestones, en ese orden fijo. Vacía si ninguna conexión vino
                  cortada. Cada nombre que aparece acá lleva además una línea a stderr, y
                  el código de salida sigue siendo 0 en todos los casos. Con issues
                  truncada, unlanded también queda como cota inferior; con relations
                  truncada, una decisión con más de diez relaciones puede aparecer en
-                 unlanded aunque ya esté ligada a trabajo de ejecución.
+                 unlanded aunque ya esté ligada a trabajo de ejecución; con
+                 projectMilestones truncada, milestones también queda como cota
+                 inferior además de counts.milestones, y el vecino que hace falta para
+                 insertar un corte en el medio puede no estar en la lista.
     counts       objeto de tres claves enteras, open, takeable y milestones. open cuenta
                  los tickets cuyo state.id no es ninguno de los dos ids cerrados del
                  ctx. takeable cuenta los que además pasan las otras dos condiciones.
@@ -82,6 +85,10 @@ Seis claves de primer nivel, las seis siempre presentes:
                  cuando esa conexión vino cortada.
     tickets      lista de objeto. Los abiertos tomables, createdAt ascendente.
     notTakeable  lista de objeto. Los abiertos no tomables, createdAt ascendente.
+    milestones   lista de objeto, ordenada por sortOrder ascendente. Cada uno con id,
+                 name, sortOrder, status, createdAt y hasIssues. Vacía cuando el
+                 Project no tiene ningún milestone todavía, el mismo caso que
+                 counts.milestones en cero.
     unlanded     lista de objeto. Los tickets de decisión CERRADOS cuyo label de tipo es
                  map:grilling o map:prototype, cerrados después del createdAt del
                  milestone más viejo del Project, sin ninguna relación related en
