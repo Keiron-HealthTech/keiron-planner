@@ -119,7 +119,7 @@ una segunda copia.
 ### `check-prose.sh`
 | Nº | Afirmación | Cómo | Brecha | Estado | Origen |
 | --- | --- | --- | --- | --- | --- |
-| 55 | `map-work.md` nombra la prohibición de aterrizar en un corte con `status: done` | un grep de prosa sobre `commands/map-work.md` | es un grep de prosa, así que reescribir la frase falla el check sin que la regla cambie. Es la misma brecha que la afirmación 25 y se acepta igual | pendiente | 12 |
+| 55 | `map-work.md` nombra la prohibición de aterrizar en un corte con `status: done` | un grep de prosa sobre `commands/map-work.md` | es un grep de prosa, así que reescribir la frase falla el check sin que la regla cambie. Es la misma brecha que la afirmación 25 y se acepta igual | viva | 12 |
 
 ## Las retiradas
 
