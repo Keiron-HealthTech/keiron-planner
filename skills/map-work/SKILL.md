@@ -23,14 +23,16 @@ piece of text a person ends up reading in Linear, and that text is in Spanish. N
 of those shapes from memory.
 
 ADAPTER: `${CLAUDE_PLUGIN_ROOT}/scripts/linear.py`, invoked with Bash and written `linear.py`
-below. This skill runs nine of its operations and no other: `preflight`, `map:read`,
+below. This skill runs eleven of its operations and no other: `preflight`, `map:read`,
 `frontier:query`, `ticket:claim`, `ticket:create`, `ticket:block`, `ticket:resolve`,
-`ticket:rule-out` and `map:write`. Never compose GraphQL yourself and never touch the Linear
-API directly.
+`ticket:rule-out`, `map:write`, `milestone:create` and `work:write`. Never compose GraphQL
+yourself and never touch the Linear API directly.
 
 The ninth, `map:write`, belongs to the research branch of step 8 and to no other path. A
 ticket of any other type still reaches the map through the operation that resolves it, and
-this skill never invokes `map:write` on that path.
+this skill never invokes `map:write` on that path. The one other place it runs is the landing
+of step 9, and only when that landing created a cut. The tenth and the eleventh,
+`milestone:create` and `work:write`, belong to step 9 alone.
 
 The map lands last and exactly once, by construction rather than by your discipline, and
 there are two constructions because there are two branches. On the normal path the write
@@ -39,7 +41,9 @@ file can reorder it or run it twice. On the research path the instance runs its 
 with `--defer-map`, which is the adapter refusing to let it write the map at all, and the
 parent runs one `map:write` after the last return. Neither construction rests on you
 remembering not to write the map twice: the first puts the write out of reach inside another
-operation, and the second takes it away from the instance with a flag.
+operation, and the second takes it away from the instance with a flag. The landing of step 9
+runs after both, and it is the one case where a session writes the map a second time: only
+when it created a cut, and only for that cut.
 
 When any invocation exits non-zero, relay its stderr as it is, add nothing to it, and stop. Do
 not reformulate the remediation and do not turn the failure into a token: every hard failure
@@ -364,3 +368,93 @@ the question that blocks it invisible, because nothing yet says it is blocked. F
 sequence by hand instead, in order, starting from whichever of the three is still missing.
 
 Close with `next_recommended: map-work`: the ticket that was just opened is born takeable.
+
+## Step 9, the landing
+
+The landing hangs the execution work of a decision taken after the collapse. It runs only
+when all three conditions hold at once:
+
+1. the session is HITL: a person is on the other side and just approved a resolution;
+2. the ticket that step 8 resolved or ruled out is typed `map:grilling` or `map:prototype`,
+   never `map:research` and never `map:task`;
+3. `counts.milestones` in the `frontier:query` that step 2 read is above zero.
+
+With any of the three false, this step does not run and the session goes straight to step 10.
+`map:task` is out by definition: it earns its place by unblocking a decision and never by
+delivering a piece of the destination, so a task has nothing to land. The research branch and
+the other-role branch of step 8 never get here.
+
+It runs after `ticket:resolve` or `ticket:rule-out` has written, never before and never in
+place of it. A session that dies halfway through the landing then leaves the decision
+resolved, the map up to date and no issue, which is exactly the state `/map-status` shows in
+its block of decisions that never landed. With the landing first, a death would leave
+execution issues that the map does not mention and that nobody reports.
+
+There are four sub-steps.
+
+### The round
+
+Propose exactly one of three outcomes, and the person approves it or changes it. Nothing is
+written yet.
+
+- New issues: the decision adds work.
+- Tie it to an execution issue that already exists: zero new issues, one relation. It is
+  probably the most common outcome, and without it every one of those decisions would sit in
+  the report as pending until nobody looks at it.
+- Nothing: the decision touches nothing of what is being built. It is recorded with the label
+  `map:no-landing`, because a report that can never reach zero gets ignored all the same.
+
+The cut where new issues land comes from `milestones`, the key of the `frontier:query` of
+step 2, shown by name and with its `status`. Never a cut with `status: done`: adding an issue
+to a finished milestone reopens it, and a late decision that un-finishes a cut the team
+already demoed breaks an instrument of the team to save one milestone. Read the `status`
+before writing and never read it again to verify a write: it is denormalized and lags, and
+the lag returns the previous state.
+
+When every cut is `done` and the decision asks for a cut, the cut is born anyway and the
+session says so out loud: all the cuts were finished, this reopens the project, and it may be
+a sign that the destination was drawn wrong. That is the one place where "there is no
+uncollapse" becomes observable.
+
+### The cut, only when the outcome needs one that does not exist
+
+    linear.py milestone:create --project <the project> --name <the cut in prose> \
+      --description <the decision that produced it, by name and with its link> \
+      --sort-order <the order>
+
+`--sort-order` is a value you compute, strictly between the `sortOrder` of the two neighbours,
+taken from `milestones` exactly as the API returned them in step 2. At either end there is
+one neighbour only, so pick a nonzero value on the correct side of it. The adapter never
+computes it and refuses zero. When `truncated` names `projectMilestones`, the list is a lower
+bound and the neighbour you need may not be in it: say that and ask the person for the
+neighbouring cuts rather than computing from a partial list.
+
+The `id` it prints is the cut id that the next sub-step passes.
+
+### The work
+
+    linear.py work:write --ctx <the blob from step 1> --project <the project> \
+      [--issue <title> <body> <cut id>] [--relate <ticket> <target>] [--no-landing <ticket>]
+
+One invocation, with the shape of the outcome, and `<ticket>` is the identifier of the
+resolved ticket, copied verbatim from what `frontier:query` returned:
+
+- new issues: one `--issue` per issue, with the id of the cut it belongs to, plus one
+  `--relate <ticket> <position>` per issue, where the position is the 1-based place of that
+  `--issue` inside this same invocation;
+- tie: no `--issue`, and one `--relate <ticket> <id of the existing execution issue>`;
+- nothing: `--no-landing <ticket>` alone.
+
+The title of an execution issue inverts the title of the decision: the question becomes an
+imperative. The body is the three-section shape of `map-templates.md`, in Spanish, and it is
+never typed from memory. The `Fuera de alcance` of the map is not copied into any body.
+
+### The map, only when a cut was born
+
+Run `map:write` once, to add the new cut to `## El colapso`. When no cut was born, the map is
+not touched again.
+
+A landing that dies halfway is named and not repaired. When a cut was born and `work:write`
+then failed, what is left is an empty milestone and an unlanded decision, and both are
+visible: the empty cut in Linear, the decision in the report of `/map-status`. Never try to
+delete the cut, because no operation of this plugin does that.
