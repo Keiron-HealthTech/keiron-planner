@@ -205,7 +205,7 @@ For those tickets, do not invoke `ticket:resolve`, `ticket:rule-out`, `ticket:cr
 `ticket:block` yourself. Those are the instance's, and running one of them here would write
 the resolution twice.
 
-## Step 8, show it, confirm once, and write
+## Step 8, show it, confirm once, and resolve
 
 On the normal path this is the only irreversible batch of the session. Five writes, and not
 one of them has an undo: not a ticket created, not a relation, not a comment, not a close, not
@@ -241,10 +241,8 @@ goes to `Fuera de alcance` and never to `Decisiones hasta ahora`.
 The order of the five writes, and the guarantee that they all travel inside one invocation,
 belong to the adapter and are not restated here. There is no flag that reorders them.
 
-Then report what landed and stop with one token. When the frontier that step 2 read held more
-than the one ticket just resolved, that token is `next_recommended: map-work`. Reading the
-frontier again, landing the decision and reporting the close are steps 9 and 10, and they
-belong to a later cut.
+The resolution ends here. This step neither reports nor closes with a token: step 9 lands the
+decision when it applies, and step 10 reports and closes on every path.
 
 Every type worked in conversation is still one per session, and `map:research` is the one
 exception, worked by an instance of its own.
@@ -257,6 +255,11 @@ There is no confirmation to ask for here, because the irreversible batch of this
 the dispatch itself and step 7 already asked.
 
 What is missing is the map, and only the map.
+
+This branch never reaches step 9. A `map:research` ticket is AFK, and letting the agent decide
+alone what gets built would hand it a decision that belongs to a person in a session.
+Gathering the fan-out to ask for one approval at the end does not work either, because
+research is AFK precisely so that nobody has to sit down.
 
 A return is sane when, and only when, it carries a fenced block that parses as the single line
 of JSON a resolution run with `--defer-map` prints, with `mapWritten` false and a `mapArgs`
@@ -326,6 +329,9 @@ landed and close with one token, the same way the normal path does.
 While resolving, a question can come up that belongs to a different role, `hitl:pm` or
 `hitl:design`. This is not the check of step 5, which was about the chosen ticket itself;
 this is about a question that working it just produced.
+
+This branch never reaches step 9 either. It resolves nothing: the pause is deliberate, the
+current ticket stays open and blocked, and there is no decision to land.
 
 **When the answer is not needed to close the current ticket**, there is no branch at all: the
 new ticket is one more `--new-ticket` of the normal resolution, with its `hitl:` label and no
