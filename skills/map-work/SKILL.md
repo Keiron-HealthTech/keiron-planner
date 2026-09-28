@@ -303,30 +303,7 @@ this research was attempted and returns the ticket to the frontier looking fresh
 has nothing to put in the six sections. And write no line of its own in the map: a decision
 with no resolution has no line.
 
-Then report, naming these in this order:
-
-1. which research came back well, and what line each one left in the map;
-2. which ones did not, by identifier;
-3. that each of those is still claimed by you and unreleased;
-4. that whether the ticket is actually still open cannot be told from here: a malformed
-   or missing return most often means the four writes of its own ticket already landed
-   and only the relay back to you, or the `--defer-map` flag itself, is what failed, so
-   the ticket is probably already Done or Canceled with its six-section resolution
-   comment posted;
-5. what to do about it, which is to open that ticket and read its resolution comment
-   first: the url and the gist the missing `map:write --append-decision` needs are
-   already sitting there, so the one call can be rebuilt by hand from the comment. Only
-   when the comment itself never landed either is the ticket genuinely unresolved, and
-   then `/map-work` on it, or `ticket:claim --release` to hand the claim back, is what
-   applies.
-
-That is the same policy the other-role branch below already follows when one of its three
-writes fails: name what landed, name the claim, do not release it, and say how to finish by
-hand. It is not a second policy for the same problem.
-
-With at least one research that did not land, close with `next_recommended: map-work`: that
-ticket is open and it is what there is to work. With every one of them landed, report what
-landed and close with one token, the same way the normal path does.
+Then go to step 10, which reports the fan-out and closes.
 
 ### The other-role branch
 
@@ -367,7 +344,7 @@ prevent. Never run the release out of order to close that gap early: releasing b
 the question that blocks it invisible, because nothing yet says it is blocked. Finish the
 sequence by hand instead, in order, starting from whichever of the three is still missing.
 
-Close with `next_recommended: map-work`: the ticket that was just opened is born takeable.
+Then go to step 10, which reports the pause and closes.
 
 ## Step 9, the landing
 
@@ -458,3 +435,47 @@ A landing that dies halfway is named and not repaired. When a cut was born and `
 then failed, what is left is an empty milestone and an unlanded decision, and both are
 visible: the empty cut in Linear, the decision in the report of `/map-status`. Never try to
 delete the cut, because no operation of this plugin does that.
+
+## Step 10, the report and the token
+
+The one home of the closing report and of the token, for the three paths. Which one applies
+depends on what step 8 did.
+
+On the normal path, report what the resolution wrote: the comment, the new tickets, the
+state, and the line that reached the map. When step 9 ran, also say what it produced: which
+of the three outcomes was chosen, which cut received the work, which issues were born with
+their URL, or that the decision was marked as having no work. When the frontier that step 2
+read held more than the one ticket just resolved, close with `next_recommended: map-work`.
+
+### Reporting a research fan-out
+
+Report, naming these in this order:
+
+1. which research came back well, and what line each one left in the map;
+2. which ones did not, by identifier;
+3. that each of those is still claimed by you and unreleased;
+4. that whether the ticket is actually still open cannot be told from here: a malformed
+   or missing return most often means the four writes of its own ticket already landed
+   and only the relay back to you, or the `--defer-map` flag itself, is what failed, so
+   the ticket is probably already Done or Canceled with its six-section resolution
+   comment posted;
+5. what to do about it, which is to open that ticket and read its resolution comment
+   first: the url and the gist the missing `map:write --append-decision` needs are
+   already sitting there, so the one call can be rebuilt by hand from the comment. Only
+   when the comment itself never landed either is the ticket genuinely unresolved, and
+   then `/map-work` on it, or `ticket:claim --release` to hand the claim back, is what
+   applies.
+
+That is the same policy the other-role branch of step 8 already follows when one of its three
+writes fails: name what landed, name the claim, do not release it, and say how to finish by
+hand. It is not a second policy for the same problem.
+
+With at least one research that did not land, close with `next_recommended: map-work`: that
+ticket is open and it is what there is to work. With every one of them landed, report what
+landed and close with one token, the same way the normal path does.
+
+### Reporting an other-role pause
+
+Report which of the three writes landed and which did not, and that the claim from step 6 is
+still yours until the third one runs. Then close with `next_recommended: map-work`: the ticket
+that was just opened is born takeable.

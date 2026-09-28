@@ -13,10 +13,10 @@ stop. The steps live in that file and are not restated here.
 URL of a Linear Project, or the URL of one decision ticket of its map. With no argument, ask
 which map and stop.
 
-This command does not land yet. The landing, and the closing report that names it, belong to a
-later cut, and until that cut exists a session of this command writes no execution work at
-all. When the landing does arrive it never hangs work off a milestone already marked
-`status: done`: a finished cut is closed, and landing on it makes the map lie about what was
-demoed.
+This command lands. After the ticket is resolved, a session working a `map:grilling` or a
+`map:prototype` ticket on a Project that already carries at least one milestone hangs the
+decision's execution work off a cut, ties it to work that already exists, or records that it
+produced none. It never hangs work off a milestone already marked `status: done`: a finished
+cut is closed, and landing on it makes the map lie about what was demoed.
 
 The session closes with one next recommended, and the skill is where that choice lives.
