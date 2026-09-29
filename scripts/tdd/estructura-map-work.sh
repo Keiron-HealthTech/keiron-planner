@@ -23,7 +23,6 @@ fm "$COMANDO" | grep -qE '^lang: en$' || n "$COMANDO no declara lang: en"
 [ "$(grep -c '^ROUTE: skills/map-work/SKILL.md$' "$COMANDO")" = "1" ] || n "$COMANDO no declara exactamente un ROUTE: a skills/map-work/SKILL.md"
 grep -q -- "--bootstrap" "$COMANDO" && n "$COMANDO nombra --bootstrap y la afirmación 39a lo prohíbe"
 [ "$(grep -c '`next_recommended: ' "$COMANDO")" = "0" ] || n "$COMANDO cita un token, y los tokens viven en la skill"
-grep -qF 'status: done' "$COMANDO" || n "$COMANDO no lleva la frase de la fila 55 sobre aterrizar en un corte con status: done"
 grep -qE '^## Step ' "$COMANDO" && n "$COMANDO numera pasos y tiene que delegar sin restatearlos"
 
 # --- la skill ---
@@ -37,22 +36,20 @@ fm "$SKILL" | grep -qE '^lang: en$' || n "$SKILL no declara lang: en"
 for puntero in "CONTRACT:" "TEMPLATES:" "ADAPTER:"; do
   grep -q "^$puntero" "$SKILL" || n "$SKILL no abre con el puntero $puntero"
 done
-for op in preflight "map:read" "frontier:query" "ticket:claim" "ticket:create" "ticket:block" "ticket:resolve" "ticket:rule-out" "map:write"; do
+for op in preflight "map:read" "frontier:query" "ticket:claim" "ticket:create" "ticket:block" "ticket:resolve" "ticket:rule-out" "map:write" "milestone:create" "work:write"; do
   grep -qF "$op" "$SKILL" || n "el puntero ADAPTER de $SKILL no nombra $op"
 done
 # map:write es la novena y entro por la rama de research del paso 8: el padre escribe el
 # mapa porque ahi ninguna resolucion suya lo hace. En cualquier otro camino la quinta
 # escritura sigue viviendo adentro de ticket:resolve, y por eso la rama se nombra aparte.
 grep -qF "belongs to the research branch of step 8 and to no other path" "$SKILL" || n "$SKILL nombra map:write sin acotarlo a la rama de research"
-for prohibida in "map:create" "milestone:create" "work:write"; do
-  grep -qF "$prohibida" "$SKILL" && n "$SKILL nombra $prohibida, que no es una de sus nueve operaciones"
-done
-for paso in 1 2 3 4 5 6 7 8; do
+grep -qF "map:create" "$SKILL" && n "$SKILL nombra map:create, que no es una de sus once operaciones"
+for paso in 1 2 3 4 5 6 7 8 9 10; do
   grep -qE "^## Step $paso," "$SKILL" || n "$SKILL no lleva el paso $paso"
 done
-for paso in 9 10; do
-  grep -qE "^## Step $paso," "$SKILL" && n "$SKILL lleva el paso $paso, que es de un corte posterior"
-done
+# La ausencia de un paso once no se puede afirmar por nombre; el conteo exacto si.
+step_count="$(grep -cE '^## Step [0-9]+,' "$SKILL" || true)"
+[ "$step_count" = "10" ] || n "$SKILL lleva $step_count pasos y tiene que llevar exactamente diez"
 # El paso 7 despacha el fan-out de research, y esa es la unica excepcion a uno por sesion.
 # Las dos mitades se afirman por separado a proposito: que la regla sigue valiendo para todo
 # lo que se trabaja en conversacion, y cual es el unico tipo que la rompe. Afirmar solo la
@@ -79,11 +76,25 @@ for tok in map-new release-claim break-cycle map-collapse sdd-new; do
 done
 # El paso 3 no puede emitir map-work: un veredicto que se recomienda a si mismo es un
 # bucle, porque la sesion volveria a derivar el mismo veredicto sin haber trabajado nada.
-# El paso 8 SI lo emite, y es legitimo: ahi ya se resolvio un ticket y la frontera cambio.
+# El paso 10 SI lo emite, y es legitimo: ahi ya se resolvio un ticket y la frontera cambio.
 paso3="$(awk '/^## Step 3,/{f=1} /^## Step 4,/{f=0} f' "$SKILL")"
 printf '%s\n' "$paso3" | grep -qF '`next_recommended: map-work`' && n "el paso 3 de $SKILL se recomienda a si mismo, y eso es un bucle"
-paso8="$(awk '/^## Step 8,/{f=1} f' "$SKILL")"
-printf '%s\n' "$paso8" | grep -qF '`next_recommended: map-work`' || n "el paso 8 de $SKILL no cierra con ningun token"
+# El paso 8 resuelve y no cierra: el token vive en el paso 10 y en ningun otro. Cada rango se
+# acota en el encabezado siguiente; sin el corte, awk leeria hasta el final y un literal del
+# paso 10 daria verde sobre el paso equivocado.
+step8="$(awk '/^## Step 8,/{f=1} /^## Step 9,/{f=0} f' "$SKILL")"
+printf '%s\n' "$step8" | grep -qF 'ticket:resolve --ctx' || n "el paso 8 de $SKILL no invoca ticket:resolve"
+step9="$(awk '/^## Step 9,/{f=1} /^## Step 10,/{f=0} f' "$SKILL")"
+for op in "milestone:create" "work:write"; do
+  printf '%s\n' "$step9" | grep -qF "$op" || n "el paso 9 de $SKILL no nombra $op, que es lo que el aterrizaje escribe"
+done
+printf '%s\n' "$step9" | grep -qF 'status: done' || n "el paso 9 de $SKILL no prohibe aterrizar en un corte terminado"
+for tipo in "map:grilling" "map:prototype"; do
+  printf '%s\n' "$step9" | grep -qF "$tipo" || n "el paso 9 de $SKILL no acota el aterrizaje al tipo $tipo"
+done
+printf '%s\n' "$step9" | grep -qF -- '--append-collapse' || n "el paso 9 de $SKILL no nombra --append-collapse, que es como el corte nuevo llega al mapa"
+step10="$(awk '/^## Step 10,/{f=1} f' "$SKILL")"
+printf '%s\n' "$step10" | grep -qF '`next_recommended: map-work`' || n "el paso 10 de $SKILL no cierra con ningun token"
 grep -qF "ticket:claim --ctx" "$SKILL" || n "$SKILL no invoca ticket:claim en su paso 6"
 grep -qF 'Pass no `--release` here' "$SKILL" || n "$SKILL no dice que el paso 6 va sin --release"
 
