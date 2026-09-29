@@ -44,12 +44,13 @@ ANCLAS = ["Destino", "Notas", "Decisiones hasta ahora", "Aún no especificado",
 # esqueleto, porque desde que corta el recorrido la primitiva es su consumidora.
 ANTES_DEL_MAPA = "Antes del mapa"
 
-# Las tres anclas que map:write edita, tomadas de ANCLAS por posición y nunca
+# Las cuatro anclas que map:write edita, tomadas de ANCLAS por posición y nunca
 # reescritas: una segunda copia del texto del encabezado se desincroniza en el primer
 # rename, y el orden de ANCLAS ya es contrato.
 ANCLA_DECISIONES = ANCLAS[2]
 ANCLA_NIEBLA = ANCLAS[3]
 ANCLA_FUERA = ANCLAS[4]
+COLLAPSE_ANCHOR = ANCLAS[5]
 
 # Las seis secciones del comentario de resolución, sin el "## ", en su orden de
 # contrato. Misma regla que ANCLAS: el orden ES contrato, el render itera esta lista y
@@ -567,11 +568,11 @@ def _no_es_encabezado(etiqueta, valor):
 
 def _validar_vineta(etiqueta, valor):
     """Las cinco reglas de forma de una viñeta con título en negrita, sobre el valor que
-    llegó por argumento. La comparten los dos flags que agregan una viñeta, y la etiqueta
-    es un parámetro para que el mensaje nombre el flag que la persona escribió. Devuelve
-    el título, que es además su clave de unicidad. La guarda del encabezado no hace falta
-    acá: la regla de que el valor empieza con ** ya impide que la viñeta sea un
-    encabezado."""
+    llegó por argumento. La comparten los tres flags que agregan una viñeta, y la
+    etiqueta es un parámetro para que el mensaje nombre el flag que la persona escribió.
+    Devuelve el título, que es además su clave de unicidad. La guarda del encabezado no
+    hace falta acá: la regla de que el valor empieza con ** ya impide que la viñeta sea
+    un encabezado."""
     _sin_saltos(etiqueta, valor)
     titulo = titulo_en_negrita(valor) if valor.startswith("**") else None
     if titulo is None:
@@ -616,9 +617,9 @@ def _linea_de_decision(enlace, gist):
 
 
 def _linea_de_vineta(valor):
-    """La ÚNICA casa del marcador de una viñeta del mapa, la de niebla y la de Fuera de
-    alcance. Recibe el valor ya validado por _validar_vineta y solo le pone el
-    marcador."""
+    """La ÚNICA casa del marcador de una viñeta del mapa, la de niebla, la de Fuera de
+    alcance y la de El colapso. Recibe el valor ya validado por _validar_vineta y solo
+    le pone el marcador."""
     return "- %s" % valor
 
 
@@ -892,12 +893,18 @@ def _ediciones_de(args):
         _validar_vineta("--append-out-of-scope", valor)
         anotar(ANCLA_FUERA, 1, _linea_de_vineta(valor))
 
+    for value in args.append_collapse:
+        # El título en negrita es el nombre del corte y también la clave de unicidad,
+        # así que un corte repetido aborta en vez de contarse dos veces.
+        _validar_vineta("--append-collapse", value)
+        anotar(COLLAPSE_ANCHOR, 1, _linea_de_vineta(value))
+
     if not ediciones:
         die(SIN_KEY,
             "map:write no recibió ninguna edición, y escribir cero ediciones es un "
             "error de invocación y no un no-op silencioso",
-            "pasá al menos uno de --append-decision, --append-fog, --remove-fog o "
-            "--append-out-of-scope")
+            "pasá al menos uno de --append-decision, --append-fog, --remove-fog, "
+            "--append-out-of-scope o --append-collapse")
     return ediciones
 
 
@@ -2206,12 +2213,14 @@ def construir_parser():
                              metavar="TITULO")
     p_map_write.add_argument("--append-out-of-scope", action="append", default=[],
                              metavar="LINEA")
+    p_map_write.add_argument("--append-collapse", action="append", default=[],
+                             metavar="VINETA")
     p_map_write.add_argument("--expect-sections")
     p_map_write.set_defaults(func=cmd_map_write)
 
     # --ticket copia la forma de --append-decision: nargs fijo, repetible y con el
     # default explícito. Repetible por la misma razón por la que map:write tiene sus
-    # cuatro flags repetibles: la pasada entera entra en una sola invocación. LABELS es
+    # cinco flags repetibles: la pasada entera entra en una sola invocación. LABELS es
     # una lista separada por comas, y cero labels se pasa como "".
     p_ticket_create = subs.add_parser("ticket:create")
     p_ticket_create.add_argument("--ctx", required=True)
