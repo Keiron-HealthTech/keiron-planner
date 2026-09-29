@@ -1122,9 +1122,9 @@ elif not (isinstance(_ESTIMATES[0], ast.Constant)
     fail("[12] el estimate del grafo de ticket:create no es el entero literal 0; un "
          "False también compara igual a cero y no es lo mismo")
 
-# La segunda mitad cuantifica sobre las OTRAS rutas de creación, que hoy es el conjunto
-# vacío porque work:write sigue stub. El require_nonempty de arriba es sobre el conjunto
-# de rutas, que sí tiene un elemento: sin él la mitad sería vacua sin que se note.
+# La segunda mitad cuantifica sobre las OTRAS rutas de creación: hoy la que emite el
+# issueBatchCreate de work:write. El require_nonempty de arriba es sobre el conjunto de
+# todas las rutas: sin él la mitad sería vacua sin que se note si esa función se fuera.
 _OTRAS_CREADORAS = [nm for nm in CREADORAS if nm not in RUTA_TICKET]
 _CON_ESTIMATE = [nm for nm in _OTRAS_CREADORAS if _valores_de_clave(nm, "estimate")]
 if _CON_ESTIMATE:
