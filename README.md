@@ -25,10 +25,18 @@ Después, una vez por máquina:
 /planner-setup
 ```
 
-`/planner-setup` pide tu Personal API key de Linear, la valida contra la API y la
-guarda en `~/.config/keiron-planner/linear.key`. La key nunca pasa por la
-conversación: el script la lee de la terminal sin mostrarla. Para revisarla o
-borrarla, `/planner-setup --verify` y `/planner-setup --remove`.
+La key nunca pasa por la conversación. El script la pide sin mostrarla, y eso
+necesita una terminal de verdad, que Claude Code no tiene. Por eso `/planner-setup`
+no la pide: te da el comando exacto para pegar en una terminal aparte, algo como
+
+```
+sh '/Users/<usuario>/.claude/plugins/cache/spec-driven-dev/keiron-planner/<versión>/scripts/install.sh'
+```
+
+Ese comando pide tu Personal API key de Linear, la valida contra la API y la
+guarda en `~/.config/keiron-planner/linear.key`. De vuelta en Claude Code,
+`/planner-setup --verify` confirma que quedó bien, y `/planner-setup --remove` la
+borra.
 
 Necesita el `python3` del sistema. En un Mac sin Command Line Tools, el
 instalador lo dice y pide correr `xcode-select --install`.
