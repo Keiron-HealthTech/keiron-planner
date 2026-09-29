@@ -79,15 +79,17 @@ Whether a section exists comes from `sections`, never from a search inside `cont
 Derive the verdict with the contract's table, cited and never copied, out of `counts` and
 `notTakeable` and nothing else. Read `counts.milestones` ONLY when `counts.open` is zero.
 
-When `truncated` names `issues`, `counts.open` is a lower bound and a zero proves nothing.
-Say that and stop with no token: the collapse needs the frontier to be verifiably empty.
-
 With `counts.open` above zero, the map still has open tickets. Say so, write nothing, and stop
 with the token the contract gives that verdict:
 
 - `next_recommended: map-work` when something is takeable
 - `next_recommended: release-claim` when a claim holds the frontier
 - `next_recommended: break-cycle` when only blockers hold it
+
+When `counts.open` is zero and `truncated` names `issues`, `counts.open` is a lower bound and
+the zero proves nothing. Say that and stop with no token: the collapse needs the frontier to
+be verifiably empty. A lower bound above zero still proves open tickets, so it takes the
+branch above.
 
 With `counts.open` zero and `counts.milestones` zero, the verdict is `listo para colapsar`.
 This session is the one that serves it, so it recommends nothing and goes to step 4.
@@ -193,8 +195,11 @@ The fingerprints that step 2 read may go along as `--expect-sections`. It is opt
 drift it reports goes to stderr and never aborts the write.
 
 This is the last write and the only one to the map. When it fails, relay its stderr and stop:
-the milestones and the issues already exist, `## El colapso` is still empty, and a new run
-refuses because issues exist, so the lines are the person's to add by hand.
+rerunning `/map-collapse` does not help, because a new run refuses once issues exist. Offer to
+rerun that same `map:write` invocation, unchanged. It is safe: if the first write never landed,
+the rerun writes the lines; if it landed and only the answer was lost, the rerun aborts because
+the bold title of each cut is its uniqueness key, which confirms the lines are there. Only when
+the rerun fails for any other reason are the lines the person's to add by hand.
 
 ## Step 9, the closing report and its token
 
