@@ -173,8 +173,11 @@ separates them by date for exactly that reason. No block is wired between execut
 the order of execution belongs to the team, and the milestone with its `sortOrder` already
 gives the coarse order.
 
-When it fails, relay its stderr and stop. The cuts stay, empty, and a new run lands in the
-resume offer of step 3.
+When it fails, relay its stderr and stop, and do not rerun the `work:write`: a rejection and
+a lost response look the same, so the issues may exist. Tell the person to check Linear. A new
+run of `/map-collapse` reads step 3: with no issues in any cut it lands in the resume offer,
+and with issues already there it refuses, in which case only the step 8 `map:write` is left
+and it can be run on its own, because step 8 explains its rerun is safe.
 
 ## Step 8, the map, once, under the sixth heading
 

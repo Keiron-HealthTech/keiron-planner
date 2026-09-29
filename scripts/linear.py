@@ -2135,10 +2135,13 @@ def cmd_work_write(args):
         ok, detail, issues = _create_execution(ctx, args.project, plan["issues"], key)
         if not ok:
             die(SIN_KEY,
-                "el issueBatchCreate no confirmó: %s. No quedó escrito nada de este "
-                "aterrizaje: ni las issues, ni las relaciones, ni el label" % detail,
-                "volvé a correr la misma invocación entera: como no aterrizó nada, "
-                "repetirla no duplica nada")
+                "el issueBatchCreate no confirmó y NO SE SABE si las issues quedaron "
+                "escritas: un rechazo y una respuesta perdida no se distinguen: %s. "
+                "Las relaciones y el label no se intentaron" % detail,
+                "mirá en Linear si las issues de ejecución de este aterrizaje existen "
+                "ANTES de volver a correr: si no están, repetí la misma invocación "
+                "entera; si están, no la repitas, porque repetirla tras un lote que "
+                "aterrizó duplica cada issue y este adaptador no sabe borrarlas")
     linked = []
     if plan["relations"]:
         ok, detail, linked = _link_decisions(plan["relations"], issues, key)
