@@ -50,6 +50,12 @@ trabajo.
 Lo que produce un colapso o un aterrizaje. Su título es un imperativo y no una
 pregunta, y la issue no lleva el label `map`: no es un ticket de decisión.
 
+Ni el título ni el cuerpo copian un número o un estado que otra issue del mismo
+colapso puede mover: nombran el archivo donde vive. La issue se toma semanas después
+de escrita, con los cortes anteriores ya ejecutados, y un conteo copiado llega
+vencido. `Qué hay que construir` dice qué tiene que ser cierto al terminar, no
+cuánto falta para llegar.
+
 ```
 ## Qué hay que construir
 
