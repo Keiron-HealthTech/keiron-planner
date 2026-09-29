@@ -222,6 +222,114 @@ if [ "$citan" != "$esperado_subagente" ]; then
   fail "[67] a $SUBAGENTE lo tienen que nombrar skills/map-new/SKILL.md y skills/map-work/SKILL.md, y lo nombran: $(printf '%s\n' "$citan" | tr '\n' ' ')"
 fi
 
+# --- afirmación 70: cada skill declara un name: igual a su directorio ---
+
+# Reusa $fuentes por la misma regla que la 67: una segunda extracción sería una segunda
+# copia del alcance del roster, y las dos podrían divergir.
+skills_md="$(printf '%s\n' "$fuentes" | grep '^skills/' || true)"
+require_nonempty "$skills_md" "[70] el recorrido de skills/ no matcheó ningún SKILL.md; la comparación de name: con el directorio probaría sobre el conjunto vacío"
+
+while IFS= read -r f; do
+  if [ -z "$f" ]; then continue; fi
+  dir="${f#skills/}"
+  dir="${dir%/SKILL.md}"
+  if [ "$(head -1 "$f")" != "---" ]; then
+    fail "[70] $f no abre con un frontmatter"
+    continue
+  fi
+  # Sin esta guarda, la extracción de abajo leería el cuerpo entero y un name: del cuerpo
+  # contaría como si fuera del frontmatter.
+  if ! awk 'NR > 1 && $0 == "---" { c = 1; exit } END { exit !c }' "$f"; then
+    fail "[70] $f abre un frontmatter y nunca lo cierra"
+    continue
+  fi
+  frontmatter="$(awk 'NR==1 && $0 != "---" {exit} NR==1 {next} /^---$/ {exit} {print}' "$f")"
+  lineas="$(printf '%s\n' "$frontmatter" | grep '^name:' || true)"
+  if [ -z "$lineas" ]; then
+    fail "[70] $f no declara name: en su frontmatter"
+    continue
+  fi
+  if [ "${lineas%%$'\n'*}" != "$lineas" ]; then
+    fail "[70] $f declara más de una línea name:"
+    continue
+  fi
+  valor="$(printf '%s\n' "${lineas#name:}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  case "$valor" in
+    \"*\") valor="${valor#\"}"; valor="${valor%\"}" ;;
+    \'*\') valor="${valor#\'}"; valor="${valor%\'}" ;;
+  esac
+  if [ -z "$valor" ]; then
+    fail "[70] $f declara name: vacío"
+    continue
+  fi
+  if [ "$valor" != "$dir" ]; then
+    fail "[70] $f declara name: '$valor' y su directorio es $dir"
+  fi
+done <<EOF
+$skills_md
+EOF
+
+# --- afirmación 50: las filas viva de CHECKS.md son los [N] que emiten los scripts ---
+
+# Los dos encabezados que acotan la tabla del registro. La de las retiradas también
+# abre sus filas con un número, así que sin el alcance entrarían al conjunto. Si uno se
+# renombra, la extracción da vacío y require_nonempty corta.
+DESDE="## Las no retiradas"
+HASTA="## Las retiradas"
+
+# Estado se lee contando desde el final de la fila y no desde el principio: un pipe
+# dentro de una celda del medio corre las columnas de la izquierda y no las de la derecha.
+# Una parte que no se normaliza a un número sale tal como está escrita, para que la
+# falla nombre la celda y no lo que quedó de ella.
+registro="$(awk -v desde="$DESDE" -v hasta="$HASTA" '
+  $0 == desde { dentro = 1; next }
+  $0 == hasta { dentro = 0; next }
+  !dentro { next }
+  /^\| / {
+    n = split($0, c, "|")
+    if (n < 4) next
+    estado = c[n - 2]
+    gsub(/^[ \t]+|[ \t]+$/, "", estado)
+    if (estado != "viva") next
+    celda = c[2]
+    gsub(/^[ \t]+|[ \t]+$/, "", celda)
+    k = split(celda, partes, "+")
+    for (i = 1; i <= k; i++) {
+      p = partes[i]
+      sub(/[a-z]$/, "", p)
+      if (p ~ /^[0-9]+$/) print p; else print partes[i]
+    }
+  }
+' "$CHECKS_MD" | sort -u || true)"
+require_nonempty "$registro" "[50] ninguna fila viva entre '$DESDE' y '$HASTA' de $CHECKS_MD; un encabezado se renombró y la igualdad probaría sobre el conjunto vacío"
+
+vivas="$(printf '%s\n' "$registro" | grep '^[0-9][0-9]*$' || true)"
+malformadas="$(printf '%s\n' "$registro" | grep -v '^[0-9][0-9]*$' | tr '\n' ' ' || true)"
+if [ -n "$malformadas" ]; then
+  fail "[50] estas celdas Nº de filas viva de $CHECKS_MD no se normalizan a un número: ${malformadas% }"
+fi
+
+checks="$(find "$SCRIPTS" -maxdepth 1 -type f -name 'check-*' | sort || true)"
+require_nonempty "$checks" "[50] el glob de $SCRIPTS/check-* no matcheó ningún archivo; el lado de los scripts daría vacío"
+
+# El ancla es la comilla doble que abre el literal, y solo ella: una emisión escrita de
+# otra forma no se cosecha y su fila viva queda sola, que es fallar cerrado. Sin ancla,
+# un subíndice como celdas[1] entraría al conjunto.
+emitidos="$(printf '%s\n' "$checks" | xargs grep -ohE '"\[[0-9]+\]' \
+  | sed -E 's/^"\[//; s/\]$//' | sort -u || true)"
+require_nonempty "$emitidos" "[50] ningún archivo de $SCRIPTS/check-* emite un [N] al principio de un literal entre comillas dobles; la igualdad probaría sobre el conjunto vacío"
+
+# Dos fallas y no una: son dos defectos con dos arreglos distintos, escribir el check o
+# pasar la fila a viva.
+solo_registro="$(comm -23 <(printf '%s\n' "$vivas") <(printf '%s\n' "$emitidos") | tr '\n' ' ' || true)"
+solo_scripts="$(comm -13 <(printf '%s\n' "$vivas") <(printf '%s\n' "$emitidos") | tr '\n' ' ' || true)"
+if [ -n "$solo_registro" ]; then
+  fail "[50] estas afirmaciones dicen viva en $CHECKS_MD y ningún script emite su [N]: ${solo_registro% }"
+fi
+if [ -n "$solo_scripts" ]; then
+  fail "[50] estos [N] los emite un script y ninguna fila viva de $CHECKS_MD los declara: ${solo_scripts% }"
+fi
+
 report
 
 # Conteos derivados y no escritos, igual que los que imprime check-language: el cardinal
@@ -233,4 +341,7 @@ quienes="$(printf '%s\n' "$citadores" | tr '\n' ' ')"
 quienes="${quienes% }"
 subagentistas="$(printf '%s\n' "$citan" | tr '\n' ' ')"
 subagentistas="${subagentistas% }"
-echo "$CHECK_NAME: OK - el ROUTE: de $COMANDO es read-only y no tiene skill, los $tokens tokens de $CONTRATO son exactamente los que citan los $archivos archivos de commands/ y skills/, y quienes citan son $quienes, el ROUTE: de cada archivo de commands/ que rutea a una skill apunta a una que existe, $ruteadores en total, el flag de bootstrap vive solo en $esperado_flag, y a $SUBAGENTE lo nombran por su ruta exactamente $subagentistas"
+skills_ok="$(printf '%s\n' "$skills_md" | grep -c . || true)"
+numeros_vivos="$(printf '%s\n' "$vivas" | grep -c . || true)"
+emisores="$(printf '%s\n' "$checks" | xargs grep -lE '"\[[0-9]+\]' 2>/dev/null | grep -c . || true)"
+echo "$CHECK_NAME: OK - el ROUTE: de $COMANDO es read-only y no tiene skill, los $tokens tokens de $CONTRATO son exactamente los que citan los $archivos archivos de commands/ y skills/, y quienes citan son $quienes, el ROUTE: de cada archivo de commands/ que rutea a una skill apunta a una que existe, $ruteadores en total, el flag de bootstrap vive solo en $esperado_flag, a $SUBAGENTE lo nombran por su ruta exactamente $subagentistas, las $skills_ok skills de skills/ declaran un name: igual a su directorio, y los $numeros_vivos números viva de $CHECKS_MD son exactamente los [N] que emiten los $emisores scripts de $SCRIPTS/check-*"
