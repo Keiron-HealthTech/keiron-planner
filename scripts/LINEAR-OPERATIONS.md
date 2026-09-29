@@ -34,16 +34,17 @@ para que el adapter tenga su contrato a mano.
 
 | Código | Constante | Falla dura | Remediación | Marca |
 | --- | --- | --- | --- | --- |
-| 3 | `SIN_KEY` | No hay credencial en disco, está vacía, o Linear la rechazó. | Instalar o reinstalar la credencial corriendo `/planner-setup`. | `/planner-setup` |
+| 3 | `SIN_KEY` | No hay credencial en disco, está vacía, o Linear la rechazó: un error con `AUTHENTICATION_ERROR` o `FORBIDDEN`, o con status 401 o 403. | Instalar o reinstalar la credencial corriendo `/planner-setup`. | `/planner-setup` |
 | 4 | `SIN_TEAM` | El team que nombra `--team` no existe, o la credencial no lo ve. | Corregir la key del team que se le pasa a `--team`. | la key del team |
 | 5 | `SIN_CERRADOS` | El team no tiene un estado `completed`, o no tiene uno `canceled`. | Revisar el workflow del team y dejarle los dos estados. | el workflow del team |
 | 6 | `SIN_LABEL_MAP` | El label `map` no existe en el workspace. | Correr el preflight con `--bootstrap` la primera vez, cuando el label todavía no está. | `--bootstrap` |
+| 7 | `SIN_API` | Linear devolvió un error que no es de credencial: un rate limit, un 5xx, una query rota, o la red no llegó. | Esperar un minuto y reintentar. La credencial no se toca. | `reintenta en un minuto` |
 
-Los cuatro códigos son distintos entre sí y ninguno es cero. La columna `Marca` es la
+Los cinco códigos son distintos entre sí y ninguno es cero. La columna `Marca` es la
 subcadena que el mensaje de esa falla emite por stderr, y se copia byte a byte: la
 comparación es literal, va sin acentos para que no dependa de la codificación de la
-salida, y las cuatro marcas tienen que ser distintas entre sí, porque una remediación
-genérica pasaría las cuatro sin distinguirlas. Reformular una marca sin tocar el
+salida, y las cinco marcas tienen que ser distintas entre sí, porque una remediación
+genérica pasaría las cinco sin distinguirlas. Reformular una marca sin tocar el
 mensaje, o al revés, deja el contrato y el script en desacuerdo.
 
 Los otros tres códigos que el adapter puede devolver no son fallas duras del preflight.

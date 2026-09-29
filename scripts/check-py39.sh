@@ -54,7 +54,7 @@ for op in $operaciones; do
 done
 
 # --- afirmación 58 --------------------------------------------------------------
-# El ejercicio offline de los cinco desenlaces del preflight. Ni los códigos ni las
+# El ejercicio offline de los seis desenlaces del preflight. Ni los códigos ni las
 # marcas viven en este script: salen de la tabla de códigos de salida del contrato.
 
 tabla="$(awk -F'|' '
@@ -88,6 +88,16 @@ spec.loader.exec_module(mod)
 def _sin_red(*a, **k):
     raise AssertionError("el check tocó la red: el seam del transporte se movió")
 mod.urllib.request.urlopen = _sin_red
+_post_real = mod._post
+
+# Un HTTPError con un cuerpo que no es JSON, como el de un proxy o un 5xx de borde. Pasa
+# por el _post real, así que lo que se prueba es que el status sobrevive a la síntesis y
+# llega al clasificador.
+def _urlopen_que_falla(codigo):
+    def _urlopen(*a, **k):
+        raise mod.urllib.error.HTTPError(mod.ENDPOINT, codigo, "falso", {},
+                                         io.BytesIO(b"<html>no es JSON</html>"))
+    return _urlopen
 
 RUTA = os.path.join(os.environ["XDG_CONFIG_HOME"], "keiron-planner", "linear.key")
 
@@ -122,7 +132,21 @@ def sano(labels=None, discovery=False):
 
 RESPUESTAS = {
     "exito": sano(discovery=True),
-    "credencial-rechazada": {"errors": [{"message": "Authentication required"}]},
+    # La forma que devuelve Linear ante una key inválida, medida el 2026-09-29.
+    "credencial-rechazada": {"errors": [{
+        "message": "Authentication required, not authenticated",
+        "extensions": {"type": "authentication error", "code": "AUTHENTICATION_ERROR",
+                       "statusCode": 401, "http": {"status": 401}}}]},
+    "sin-permiso": {"errors": [{"message": "Forbidden",
+                                "extensions": {"code": "FORBIDDEN", "statusCode": 403}}]},
+    "rate-limit": {"errors": [{"message": "Rate limit exceeded",
+                               "extensions": {"code": "RATELIMITED", "statusCode": 400,
+                                              "http": {"status": 400}}}]},
+    "query-rota": {"errors": [{"message": "Cannot query field",
+                               "extensions": {"code": "GRAPHQL_VALIDATION_FAILED"}}]},
+    "datos-parciales": dict(sano(), errors=[{"message": "Internal error",
+                                             "extensions": {"code": "INTERNAL_SERVER_ERROR"}}]),
+    "red-caida": {"errors": [{"message": "no se pudo alcanzar la API: timed out"}]},
     "sin-team": {"data": {"viewer": {"id": "v1"}, "team": None,
                           "issueLabels": {"nodes": []}}},
     "sin-cerrados": {"data": {"viewer": {"id": "v1"},
@@ -140,6 +164,13 @@ CASOS = [
     ("sin-cerrados",         "sin-cerrados",  False, True,  None, "SIN_CERRADOS"),
     ("sin-label-map",        "sin-label-map", False, True,  None, "SIN_LABEL_MAP"),
     ("sin-map+bootstrap",    "sin-label-map", True,  True,  0,    None),
+    ("sin-permiso",          "sin-permiso",   False, True,  None, "SIN_KEY"),
+    ("http-401-sin-json",    "http-401",      False, True,  None, "SIN_KEY"),
+    ("rate-limit",           "rate-limit",    False, True,  None, "SIN_API"),
+    ("query-rota",           "query-rota",    False, True,  None, "SIN_API"),
+    ("datos-parciales",      "datos-parciales", False, True, None, "SIN_API"),
+    ("red-caida",            "red-caida",     False, True,  None, "SIN_API"),
+    ("http-503-sin-json",    "http-503",      False, True,  None, "SIN_API"),
 ]
 
 # El ctx completo que cada caso de éxito tiene que producir, no solo su forma: done y
@@ -174,7 +205,11 @@ if len(set(marcas)) != len(marcas):
 
 for nombre, resp, bootstrap, con_key, esperado_ok, constante in CASOS:
     plantar() if con_key else borrar()
-    if resp is not None:
+    mod.urllib.request.urlopen = _sin_red
+    if resp is not None and resp.startswith("http-"):
+        mod._post = _post_real
+        mod.urllib.request.urlopen = _urlopen_que_falla(int(resp[len("http-"):]))
+    elif resp is not None:
         mod._post = _post_falso(RESPUESTAS[resp])
     args = Args(); args.team = "CRM"; args.bootstrap = bootstrap
     so, se = io.StringIO(), io.StringIO()
@@ -217,8 +252,8 @@ for nombre, resp, bootstrap, con_key, esperado_ok, constante in CASOS:
 
 codigos = sorted(set(v[0] for v in tabla.values()))
 print("codigos_distintos=%s" % codigos)
-if len(codigos) != 4 or any(c in (0, 1, 2) for c in codigos):
-    fallas.append("los códigos de la tabla no son cuatro distintos, o alguno es 0, 1 o 2")
+if len(codigos) != 5 or any(c in (0, 1, 2) for c in codigos):
+    fallas.append("los códigos de la tabla no son cinco distintos, o alguno es 0, 1 o 2")
 print("fallas=%s" % (fallas if fallas else "ninguna"))
 sys.exit(1 if fallas else 0)
 PY
@@ -227,10 +262,10 @@ if printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas=ninguna'; then
   :
 else
   printf '%s\n' "$salida" | sed 's/^/  /' >&2
-  fail "[58] el preflight no distingue sus cinco desenlaces, o un mensaje no nombra su remediación"
+  fail "[58] el preflight no distingue sus seis desenlaces, o un mensaje no nombra su remediación"
 fi
 
 report
 
 n="$(printf '%s\n' "$operaciones" | grep -c . || true)"
-echo "$CHECK_NAME: OK - $adapter importa, sus $n subcomandos responden --help, y el preflight distingue sus cinco desenlaces bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
+echo "$CHECK_NAME: OK - $adapter importa, sus $n subcomandos responden --help, y el preflight distingue sus seis desenlaces bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"

@@ -406,7 +406,7 @@ else:
              "tiene que alcanzar solo el de SIN_LABEL_MAP"
              % sorted(codigos_de_la_guarda))
 
-# --- afirmación 40: cuatro códigos distintos -----------------------------------
+# --- afirmación 40: cinco códigos distintos ------------------------------------
 con_sys_exit = sorted(set(nm for nm, fn in FUNCS.items() for n in ast.walk(fn)
                           if isinstance(n, ast.Call)
                           and invocado(n.func) == "sys.exit"))
@@ -440,9 +440,9 @@ for n in llamadas_die:
 if opacos:
     fail("[40] %d llamadas a die tienen un código que no resuelve a un entero, o no "
          "llevan los tres argumentos" % opacos)
-if len(codigos) != 4:
+if len(codigos) != 5:
     fail("[40] las fallas duras alcanzables tienen %d códigos distintos y tienen "
-         "que tener cuatro: %s" % (len(codigos), sorted(codigos)))
+         "que tener cinco: %s" % (len(codigos), sorted(codigos)))
 malos = [c for c in codigos if c in (0, 1, 2)]
 if malos:
     fail("[40] estos códigos de falla dura colisionan con los reservados: %s" % malos)

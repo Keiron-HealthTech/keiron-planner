@@ -63,10 +63,18 @@ SIN_KEY = 3
 SIN_TEAM = 4
 SIN_CERRADOS = 5
 SIN_LABEL_MAP = 6
+SIN_API = 7
 NO_IMPLEMENTADO = 9
 
+# Lo que Linear manda cuando la credencial no sirve, medido: HTTP 401 con
+# extensions.code AUTHENTICATION_ERROR. El 403 y FORBIDDEN entran por la misma puerta
+# porque su remediación también es otra key. Todo lo demás, un rate limit, un 5xx o una
+# query rota, no dice nada de la credencial.
+RECHAZOS_DE_CREDENCIAL = ("AUTHENTICATION_ERROR", "FORBIDDEN")
+STATUS_DE_CREDENCIAL = (401, 403)
+
 # El tope de intentos del read-modify-write, y NO un código de salida: va en su propio
-# bloque para que nadie lo lea como el quinto. Es el único literal del contador en todo
+# bloque para que nadie lo lea como uno más. Es el único literal del contador en todo
 # el archivo, y el handler que reintenta lo referencia por nombre en el iter de su For.
 MAX_INTENTOS = 2
 
@@ -325,7 +333,10 @@ def _post(query, variables, key):
         try:
             return json.loads(exc.read().decode("utf-8"))
         except ValueError:
-            return {"errors": [{"message": "HTTP %s" % exc.code}]}
+            # El status viaja en la misma forma que usa Linear, para que quien
+            # clasifica el error lo lea igual venga de donde venga.
+            return {"errors": [{"message": "HTTP %s" % exc.code,
+                                "extensions": {"http": {"status": exc.code}}}]}
     # HTTPError va arriba porque es subclase de URLError: invertir el orden se come la
     # rama que ya existía. Y socket.timeout va aparte porque bajo 3.9 no deriva de
     # URLError, así que la cláusula de arriba no lo atrapa.
@@ -336,11 +347,29 @@ def _post(query, variables, key):
         return {"errors": [{"message": "%s no respondió a tiempo" % ENDPOINT}]}
 
 
+def _rechaza_la_credencial(errores):
+    """Si algún error de la respuesta es de credencial, por su code o por su status."""
+    for error in errores:
+        extensiones = (error.get("extensions") if isinstance(error, dict) else None) or {}
+        if extensiones.get("code") in RECHAZOS_DE_CREDENCIAL:
+            return True
+        status = (extensiones.get("http") or {}).get("status")
+        if status in STATUS_DE_CREDENCIAL or extensiones.get("statusCode") in STATUS_DE_CREDENCIAL:
+            return True
+    return False
+
+
 def resolver_ctx(payload, bootstrap, team):
-    """Pura: de la respuesta al ctx. Tres de las cuatro fallas duras viven acá."""
-    if payload.get("errors"):
-        die(SIN_KEY, "la API de Linear rechazó la credencial guardada",
-            "corre /planner-setup de nuevo con una key nueva")
+    """Pura: de la respuesta al ctx. Cuatro de las cinco fallas duras viven acá."""
+    errores = payload.get("errors")
+    if errores:
+        if _rechaza_la_credencial(errores):
+            die(SIN_KEY, "la API de Linear rechazó la credencial guardada",
+                "corre /planner-setup de nuevo con una key nueva")
+        die(SIN_API,
+            "la API de Linear falló por algo que no es la credencial: %s"
+            % "; ".join(_errores_de(payload)),
+            "reintenta en un minuto; la credencial guardada no se toca")
     datos = payload.get("data") or {}
     equipo = datos.get("team")
     if not equipo:
@@ -1014,9 +1043,8 @@ def aplicar_ediciones(lineas, ediciones, reintento=False):
 
 def _errores_de(payload):
     """Los mensajes de error de una respuesta, o la lista vacía. NO muere: la ruta de
-    escritura necesita decidir si reintenta, y resolver_datos no le sirve porque muere.
-    Duplica a propósito el extractor de resolver_datos, que este change tiene prohibido
-    tocar para que resolver_ctx lo siga tratando igual."""
+    escritura necesita decidir si reintenta, y el preflight necesita el texto para su
+    mensaje antes de elegir con qué código muere."""
     textos = []
     for error in (payload.get("errors") or []):
         mensaje = error.get("message") if isinstance(error, dict) else None
