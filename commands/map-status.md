@@ -75,9 +75,9 @@ the row that matches the counts carries the token, and that row is the only plac
 is written. The one token this command emits without a verdict behind it is the no-map path of
 step 1, already written above.
 
-## The report: six blocks and no seventh
+## The report: seven blocks and no eighth
 
-Print these six, and not one more. The block labels are the Spanish the person reads.
+Print these seven, and not one more. The block labels are the Spanish the person reads.
 
 1. `Destino`: the line of the map, taken from `content` only when the fingerprint of the
    `Destino` section is not null.
@@ -99,6 +99,10 @@ Print these six, and not one more. The block labels are the Spanish the person r
    lines the adapter already wrote with their consequence. Do not reformulate a consequence:
    each one lives in the adapter and that is its only house. With `truncated` empty this block
    says nothing at all.
+7. `Decisiones sin aterrizar`: the entries of `unlanded`, each by name and with its link, and
+   its age computed from `completedAt` and labelled for what it is: the date the decision was
+   closed. With `unlanded` empty this block says exactly that, there are none. It is never a
+   bare count.
 
 A ticket that is claimed AND blocked belongs in block 4 and in block 5, and choosing one of
 the two is forbidden. That is the entire reason `notTakeable` is one list and not two: with
@@ -107,8 +111,21 @@ two lists something has to be chosen, and the block that loses the ticket lies.
 Names are names. The Linear identifier travels inside the link and never in place of the
 name, in any block: a wall of identifiers is unreadable.
 
-There is no seventh block here. Decisions that never landed arrive with the landing, and
-their predicate needs fields this query deliberately does not ask for.
+A decision ticket is unlanded when its type label is `map:grilling` or `map:prototype`, it is
+closed, its `completedAt` is later than the `createdAt` of the oldest milestone of the Project,
+it has no `related` relation in `relations`, and it does not carry the `map:no-landing` label.
+The adapter evaluates that predicate and fills `unlanded`; this command only renders it, and
+re-reads neither `relations` nor `labels`.
+
+The block is printed even when it is empty: a report that can never reach zero is one people
+stop reading, and a block that only appears when something is wrong never shows that nothing
+is. Age is the whole signal here, because a decision left unlanded yesterday is a session that
+was cut short and one left two months ago is a hole, and without the date they read the same.
+
+This block is not a verdict and not a token. The state stays what the verdict derives, and
+`unlanded` feeds no row of it. The block is disjoint from blocks 3, 4 and 5: `tickets` and
+`notTakeable` carry open tickets only, and these are closed, so no ticket can appear in this
+block and in another one.
 
 ### The date in block 4 is the date of the ticket
 
@@ -141,7 +158,7 @@ The adapter gains no key for this.
   are patches and that nobody is looking at them, without turning the report into a copy of
   the map.
 
-The count feeds no verdict and becomes no seventh block. It sits next to the verdict and is
+The count feeds no verdict and becomes no eighth block. It sits next to the verdict and is
 never folded into it: two Projects identical in their three counts, one with no patches and one
 with twenty, emit the same verdict and the same token. The fog carries a number while blocks
 3, 4 and 5 carry names, and that is not an inconsistency: the fog is prose inside the map with
