@@ -1,7 +1,7 @@
 {
   "name": "keiron-planner",
   "description": "Planifica proyectos grandes sobre Linear: mapa de decisiones, frontera y colapso a milestones",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": { "name": "Keiron-HealthTech" },
   "dependencies": ["spec-driven-dev"]
 }

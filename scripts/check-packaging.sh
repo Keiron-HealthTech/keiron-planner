@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 . scripts/_common.sh
 
-# Afirmaciones 14, 15, 17, 18, 20, 21, 56 y 57.
+# Afirmaciones 14, 15, 17, 18, 20, 21, 56, 57 y 71.
 
 # --- tercer tier: sin fuente y sin herramientas no hay nada que chequear ---
 
@@ -49,10 +49,12 @@ fi
 aislado=""
 hogar=""
 tricotomia=""
+sintty=""
 limpiar() {
   if [ -n "$aislado" ]; then rm -rf "$aislado"; fi
   if [ -n "$hogar" ]; then rm -rf "$hogar"; fi
   if [ -n "$tricotomia" ]; then rm -rf "$tricotomia"; fi
+  if [ -n "$sintty" ]; then rm -rf "$sintty"; fi
 }
 trap limpiar EXIT
 
@@ -337,6 +339,29 @@ if ! printf '%s\n' "$dicho" | grep -qF 'No hay un python3 que funcione'; then
   fail "[57] sin un python3 que funcione, $instalador --verify culpa a la credencial: $(printf '%s\n' "$dicho" | tail -1)"
 fi
 
+# --- afirmación 71: sin TTY, el instalador da un comando que se puede pegar ---
+
+# /planner-setup corre siempre dentro de Claude Code, que nunca le da TTY al script. Un
+# mensaje que mande a correr /planner-setup en una terminal no tiene salida, así que lo
+# único que sirve es la ruta absoluta del propio script. Se invoca con la ruta relativa
+# a propósito: es la forma en que un $0 sin resolver se escaparía al mensaje.
+if ! sintty="$(mktemp -d "${TMPDIR:-/tmp}/kp-notty.XXXXXX")"; then
+  bail "[71] no se pudo crear el directorio temporal que aísla HOME"
+fi
+rc=0
+dicho="$(HOME="$sintty" XDG_CONFIG_HOME="$sintty/.config" \
+  dash "$instalador" < /dev/null 2>&1)" || rc=$?
+if [ "$rc" -ne 1 ]; then
+  fail "[71] sin TTY, $instalador salió $rc y tiene que salir 1"
+fi
+comando="sh '$(pwd -P)/$instalador'"
+if ! printf '%s\n' "$dicho" | grep -qF "$comando"; then
+  fail "[71] sin TTY, el mensaje de $instalador no trae el comando $comando para pegar en una terminal"
+fi
+if printf '%s\n' "$dicho" | grep -qE 'ejecuta /planner-setup (ahí|en)'; then
+  fail "[71] sin TTY, el mensaje de $instalador manda a correr /planner-setup en una terminal, donde no existe"
+fi
+
 report
 
-echo "$CHECK_NAME: OK - manifiesto válido con author, dependencies en un string pelado, el README trae el snippet de instalación y nombra /planner-setup, nada trackeado matchea *.key, y el instalador chequea el intérprete, guarda la key en su ruta sin imprimirla, corre bajo dash sin diagnóstico, y su validación manda la credencial en una línea de config, distingue los tres desenlaces, y no culpa a la credencial de una herramienta que falta"
+echo "$CHECK_NAME: OK - manifiesto válido con author, dependencies en un string pelado, el README trae el snippet de instalación y nombra /planner-setup, nada trackeado matchea *.key, y el instalador chequea el intérprete, guarda la key en su ruta sin imprimirla, corre bajo dash sin diagnóstico, y su validación manda la credencial en una línea de config, distingue los tres desenlaces, no culpa a la credencial de una herramienta que falta, y sin TTY da la ruta absoluta del script para pegar en una terminal"

@@ -11,8 +11,9 @@ do nothing else. There is no skill to load and no discipline to conduct.
 
 The script needs a real TTY to read the key without echoing it, and refuses without one.
 If it says it has no TTY, do not feed it the key through a pipe, a heredoc, or an
-environment variable: tell the person to open a terminal, run `/planner-setup` there, and
-stop.
+environment variable. Its message carries the exact command the person pastes into a
+terminal outside Claude Code: relay it verbatim and stop. Never tell them to run
+`/planner-setup` in a terminal, because it only exists inside Claude Code.
 
 Never ask the person to paste the key into this conversation, and never read, print, or
 repeat the contents of the key file. The script is the only thing that touches it.

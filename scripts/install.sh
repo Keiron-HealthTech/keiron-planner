@@ -140,11 +140,20 @@ cmd_install() {
   # primera pregunta y no antes de la última: sin TTY, un read choca con EOF y bajo
   # set -e mata el script en el acto, dejando el prompt colgado sin explicación y sin
   # decir que no hay TTY, que es la condición de la que depende quien lo invoca.
+  #
+  # El mensaje da la ruta absoluta de este mismo archivo y no el nombre del comando:
+  # /planner-setup corre siempre dentro de Claude Code, que nunca tiene TTY, así que
+  # mandar a la persona a correrlo de nuevo la deja en el mismo lugar.
   if [ ! -t 0 ]; then
+    _self="$(cd "$(dirname "$0")" && pwd -P)/$(basename "$0")"
     die "Necesito una terminal de verdad para pedir la key sin mostrarla.
 
-Este script se está ejecutando sin TTY, por ejemplo desde un pipe, un hook o un
-agente. Abre una terminal y ejecuta /planner-setup ahí.
+Claude Code ejecuta este script sin TTY. Abre una terminal aparte, fuera de Claude
+Code, y pega esto:
+
+  sh '$_self'
+
+Después, de vuelta en Claude Code, /planner-setup --verify confirma que quedó bien.
 
 No guardé nada."
   fi
@@ -206,7 +215,7 @@ Casi siempre es una de estas tres:
   - la key es de otro workspace
   - la revocaste y Linear ya no la conoce
 
-No guardé nada. Genera una nueva y ejecuta /planner-setup otra vez."
+No guardé nada. Genera una nueva y vuelve a ejecutar este mismo comando."
   fi
 
   mkdir -p "${KEY_FILE%/*}"
