@@ -1513,6 +1513,30 @@ for _i51 in _WORK_STATEMENT_INDEXES:
             fail("[51] en %s la guarda de la sentencia %d no nombra la lista de "
                  "issues, ni como plan[\"issues\"] ni como args.issue, así que "
                  "guarda otra cosa" % (_WORK_HANDLER, _i51))
+        _negated51 = any(
+            (isinstance(n, ast.UnaryOp) and isinstance(n.op, ast.Not))
+            or (isinstance(n, ast.Compare)
+                and any(isinstance(op, (ast.Eq, ast.Is, ast.Lt, ast.LtE))
+                        for op in n.ops)
+                and any((isinstance(x, ast.Constant) and x.value in (None, False, 0, ""))
+                        or (isinstance(x, (ast.List, ast.Tuple, ast.Dict))
+                            and not (x.keys if isinstance(x, ast.Dict) else x.elts))
+                        for x in [n.left] + n.comparators))
+            for n in ast.walk(_test51))
+        if _negated51:
+            fail("[51] en %s la guarda de la sentencia %d niega la lista de issues "
+                 "(not, o una comparación con vacío, cero, False o None), así que "
+                 "llamaría a issueBatchCreate justo cuando la lista está vacía"
+                 % (_WORK_HANDLER, _i51))
+        if any(_alcanza_mutation(st, "issueBatchCreate")
+               for st in _WORK_BODY[_i51].orelse):
+            fail("[51] en %s la sentencia %d alcanza issueBatchCreate por el orelse "
+                 "de la guarda, que es la rama de la lista vacía"
+                 % (_WORK_HANDLER, _i51))
+        if not any(_alcanza_mutation(st, "issueBatchCreate")
+                   for st in _WORK_BODY[_i51].body):
+            fail("[51] en %s la sentencia %d no alcanza issueBatchCreate por el "
+                 "cuerpo de la guarda" % (_WORK_HANDLER, _i51))
 
 # --- afirmación 52: el ticket de decisión del lado issueId -----------------------
 
