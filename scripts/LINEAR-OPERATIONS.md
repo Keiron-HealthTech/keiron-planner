@@ -47,7 +47,9 @@ genérica pasaría las cuatro sin distinguirlas. Reformular una marca sin tocar 
 mensaje, o al revés, deja el contrato y el script en desacuerdo.
 
 Los otros tres códigos que el adapter puede devolver no son fallas duras del preflight.
-El **9** es el de los stubs, los dos subcomandos que todavía no tienen cuerpo, `milestone:create` y `work:write`. El
+El **9** (`NO_IMPLEMENTADO`) es el de un subcomando sin cuerpo. Hoy los doce
+tienen cuerpo, así que ninguno lo emite: el código y la función `cmd_stub` que lo
+devuelve quedan definidos, sin ningún subcomando registrado contra ella. El
 **2** lo emite `argparse`, y cubre tres casos: falta el subcomando, falta un argumento
 requerido, o el subcomando no existe. El **1** queda reservado para lo que el script no
 pudo decidir.
