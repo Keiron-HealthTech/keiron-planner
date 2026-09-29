@@ -1568,6 +1568,127 @@ else:
         fail("[52] estas funciones de ticket:block/resolve/rule-out postean una "
              "constante con type: related: %s" % _RELATED_ELSEWHERE)
 
+# --- afirmación 69: map:write escribe bajo El colapso solo por --append-collapse -
+
+# Precedente: la 64 por declarar un flag y resolver sobre qué subparsers se declara, la
+# 65 por atar un nombre a su único sitio por identidad de nodo y por contar un literal
+# por igualdad, y la 62 por los dos handlers de resolución.
+_COLLAPSE_FLAG = ARGS_DE["map:write"].get("--append-collapse")
+require_nonempty(_COLLAPSE_FLAG,
+                 "[69] map:write no declara --append-collapse; la afirmación probaría "
+                 "sobre el conjunto vacío")
+
+# Cláusula 1: el flag es repetible y vive solo en map:write.
+_collapse_kws = dict((kw.arg, kw.value) for kw in _COLLAPSE_FLAG.keywords)
+_collapse_action = _collapse_kws.get("action")
+if not (isinstance(_collapse_action, ast.Constant)
+        and _collapse_action.value == "append"):
+    fail("[69] --append-collapse no lleva action=\"append\", así que el colapso no "
+         "podría escribir todos sus cortes en una sola invocación")
+_COLLAPSE_DECLS = [n for n in ast.walk(ARBOL) if isinstance(n, ast.Call)
+                   and isinstance(n.func, ast.Attribute)
+                   and n.func.attr == "add_argument"
+                   and n.args and isinstance(n.args[0], ast.Constant)
+                   and n.args[0].value == "--append-collapse"]
+_collapse_parsers = sorted(set(BIND.get(getattr(n.func.value, "id", ""), "?")
+                               for n in _COLLAPSE_DECLS))
+if _collapse_parsers != ["map:write"]:
+    fail("[69] --append-collapse se declara sobre %s y tiene que declararse solo "
+         "sobre map:write" % _collapse_parsers)
+
+# Cláusula 2: el ancla sale de ANCLAS por posición y el encabezado no se reescribe.
+_COLLAPSE_ASSIGNS = [n for n in ARBOL.body if isinstance(n, ast.Assign)
+                     and any(isinstance(t, ast.Name) and t.id == "COLLAPSE_ANCHOR"
+                             for t in n.targets)]
+if len(_COLLAPSE_ASSIGNS) != 1:
+    fail("[69] hay %d asignaciones de módulo a COLLAPSE_ANCHOR y tiene que haber una "
+         "sola" % len(_COLLAPSE_ASSIGNS))
+else:
+    _collapse_value = _COLLAPSE_ASSIGNS[0].value
+    _collapse_index = (_collapse_value.slice
+                       if isinstance(_collapse_value, ast.Subscript) else None)
+    if not (isinstance(_collapse_value, ast.Subscript)
+            and isinstance(_collapse_value.value, ast.Name)
+            and _collapse_value.value.id == "ANCLAS"
+            and isinstance(_collapse_index, ast.Constant)
+            and _collapse_index.value == 5):
+        fail("[69] COLLAPSE_ANCHOR no se asigna como ANCLAS[5]; el ancla tiene que "
+             "salir de la lista por posición")
+_ANCHORS_LISTS = [n.value for n in ARBOL.body if isinstance(n, ast.Assign)
+                  and any(isinstance(t, ast.Name) and t.id == "ANCLAS"
+                          for t in n.targets)
+                  and isinstance(n.value, ast.List)]
+if len(_ANCHORS_LISTS) != 1 or len(_ANCHORS_LISTS[0].elts) != 6:
+    fail("[69] ANCLAS no es un solo literal de lista de seis elementos")
+else:
+    _sixth_anchor = _ANCHORS_LISTS[0].elts[5]
+    if not (isinstance(_sixth_anchor, ast.Constant)
+            and _sixth_anchor.value == "El colapso"):
+        fail("[69] el sexto elemento de ANCLAS no es la constante \"El colapso\"")
+_COLLAPSE_HEADINGS = [n for n in ast.walk(ARBOL) if isinstance(n, ast.Constant)
+                      and n.value == "El colapso"]
+if len(_COLLAPSE_HEADINGS) != 1:
+    fail("[69] la cadena \"El colapso\" aparece en %d constantes de %s y tiene que "
+         "aparecer en una sola, la de ANCLAS" % (len(_COLLAPSE_HEADINGS), ADAPTER))
+
+# Cláusula 3: un solo sitio de escritura, atado al flag y a las dos casas únicas.
+_COLLAPSE_SITES = [n for nm in sorted(RUTA_ESCRITURA) for n in ast.walk(FUNCS[nm])
+                   if isinstance(n, ast.Name) and n.id == "COLLAPSE_ANCHOR"
+                   and isinstance(n.ctx, ast.Load)]
+require_nonempty(_COLLAPSE_SITES,
+                 "[69] ninguna función del grafo de map:write carga COLLAPSE_ANCHOR; "
+                 "las cláusulas del sitio y de las resoluciones probarían sobre el "
+                 "conjunto vacío")
+_COLLAPSE_LOADS = [n for n in ast.walk(ARBOL) if isinstance(n, ast.Name)
+                   and n.id == "COLLAPSE_ANCHOR" and isinstance(n.ctx, ast.Load)]
+if len(_COLLAPSE_LOADS) != 1:
+    fail("[69] COLLAPSE_ANCHOR se carga %d veces en %s y tiene que cargarse una sola, "
+         "en el sitio de escritura del flag" % (len(_COLLAPSE_LOADS), ADAPTER))
+elif "_ediciones_de" not in RUTA_ESCRITURA:
+    fail("[69] _ediciones_de no está en el grafo de map:write, así que el sitio de "
+         "escritura del colapso no es alcanzable desde el handler")
+else:
+    _COLLAPSE_CALLS = [n for n in ast.walk(FUNCS["_ediciones_de"])
+                       if isinstance(n, ast.Call) and invocado(n.func) == "anotar"
+                       and n.args and n.args[0] is _COLLAPSE_LOADS[0]]
+    _COLLAPSE_LOOPS = [loop for loop in ast.walk(FUNCS["_ediciones_de"])
+                       if isinstance(loop, ast.For)
+                       and isinstance(loop.iter, ast.Attribute)
+                       and loop.iter.attr == "append_collapse"
+                       and isinstance(loop.iter.value, ast.Name)
+                       and loop.iter.value.id == "args"
+                       and any(c is _COLLAPSE_CALLS[0] for c in ast.walk(loop))
+                       ] if _COLLAPSE_CALLS else []
+    if not _COLLAPSE_CALLS:
+        fail("[69] la carga de COLLAPSE_ANCHOR no está en _ediciones_de como primer "
+             "argumento de una llamada a anotar")
+    elif not _COLLAPSE_LOOPS:
+        fail("[69] la llamada a anotar con COLLAPSE_ANCHOR no está dentro de un for "
+             "sobre args.append_collapse")
+    else:
+        for _collapse_house in ("_validar_vineta", "_linea_de_vineta"):
+            if not any(isinstance(n, ast.Call) and invocado(n.func) == _collapse_house
+                       for n in ast.walk(_COLLAPSE_LOOPS[0])):
+                fail("[69] el for sobre args.append_collapse no llama a %s por Name"
+                     % _collapse_house)
+
+# Cláusula 4: ninguna resolución alcanza la edición del colapso. Se camina el grafo
+# alcanzable y no _ANCLAS_H, que solo junta los Name con prefijo ANCLA_ y dejaría la
+# cláusula pasando siempre.
+_RESOLUTION_GRAPH = alcanzable(_H_RESOLVE) | alcanzable(_H_RULE_OUT)
+require_nonempty(_RESOLUTION_GRAPH,
+                 "[69] el grafo alcanzable desde las dos resoluciones dio vacío; la "
+                 "cláusula probaría sobre el conjunto vacío")
+if "_ediciones_de" in _RESOLUTION_GRAPH:
+    fail("[69] una resolución alcanza _ediciones_de, que es la edición de map:write")
+_RESOLUTION_HITS = sorted(
+    nm for nm in _RESOLUTION_GRAPH
+    if any(isinstance(n, ast.Name) and n.id == "COLLAPSE_ANCHOR"
+           for n in ast.walk(FUNCS[nm])))
+if _RESOLUTION_HITS:
+    fail("[69] estas funciones alcanzables desde una resolución nombran "
+         "COLLAPSE_ANCHOR: %s" % _RESOLUTION_HITS)
+
 report()
 print("%s: OK - las treinta y tres afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
