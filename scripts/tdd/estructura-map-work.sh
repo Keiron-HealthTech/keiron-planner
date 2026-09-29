@@ -94,6 +94,13 @@ for tipo in "map:grilling" "map:prototype"; do
 done
 printf '%s\n' "$step9" | grep -qF -- '--append-collapse' || n "el paso 9 de $SKILL no nombra --append-collapse, que es como el corte nuevo llega al mapa"
 step10="$(awk '/^## Step 10,/{f=1} f' "$SKILL")"
+# El puntero ADAPTER del preámbulo nombra las once operaciones a propósito, por eso el
+# rango de antes del aterrizaje arranca en el paso 1 y no en la primera línea del archivo.
+before_landing="$(awk '/^## Step 1,/{f=1} /^## Step 9,/{f=0} f' "$SKILL")"
+for op in "milestone:create" "work:write"; do
+  printf '%s\n' "$before_landing" | grep -qF "$op" && n "$SKILL nombra $op antes del paso 9, y solo el aterrizaje puede escribirlo"
+  printf '%s\n' "$step10" | grep -qF "$op" && n "$SKILL nombra $op después del paso 9, y solo el aterrizaje puede escribirlo"
+done
 printf '%s\n' "$step10" | grep -qF '`next_recommended: map-work`' || n "el paso 10 de $SKILL no cierra con ningun token"
 grep -qF "ticket:claim --ctx" "$SKILL" || n "$SKILL no invoca ticket:claim en su paso 6"
 grep -qF 'Pass no `--release` here' "$SKILL" || n "$SKILL no dice que el paso 6 va sin --release"
