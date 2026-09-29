@@ -330,6 +330,19 @@ if [ -n "$solo_scripts" ]; then
   fail "[50] estos [N] los emite un script y ninguna fila viva de $CHECKS_MD los declara: ${solo_scripts% }"
 fi
 
+# --- afirmación 72: ningún check le pasa un glob a git ls-files ---
+
+# El pathspec de ls-files es case-sensitive, así que un *.key no ve una sonda.KEY y el
+# check que existe para cazar una credencial dice que todo está bien. El filtro por
+# extensión va siempre después, con grep -i. El patrón escribe ls-file[s] para no
+# matchear su propia línea, y cubre las dos comillas y la forma de lista de Python.
+comilla="'"
+patron="ls-file[s][^|]*[\"$comilla][^\"$comilla ]*[*?[]"
+globs="$(printf '%s\n' "$checks" | xargs grep -nE "$patron" 2>/dev/null || true)"
+if [ -n "$globs" ]; then
+  fail "[72] estos checks le pasan un glob a git ls-files, que no ve otra capitalización: $(printf '%s\n' "$globs" | tr '\n' ' ')"
+fi
+
 report
 
 # Conteos derivados y no escritos, igual que los que imprime check-language: el cardinal
@@ -344,4 +357,4 @@ subagentistas="${subagentistas% }"
 skills_ok="$(printf '%s\n' "$skills_md" | grep -c . || true)"
 numeros_vivos="$(printf '%s\n' "$vivas" | grep -c . || true)"
 emisores="$(printf '%s\n' "$checks" | xargs grep -lE '"\[[0-9]+\]' 2>/dev/null | grep -c . || true)"
-echo "$CHECK_NAME: OK - el ROUTE: de $COMANDO es read-only y no tiene skill, los $tokens tokens de $CONTRATO son exactamente los que citan los $archivos archivos de commands/ y skills/, y quienes citan son $quienes, el ROUTE: de cada archivo de commands/ que rutea a una skill apunta a una que existe, $ruteadores en total, el flag de bootstrap vive solo en $esperado_flag, a $SUBAGENTE lo nombran por su ruta exactamente $subagentistas, las $skills_ok skills de skills/ declaran un name: igual a su directorio, y los $numeros_vivos números viva de $CHECKS_MD son exactamente los [N] que emiten los $emisores scripts de $SCRIPTS/check-*"
+echo "$CHECK_NAME: OK - el ROUTE: de $COMANDO es read-only y no tiene skill, los $tokens tokens de $CONTRATO son exactamente los que citan los $archivos archivos de commands/ y skills/, y quienes citan son $quienes, el ROUTE: de cada archivo de commands/ que rutea a una skill apunta a una que existe, $ruteadores en total, el flag de bootstrap vive solo en $esperado_flag, a $SUBAGENTE lo nombran por su ruta exactamente $subagentistas, las $skills_ok skills de skills/ declaran un name: igual a su directorio, los $numeros_vivos números viva de $CHECKS_MD son exactamente los [N] que emiten los $emisores scripts de $SCRIPTS/check-*, y ninguno le pasa un glob a git ls-files"

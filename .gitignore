@@ -8,8 +8,9 @@ __pycache__/
 # Credenciales. La API key de Linear vive fuera de todo repo, en
 # ${XDG_CONFIG_HOME:-~/.config}/keiron-planner/linear.key, y eso lo decidió el
 # ticket 01 justamente para que ningún commit la pueda filtrar. Esto es la red
-# de abajo, para una copia distraída.
-*.key
+# de abajo, para una copia distraída. Va por clases de caracteres y no como *.key
+# porque con core.ignorecase en false, lo normal en Linux, *.key no cubre sonda.KEY.
+*.[kK][eE][yY]
 .env
 .env.*
 

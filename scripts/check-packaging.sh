@@ -154,17 +154,22 @@ if ! grep -qF '/planner-setup' "$readme"; then
 fi
 
 # --- afirmación 21: ninguna key trackeada, y .gitignore la cubre ---
-# Sobre todo lo trackeado, vendor/ y .scratch/ incluidos.
+# Sobre todo lo trackeado, vendor/ y .scratch/ incluidos. El filtro va por grep -i y no
+# por un glob de ls-files, que es case-sensitive: sonda.KEY no lo matchea.
 
-keys="$(git ls-files '*.key' || true)"
+keys="$(git ls-files | grep -iE '\.key$' || true)"
 if [ -n "$keys" ]; then
-  fail "[21] hay archivos *.key trackeados: $(printf '%s\n' "$keys" | tr '\n' ' ')"
+  fail "[21] hay archivos .key trackeados, en cualquier capitalización: $(printf '%s\n' "$keys" | tr '\n' ' ')"
 fi
 
-# La ruta de prueba no necesita existir: git check-ignore resuelve el patrón.
-if ! git check-ignore -q sonda-de-prueba.key; then
-  fail "[21] .gitignore no cubre *.key"
-fi
+# Las rutas de prueba no necesitan existir: git check-ignore resuelve el patrón. Corre con
+# core.ignorecase en false porque es el caso que importa: en macOS vale true y cubriría
+# cualquier capitalización con un *.key a secas, así que el hueco no se vería acá.
+for sonda in sonda-de-prueba.key sonda-de-prueba.KEY sonda-de-prueba.Key; do
+  if ! git -c core.ignorecase=false check-ignore -q "$sonda"; then
+    fail "[21] .gitignore no cubre $sonda con core.ignorecase en false"
+  fi
+done
 
 # --- afirmación 17: el chequeo del intérprete distingue el stub de macOS ---
 
