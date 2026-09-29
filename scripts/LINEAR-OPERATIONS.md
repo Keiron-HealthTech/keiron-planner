@@ -487,3 +487,29 @@ ninguna rama puede distinguir "no llegó" de "llegó y se perdió la respuesta",
 repetir la invocación entera solo es seguro cuando nada quedó escrito: con parte de la
 secuencia ya confirmada, la remediación que cada falla imprime dice exactamente qué
 repetir y qué no.
+
+### map:write bajo el colapso
+
+`map:write` escribe bajo `## El colapso` con `--append-collapse VINETA`. El flag es
+repetible y lleva un solo valor por ocurrencia, así que la pasada entera entra en una
+sola invocación: el colapso escribe todos sus cortes juntos, y el aterrizaje escribe
+uno. Solo `map:write` lo declara; `ticket:resolve` y `ticket:rule-out` no lo tienen.
+
+La línea que agrega es una viñeta con título en negrita:
+
+    **<nombre del corte>.** <una frase que dice qué demuestra ese corte>
+
+Sin enlace, porque un milestone no expone `url`: los cortes van por nombre. El adapter
+no compone texto propio. Valida el valor con las mismas cinco reglas de forma que
+`--append-fog` y `--append-out-of-scope` y lo renderiza con el mismo marcador, así que
+las tres secciones de viñetas escriben la misma clase de línea.
+
+El título en negrita es la clave de unicidad. Un corte cuyo nombre ya está en la
+sección aborta la invocación, y en el segundo intento de un `map:write` que ya escribió
+esa línea la repetición pasa a no-op con reporte y no duplica nada.
+
+La sección sale de la lista de encabezados por posición, la sexta, y el adapter nunca
+reescribe su texto. Un overview sin el encabezado `## El colapso` aborta sin escribir y
+sin agregar la línea al final del documento. `--expect-sections` cubre la sección igual
+que las otras cinco y sigue siendo opcional: la deriva de su huella se avisa por
+stderr y nunca aborta. El envelope de stdout no cambia: `written`, `attempts` y `noop`.
