@@ -1773,11 +1773,14 @@ def cmd_ticket_resolve(args):
                                              plan["tickets"], key)
         if not ok:
             die(SIN_KEY,
-                "el issueBatchCreate no confirmó: %s. No quedó escrito nada de esta "
-                "resolución: ni los tickets nuevos, ni el cableado, ni el comentario, "
-                "ni el estado, ni el mapa" % detalle,
-                "volvé a correr la misma invocación entera: como no aterrizó nada, "
-                "repetirla no duplica nada")
+                "el issueBatchCreate no confirmó y NO SE SABE si los tickets nuevos "
+                "quedaron escritos: un rechazo y una respuesta perdida no se "
+                "distinguen: %s. El cableado, el comentario, el estado y el mapa no "
+                "se intentaron" % detalle,
+                "mirá en Linear si los tickets nuevos de esta resolución existen "
+                "ANTES de volver a correr: si no están, repetí la misma invocación "
+                "entera; si están, no la repitas, porque repetirla tras un lote que "
+                "aterrizó duplica cada ticket y este adaptador no sabe borrarlos")
     if plan["pares"]:
         # Los títulos se resuelven a ids recién acá, con lo que devolvió la escritura 1.
         por_titulo = dict((i.get("title"), i.get("id")) for i in issues)
@@ -1900,11 +1903,15 @@ def cmd_ticket_rule_out(args):
                                              plan["tickets"], key)
         if not ok:
             die(SIN_KEY,
-                "el issueBatchCreate no confirmó: %s. No quedó escrito nada de este "
-                "fuera de alcance: ni los tickets nuevos, ni el cableado, ni el "
-                "comentario, ni el estado, ni el mapa" % detalle,
-                "volvé a correr la misma invocación entera: como no aterrizó nada, "
-                "repetirla no duplica nada")
+                "el issueBatchCreate no confirmó y NO SE SABE si los tickets nuevos "
+                "quedaron escritos: un rechazo y una respuesta perdida no se "
+                "distinguen: %s. El cableado, el comentario, el estado y el mapa no "
+                "se intentaron" % detalle,
+                "mirá en Linear si los tickets nuevos de este fuera de alcance "
+                "existen ANTES de volver a correr: si no están, repetí la misma "
+                "invocación entera; si están, no la repitas, porque repetirla tras un "
+                "lote que aterrizó duplica cada ticket y este adaptador no sabe "
+                "borrarlos")
     if plan["pares"]:
         por_titulo = dict((i.get("title"), i.get("id")) for i in issues)
         ok, detalle, escritos = _bloquear_pares(
