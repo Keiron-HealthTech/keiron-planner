@@ -23,14 +23,17 @@ piece of text a person ends up reading in Linear, and that text is in Spanish. N
 of those shapes from memory.
 
 ADAPTER: `${CLAUDE_PLUGIN_ROOT}/scripts/linear.py`, invoked with Bash and written `linear.py`
-below. This skill runs nine of its operations and no other: `preflight`, `map:read`,
+below. This skill runs eleven of its operations and no other: `preflight`, `map:read`,
 `frontier:query`, `ticket:claim`, `ticket:create`, `ticket:block`, `ticket:resolve`,
-`ticket:rule-out` and `map:write`. Never compose GraphQL yourself and never touch the Linear
-API directly.
+`ticket:rule-out`, `map:write`, `milestone:create` and `work:write`. Never compose GraphQL
+yourself and never touch the Linear API directly.
 
 The ninth, `map:write`, belongs to the research branch of step 8 and to no other path. A
 ticket of any other type still reaches the map through the operation that resolves it, and
-this skill never invokes `map:write` on that path.
+this skill never invokes `map:write` on that path. The one other place it runs is the landing
+of step 9, and only when that landing created a cut: there it runs once, with
+`--append-collapse` and with nothing else, to put the cut under `## El colapso`. The tenth
+and the eleventh, `milestone:create` and `work:write`, belong to step 9 alone.
 
 The map lands last and exactly once, by construction rather than by your discipline, and
 there are two constructions because there are two branches. On the normal path the write
@@ -39,7 +42,9 @@ file can reorder it or run it twice. On the research path the instance runs its 
 with `--defer-map`, which is the adapter refusing to let it write the map at all, and the
 parent runs one `map:write` after the last return. Neither construction rests on you
 remembering not to write the map twice: the first puts the write out of reach inside another
-operation, and the second takes it away from the instance with a flag.
+operation, and the second takes it away from the instance with a flag. The landing of step 9
+runs after both, and it is the one case where a session writes the map a second time: only
+when it created a cut, and only for that cut.
 
 When any invocation exits non-zero, relay its stderr as it is, add nothing to it, and stop. Do
 not reformulate the remediation and do not turn the failure into a token: every hard failure
@@ -205,7 +210,7 @@ For those tickets, do not invoke `ticket:resolve`, `ticket:rule-out`, `ticket:cr
 `ticket:block` yourself. Those are the instance's, and running one of them here would write
 the resolution twice.
 
-## Step 8, show it, confirm once, and write
+## Step 8, show it, confirm once, and resolve
 
 On the normal path this is the only irreversible batch of the session. Five writes, and not
 one of them has an undo: not a ticket created, not a relation, not a comment, not a close, not
@@ -241,10 +246,8 @@ goes to `Fuera de alcance` and never to `Decisiones hasta ahora`.
 The order of the five writes, and the guarantee that they all travel inside one invocation,
 belong to the adapter and are not restated here. There is no flag that reorders them.
 
-Then report what landed and stop with one token. When the frontier that step 2 read held more
-than the one ticket just resolved, that token is `next_recommended: map-work`. Reading the
-frontier again, landing the decision and reporting the close are steps 9 and 10, and they
-belong to a later cut.
+The resolution ends here. This step neither reports nor closes with a token: step 9 lands the
+decision when it applies, and step 10 reports and closes on every path.
 
 Every type worked in conversation is still one per session, and `map:research` is the one
 exception, worked by an instance of its own.
@@ -257,6 +260,11 @@ There is no confirmation to ask for here, because the irreversible batch of this
 the dispatch itself and step 7 already asked.
 
 What is missing is the map, and only the map.
+
+This branch never reaches step 9. A `map:research` ticket is AFK, and letting the agent decide
+alone what gets built would hand it a decision that belongs to a person in a session.
+Gathering the fan-out to ask for one approval at the end does not work either, because
+research is AFK precisely so that nobody has to sit down.
 
 A return is sane when, and only when, it carries a fenced block that parses as the single line
 of JSON a resolution run with `--defer-map` prints, with `mapWritten` false and a `mapArgs`
@@ -296,36 +304,16 @@ this research was attempted and returns the ticket to the frontier looking fresh
 has nothing to put in the six sections. And write no line of its own in the map: a decision
 with no resolution has no line.
 
-Then report, naming these in this order:
-
-1. which research came back well, and what line each one left in the map;
-2. which ones did not, by identifier;
-3. that each of those is still claimed by you and unreleased;
-4. that whether the ticket is actually still open cannot be told from here: a malformed
-   or missing return most often means the four writes of its own ticket already landed
-   and only the relay back to you, or the `--defer-map` flag itself, is what failed, so
-   the ticket is probably already Done or Canceled with its six-section resolution
-   comment posted;
-5. what to do about it, which is to open that ticket and read its resolution comment
-   first: the url and the gist the missing `map:write --append-decision` needs are
-   already sitting there, so the one call can be rebuilt by hand from the comment. Only
-   when the comment itself never landed either is the ticket genuinely unresolved, and
-   then `/map-work` on it, or `ticket:claim --release` to hand the claim back, is what
-   applies.
-
-That is the same policy the other-role branch below already follows when one of its three
-writes fails: name what landed, name the claim, do not release it, and say how to finish by
-hand. It is not a second policy for the same problem.
-
-With at least one research that did not land, close with `next_recommended: map-work`: that
-ticket is open and it is what there is to work. With every one of them landed, report what
-landed and close with one token, the same way the normal path does.
+Then go to step 10, which reports the fan-out and closes.
 
 ### The other-role branch
 
 While resolving, a question can come up that belongs to a different role, `hitl:pm` or
 `hitl:design`. This is not the check of step 5, which was about the chosen ticket itself;
 this is about a question that working it just produced.
+
+This branch never reaches step 9 either. It resolves nothing: the pause is deliberate, the
+current ticket stays open and blocked, and there is no decision to land.
 
 **When the answer is not needed to close the current ticket**, there is no branch at all: the
 new ticket is one more `--new-ticket` of the normal resolution, with its `hitl:` label and no
@@ -357,4 +345,143 @@ prevent. Never run the release out of order to close that gap early: releasing b
 the question that blocks it invisible, because nothing yet says it is blocked. Finish the
 sequence by hand instead, in order, starting from whichever of the three is still missing.
 
-Close with `next_recommended: map-work`: the ticket that was just opened is born takeable.
+Then go to step 10, which reports the pause and closes.
+
+## Step 9, the landing
+
+The landing hangs the execution work of a decision taken after the collapse. It runs only
+when all three conditions hold at once:
+
+1. the session is HITL: a person is on the other side and just approved a resolution;
+2. the ticket that step 8 resolved or ruled out is typed `map:grilling` or `map:prototype`,
+   never `map:research` and never `map:task`;
+3. `counts.milestones` in the `frontier:query` that step 2 read is above zero.
+
+With any of the three false, this step does not run and the session goes straight to step 10.
+`map:task` is out by definition: it earns its place by unblocking a decision and never by
+delivering a piece of the destination, so a task has nothing to land. The research branch and
+the other-role branch of step 8 never get here.
+
+It runs after `ticket:resolve` or `ticket:rule-out` has written, never before and never in
+place of it. A session that dies halfway through the landing then leaves the decision
+resolved, the map up to date and no issue, which is exactly the state `/map-status` shows in
+its block of decisions that never landed. With the landing first, a death would leave
+execution issues that the map does not mention and that nobody reports.
+
+There are four sub-steps.
+
+### The round
+
+Propose exactly one of three outcomes, and the person approves it or changes it. Nothing is
+written yet.
+
+- New issues: the decision adds work.
+- Tie it to an execution issue that already exists: zero new issues, one relation. It is
+  probably the most common outcome, and without it every one of those decisions would sit in
+  the report as pending until nobody looks at it.
+- Nothing: the decision touches nothing of what is being built. It is recorded with the label
+  `map:no-landing`, because a report that can never reach zero gets ignored all the same.
+
+The cut where new issues land comes from `milestones`, the key of the `frontier:query` of
+step 2, shown by name and with its `status`. Never a cut with `status: done`: adding an issue
+to a finished milestone reopens it, and a late decision that un-finishes a cut the team
+already demoed breaks an instrument of the team to save one milestone. Read the `status`
+before writing and never read it again to verify a write: it is denormalized and lags, and
+the lag returns the previous state.
+
+When every cut is `done` and the decision asks for a cut, the cut is born anyway and the
+session says so out loud: all the cuts were finished, this reopens the project, and it may be
+a sign that the destination was drawn wrong. That is the one place where "there is no
+uncollapse" becomes observable.
+
+### The cut, only when the outcome needs one that does not exist
+
+    linear.py milestone:create --project <the project> --name <the cut in prose> \
+      --description <the decision that produced it, by name and with its link> \
+      --sort-order <the order>
+
+`--sort-order` is a value you compute, strictly between the `sortOrder` of the two neighbours,
+taken from `milestones` exactly as the API returned them in step 2. At either end there is
+one neighbour only, so pick a nonzero value on the correct side of it. The adapter never
+computes it and refuses zero. When `truncated` names `projectMilestones`, the list is a lower
+bound and the neighbour you need may not be in it: say that and ask the person for the
+neighbouring cuts rather than computing from a partial list.
+
+The `id` it prints is the cut id that the next sub-step passes.
+
+### The work
+
+    linear.py work:write --ctx <the blob from step 1> --project <the project> \
+      [--issue <title> <body> <cut id>] [--relate <ticket> <target>] [--no-landing <ticket>]
+
+One invocation, with the shape of the outcome, and `<ticket>` is the identifier of the
+resolved ticket, copied verbatim from what `frontier:query` returned:
+
+- new issues: one `--issue` per issue, with the id of the cut it belongs to, plus one
+  `--relate <ticket> <position>` per issue, where the position is the 1-based place of that
+  `--issue` inside this same invocation;
+- tie: no `--issue`, and one `--relate <ticket> <id of the existing execution issue>`;
+- nothing: `--no-landing <ticket>` alone.
+
+The title of an execution issue inverts the title of the decision: the question becomes an
+imperative. The body is the three-section shape of `map-templates.md`, in Spanish, and it is
+never typed from memory. The `Fuera de alcance` of the map is not copied into any body.
+
+### The map, only when a cut was born
+
+`map:write` runs once, with a single
+`--append-collapse "**<name of the cut>.** <one sentence>"`. The bold title is the name of
+the cut exactly as it was passed to `milestone:create`, final period included. You condense
+the sentence from the `description` the milestone was created with, which the person already
+saw in the round, so nothing new is shown before the write. The line carries no link,
+because `ProjectMilestone` does not expose a `url`. The sentence is in Spanish, like the rest
+of the map. When no cut was born, the map is not touched again.
+
+A landing that dies halfway is named and not repaired. When a cut was born and `work:write`
+then failed, what is left is an empty milestone and an unlanded decision, and both are
+visible: the empty cut in Linear, the decision in the report of `/map-status`. Never try to
+delete the cut, because no operation of this plugin does that.
+
+## Step 10, the report and the token
+
+The one home of the closing report and of the token, for the three paths. Which one applies
+depends on what step 8 did.
+
+On the normal path, report what the resolution wrote: the comment, the new tickets, the
+state, and the line that reached the map. When step 9 ran, also say what it produced: which
+of the three outcomes was chosen, which cut received the work, which issues were born with
+their URL, or that the decision was marked as having no work. When the frontier that step 2
+read held more than the one ticket just resolved, close with `next_recommended: map-work`.
+
+### Reporting a research fan-out
+
+Report, naming these in this order:
+
+1. which research came back well, and what line each one left in the map;
+2. which ones did not, by identifier;
+3. that each of those is still claimed by you and unreleased;
+4. that whether the ticket is actually still open cannot be told from here: a malformed
+   or missing return most often means the four writes of its own ticket already landed
+   and only the relay back to you, or the `--defer-map` flag itself, is what failed, so
+   the ticket is probably already Done or Canceled with its six-section resolution
+   comment posted;
+5. what to do about it, which is to open that ticket and read its resolution comment
+   first: the url and the gist the missing `map:write --append-decision` needs are
+   already sitting there, so the one call can be rebuilt by hand from the comment. Only
+   when the comment itself never landed either is the ticket genuinely unresolved, and
+   then `/map-work` on it, or `ticket:claim --release` to hand the claim back, is what
+   applies.
+
+That is the same policy the other-role branch of step 8 already follows when one of its three
+writes fails: name what landed, name the claim, do not release it, and say how to finish by
+hand. It is not a second policy for the same problem.
+
+With at least one research that did not land, close with `next_recommended: map-work`: that
+ticket is open and it is what there is to work. With every one of them landed, report what
+landed and close with one token, the same way the normal path does.
+
+### Reporting an other-role pause
+
+Report which of the three writes landed and which did not, and that the claim from step 6 is
+still yours until the third one runs. Then close with `next_recommended: map-work`: the ticket
+that was just opened is born takeable.

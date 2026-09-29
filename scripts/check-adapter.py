@@ -557,6 +557,45 @@ if sucios_map:
          "constantes de string que el grafo referencia por nombre, contienen una "
          "mutation" % len(sucios_map))
 
+# --- afirmación 13: milestone:create nunca pasa targetDate -----------------------
+
+# Mismo mecanismo que la 23: el handler real por set_defaults, el grafo por
+# alcanzable(), y STRCONSTS para mirar dentro de las constantes de módulo que el grafo
+# referencia por nombre y no solo los literales inline de su propio subárbol.
+MILESTONE_ROUTE = alcanzable(handler.get("milestone:create"))
+require_nonempty(MILESTONE_ROUTE,
+                 "[13] el grafo alcanzable desde el handler de milestone:create dio "
+                 "vacío; el handler volvió a ser un stub y la afirmación probaría "
+                 "cero")
+MILESTONE_REFERENCED = sorted(set(n.id for nm in MILESTONE_ROUTE for n in ast.walk(FUNCS[nm])
+                                 if isinstance(n, ast.Name) and n.id in STRCONSTS))
+require_nonempty(MILESTONE_REFERENCED,
+                 "[13] el grafo de milestone:create no referencia ninguna constante "
+                 "de string del módulo, así que la mitad de la prohibición probaría "
+                 "sobre el conjunto vacío")
+# La cláusula positiva: sin ella, un handler que no postea nada pasaría en verde la
+# prohibición de un campo que nunca pudo pasar.
+if not any("projectMilestoneCreate" in STRCONSTS[nm] for nm in MILESTONE_REFERENCED):
+    fail("[13] ninguna constante que el grafo de milestone:create referencia por "
+         "nombre contiene projectMilestoneCreate; el handler no postea la mutation "
+         "que la afirmación espera")
+# El literal, en cualquier ast.Constant de string del grafo: ast.walk ya visita las
+# claves de un ast.Dict como sus propios nodos Constant, así que esto cubre a la vez
+# un string suelto y una clave de dict apareada, sin necesitar una segunda cláusula.
+_TARGETDATE_LITERAL = sorted(set(
+    nm for nm in MILESTONE_ROUTE for n in ast.walk(FUNCS[nm])
+    if isinstance(n, ast.Constant) and n.value == "targetDate"))
+if _TARGETDATE_LITERAL:
+    fail("[13] estas funciones del grafo de milestone:create nombran el literal "
+         "targetDate: %s" % _TARGETDATE_LITERAL)
+# Y como subcadena de las constantes referenciadas: es lo que hace que la afirmación
+# siga siendo verdad cuando el campo entre por la puerta de la constante de GraphQL,
+# que es por donde entraría de verdad.
+_TARGETDATE_CONST = [nm for nm in MILESTONE_REFERENCED if "targetDate" in STRCONSTS[nm]]
+if _TARGETDATE_CONST:
+    fail("[13] estas constantes de string que el grafo de milestone:create "
+         "referencia por nombre contienen targetDate: %s" % _TARGETDATE_CONST)
+
 # --- afirmación 59: counts.milestones es un conteo y nunca un veredicto ----------
 
 # La raíz es la misma que la de la 53, o sea el grafo alcanzable desde el handler que
@@ -1083,9 +1122,9 @@ elif not (isinstance(_ESTIMATES[0], ast.Constant)
     fail("[12] el estimate del grafo de ticket:create no es el entero literal 0; un "
          "False también compara igual a cero y no es lo mismo")
 
-# La segunda mitad cuantifica sobre las OTRAS rutas de creación, que hoy es el conjunto
-# vacío porque work:write sigue stub. El require_nonempty de arriba es sobre el conjunto
-# de rutas, que sí tiene un elemento: sin él la mitad sería vacua sin que se note.
+# La segunda mitad cuantifica sobre las OTRAS rutas de creación: hoy la que emite el
+# issueBatchCreate de work:write. El require_nonempty de arriba es sobre el conjunto de
+# todas las rutas: sin él la mitad sería vacua sin que se note si esa función se fuera.
 _OTRAS_CREADORAS = [nm for nm in CREADORAS if nm not in RUTA_TICKET]
 _CON_ESTIMATE = [nm for nm in _OTRAS_CREADORAS if _valores_de_clave(nm, "estimate")]
 if _CON_ESTIMATE:
@@ -1415,7 +1454,297 @@ for _lit65, _casa65, _puntas65 in CASAS_65:
         fail("[65] estas puntas no llaman a %s, así que arman la cadena por su cuenta: "
              "%s" % (_casa65, _faltan65))
 
+# --- la ruta de work:write, raíz compartida por las tres de este change ------------
+
+# Mismo mecanismo que la 23 y la 13: el handler real por set_defaults, el grafo por
+# alcanzable(). Se define una sola vez y las tres afirmaciones de abajo la citan.
+WORK_ROUTE = alcanzable(handler.get("work:write"))
+require_nonempty(WORK_ROUTE,
+                 "[51] el grafo alcanzable desde el handler de work:write dio vacío; "
+                 "el handler volvió a ser un stub y las tres afirmaciones probarían "
+                 "cero")
+
+# --- afirmación 48: ninguna ruta de work:write agrega el label map ---------------
+
+_WORK_CREATORS = sorted(nm for nm in WORK_ROUTE
+                        if _post_con(FUNCS[nm], "issueBatchCreate"))
+require_nonempty(_WORK_CREATORS,
+                 "[48] ninguna función del grafo de work:write le pasa a _post una "
+                 "constante que contenga issueBatchCreate; la afirmación probaría "
+                 "sobre el conjunto vacío")
+_WITH_LABEL_IDS = [nm for nm in _WORK_CREATORS if _valores_de_clave(nm, "labelIds")]
+if _WITH_LABEL_IDS:
+    fail("[48] estas rutas de creación de issues de ejecución construyen labelIds: "
+         "%s" % _WITH_LABEL_IDS)
+_NAME_MAP_LABEL = [nm for nm in sorted(WORK_ROUTE)
+                   if any((isinstance(n, ast.Name) and n.id == "LABEL_MAPA")
+                          or (isinstance(n, ast.Constant) and n.value == "map")
+                          for n in ast.walk(FUNCS[nm]))]
+if _NAME_MAP_LABEL:
+    fail("[48] estas funciones del grafo de work:write nombran el label del mapa: "
+         "%s" % _NAME_MAP_LABEL)
+
+# --- afirmación 51: con la lista vacía no se llama a issueBatchCreate ------------
+
+_WORK_HANDLER = handler.get("work:write")
+_WORK_BODY = FUNCS[_WORK_HANDLER].body
+_WORK_STATEMENT_INDEXES = [i for i, st in enumerate(_WORK_BODY)
+                           if _alcanza_mutation(st, "issueBatchCreate")]
+require_nonempty(_WORK_STATEMENT_INDEXES,
+                 "[51] ninguna sentencia de primer nivel de %s alcanza "
+                 "issueBatchCreate; el handler volvió a ser un stub o perdió su "
+                 "escritura" % _WORK_HANDLER)
+_UNGUARDED = [i for i in _WORK_STATEMENT_INDEXES
+             if not isinstance(_WORK_BODY[i], ast.If)]
+if _UNGUARDED:
+    fail("[51] en %s las sentencias %s alcanzan issueBatchCreate y NO son un If, así "
+         "que la llamada no está adentro de ninguna guarda"
+         % (_WORK_HANDLER, _UNGUARDED))
+for _i51 in _WORK_STATEMENT_INDEXES:
+    if isinstance(_WORK_BODY[_i51], ast.If):
+        _test51 = _WORK_BODY[_i51].test
+        _guards_issues = any(
+            (isinstance(n, ast.Subscript) and isinstance(n.slice, ast.Constant)
+             and n.slice.value == "issues")
+            or (isinstance(n, ast.Attribute) and n.attr == "issue"
+                and isinstance(n.value, ast.Name) and n.value.id == "args")
+            for n in ast.walk(_test51))
+        if not _guards_issues:
+            fail("[51] en %s la guarda de la sentencia %d no nombra la lista de "
+                 "issues, ni como plan[\"issues\"] ni como args.issue, así que "
+                 "guarda otra cosa" % (_WORK_HANDLER, _i51))
+        _negated51 = any(
+            (isinstance(n, ast.UnaryOp) and isinstance(n.op, ast.Not))
+            or (isinstance(n, ast.Compare)
+                and any(isinstance(op, (ast.Eq, ast.Is, ast.Lt, ast.LtE))
+                        for op in n.ops)
+                and any((isinstance(x, ast.Constant) and x.value in (None, False, 0, ""))
+                        or (isinstance(x, (ast.List, ast.Tuple, ast.Dict))
+                            and not (x.keys if isinstance(x, ast.Dict) else x.elts))
+                        for x in [n.left] + n.comparators))
+            for n in ast.walk(_test51))
+        if _negated51:
+            fail("[51] en %s la guarda de la sentencia %d niega la lista de issues "
+                 "(not, o una comparación con vacío, cero, False o None), así que "
+                 "llamaría a issueBatchCreate justo cuando la lista está vacía"
+                 % (_WORK_HANDLER, _i51))
+        if any(_alcanza_mutation(st, "issueBatchCreate")
+               for st in _WORK_BODY[_i51].orelse):
+            fail("[51] en %s la sentencia %d alcanza issueBatchCreate por el orelse "
+                 "de la guarda, que es la rama de la lista vacía"
+                 % (_WORK_HANDLER, _i51))
+        if not any(_alcanza_mutation(st, "issueBatchCreate")
+                   for st in _WORK_BODY[_i51].body):
+            fail("[51] en %s la sentencia %d no alcanza issueBatchCreate por el "
+                 "cuerpo de la guarda" % (_WORK_HANDLER, _i51))
+
+# --- afirmación 52: el ticket de decisión del lado issueId -----------------------
+
+# Precedente: la 65 por atar un literal a su única casa, y la 53 por partir un
+# conjunto de funciones en dos por lo que nombran.
+_RELATED_CONSTS = sorted(nm for nm, value in STRCONSTS.items()
+                         if "issueRelationCreate" in value
+                         and "type: related" in value)
+require_nonempty(_RELATED_CONSTS,
+                 "[52] ninguna constante de string del módulo contiene "
+                 "issueRelationCreate con type: related; la afirmación probaría "
+                 "sobre el conjunto vacío")
+if len(_RELATED_CONSTS) != 1:
+    fail("[52] estas constantes contienen issueRelationCreate con type: related, y "
+         "tiene que ser una sola: %s" % _RELATED_CONSTS)
+else:
+    _RELATED_CONST = _RELATED_CONSTS[0]
+    # Espacios colapsados: el mismo criterio que la 65 aplicaría si mirara texto en
+    # vez de identidad de nodo, acá hace falta porque la mutation es multilínea.
+    _RELATED_TEXT = " ".join(STRCONSTS[_RELATED_CONST].split())
+    if "issueId: $decision" not in _RELATED_TEXT:
+        fail("[52] %s no aparea issueId con $decision; el ticket de decisión tiene "
+             "que ir del lado issueId" % _RELATED_CONST)
+    if "relatedIssueId: $trabajo" not in _RELATED_TEXT:
+        fail("[52] %s no aparea relatedIssueId con $trabajo; la issue de ejecución "
+             "tiene que ir del lado relatedIssueId" % _RELATED_CONST)
+    _RELATED_CALLS = [n for nm in sorted(WORK_ROUTE) for n in ast.walk(FUNCS[nm])
+                      if isinstance(n, ast.Call) and invocado(n.func) == "_post"
+                      and n.args and isinstance(n.args[0], ast.Name)
+                      and n.args[0].id == _RELATED_CONST]
+    require_nonempty(_RELATED_CALLS,
+                     "[52] ningún _post del grafo de work:write pasa %s como primer "
+                     "argumento; la afirmación probaría sobre el conjunto vacío"
+                     % _RELATED_CONST)
+    for _n52 in _RELATED_CALLS:
+        _dict52 = _n52.args[1] if len(_n52.args) > 1 else None
+        _keys52 = sorted(k.value for k in
+                         (_dict52.keys if isinstance(_dict52, ast.Dict) else [])
+                         if isinstance(k, ast.Constant))
+        if _keys52 != ["decision", "trabajo"]:
+            fail("[52] un _post de %s pasa las claves %s, y tienen que ser "
+                 "exactamente decision y trabajo" % (_RELATED_CONST, _keys52))
+            continue
+        _loops52 = [f for nm in sorted(WORK_ROUTE) for f in ast.walk(FUNCS[nm])
+                    if isinstance(f, ast.For) and isinstance(f.target, ast.Tuple)
+                    and len(f.target.elts) == 2
+                    and all(isinstance(e, ast.Name) for e in f.target.elts)
+                    and any(x is _n52 for x in ast.walk(f))]
+        if len(_loops52) != 1:
+            fail("[52] el _post de %s tiene que vivir dentro de un único for con "
+                 "target de dos nombres, y vive dentro de %d" % (_RELATED_CONST,
+                                                                len(_loops52)))
+            continue
+        _decision_name, _target_name = [e.id for e in _loops52[0].target.elts]
+        _values52 = dict((k.value, v) for k, v in zip(_dict52.keys, _dict52.values))
+        _decision_value = _values52["decision"]
+        _work_value = _values52["trabajo"]
+        if not (isinstance(_decision_value, ast.Name)
+                and _decision_value.id == _decision_name):
+            fail("[52] la clave decision de un _post de %s no recibe %s, el primer "
+                 "nombre del for sobre las relaciones, que es el ticket de decisión"
+                 % (_RELATED_CONST, _decision_name))
+        # El destino se deriva del segundo nombre del for, por una asignación local.
+        _derived52 = [a for a in ast.walk(_loops52[0]) if isinstance(a, ast.Assign)
+                      and any(isinstance(t, ast.Name) and isinstance(_work_value, ast.Name)
+                              and t.id == _work_value.id for t in a.targets)
+                      and any(isinstance(x, ast.Name) and x.id == _target_name
+                              for x in ast.walk(a.value))]
+        if not (isinstance(_work_value, ast.Name) and _derived52
+                and _work_value.id != _decision_name):
+            fail("[52] la clave trabajo de un _post de %s no recibe un nombre "
+                 "derivado de %s, el segundo nombre del for, que es la issue de "
+                 "ejecución" % (_RELATED_CONST, _target_name))
+    _BLOCKS_IN_WORK_ROUTE = [nm for nm in sorted(WORK_ROUTE)
+                            if _post_con(FUNCS[nm], "type: blocks")]
+    if _BLOCKS_IN_WORK_ROUTE:
+        fail("[52] estas funciones del grafo de work:write postean una constante "
+             "con type: blocks: %s" % _BLOCKS_IN_WORK_ROUTE)
+    _RELATED_ELSEWHERE = sorted(
+        nm for _op52 in ("ticket:block", "ticket:resolve", "ticket:rule-out")
+        for nm in alcanzable(handler.get(_op52))
+        if _post_con(FUNCS[nm], "type: related"))
+    if _RELATED_ELSEWHERE:
+        fail("[52] estas funciones de ticket:block/resolve/rule-out postean una "
+             "constante con type: related: %s" % _RELATED_ELSEWHERE)
+
+# --- afirmación 69: map:write escribe bajo El colapso solo por --append-collapse -
+
+# Precedente: la 64 por declarar un flag y resolver sobre qué subparsers se declara, la
+# 65 por atar un nombre a su único sitio por identidad de nodo y por contar un literal
+# por igualdad, y la 62 por los dos handlers de resolución.
+_COLLAPSE_FLAG = ARGS_DE["map:write"].get("--append-collapse")
+require_nonempty(_COLLAPSE_FLAG,
+                 "[69] map:write no declara --append-collapse; la afirmación probaría "
+                 "sobre el conjunto vacío")
+
+# Cláusula 1: el flag es repetible y vive solo en map:write.
+_collapse_kws = dict((kw.arg, kw.value) for kw in _COLLAPSE_FLAG.keywords)
+_collapse_action = _collapse_kws.get("action")
+if not (isinstance(_collapse_action, ast.Constant)
+        and _collapse_action.value == "append"):
+    fail("[69] --append-collapse no lleva action=\"append\", así que el colapso no "
+         "podría escribir todos sus cortes en una sola invocación")
+_COLLAPSE_DECLS = [n for n in ast.walk(ARBOL) if isinstance(n, ast.Call)
+                   and isinstance(n.func, ast.Attribute)
+                   and n.func.attr == "add_argument"
+                   and n.args and isinstance(n.args[0], ast.Constant)
+                   and n.args[0].value == "--append-collapse"]
+_collapse_parsers = sorted(set(BIND.get(getattr(n.func.value, "id", ""), "?")
+                               for n in _COLLAPSE_DECLS))
+if _collapse_parsers != ["map:write"]:
+    fail("[69] --append-collapse se declara sobre %s y tiene que declararse solo "
+         "sobre map:write" % _collapse_parsers)
+
+# Cláusula 2: el ancla sale de ANCLAS por posición y el encabezado no se reescribe.
+_COLLAPSE_ASSIGNS = [n for n in ARBOL.body if isinstance(n, ast.Assign)
+                     and any(isinstance(t, ast.Name) and t.id == "COLLAPSE_ANCHOR"
+                             for t in n.targets)]
+if len(_COLLAPSE_ASSIGNS) != 1:
+    fail("[69] hay %d asignaciones de módulo a COLLAPSE_ANCHOR y tiene que haber una "
+         "sola" % len(_COLLAPSE_ASSIGNS))
+else:
+    _collapse_value = _COLLAPSE_ASSIGNS[0].value
+    _collapse_index = (_collapse_value.slice
+                       if isinstance(_collapse_value, ast.Subscript) else None)
+    if not (isinstance(_collapse_value, ast.Subscript)
+            and isinstance(_collapse_value.value, ast.Name)
+            and _collapse_value.value.id == "ANCLAS"
+            and isinstance(_collapse_index, ast.Constant)
+            and _collapse_index.value == 5):
+        fail("[69] COLLAPSE_ANCHOR no se asigna como ANCLAS[5]; el ancla tiene que "
+             "salir de la lista por posición")
+_ANCHORS_LISTS = [n.value for n in ARBOL.body if isinstance(n, ast.Assign)
+                  and any(isinstance(t, ast.Name) and t.id == "ANCLAS"
+                          for t in n.targets)
+                  and isinstance(n.value, ast.List)]
+if len(_ANCHORS_LISTS) != 1 or len(_ANCHORS_LISTS[0].elts) != 6:
+    fail("[69] ANCLAS no es un solo literal de lista de seis elementos")
+else:
+    _sixth_anchor = _ANCHORS_LISTS[0].elts[5]
+    if not (isinstance(_sixth_anchor, ast.Constant)
+            and _sixth_anchor.value == "El colapso"):
+        fail("[69] el sexto elemento de ANCLAS no es la constante \"El colapso\"")
+_COLLAPSE_HEADINGS = [n for n in ast.walk(ARBOL) if isinstance(n, ast.Constant)
+                      and n.value == "El colapso"]
+if len(_COLLAPSE_HEADINGS) != 1:
+    fail("[69] la cadena \"El colapso\" aparece en %d constantes de %s y tiene que "
+         "aparecer en una sola, la de ANCLAS" % (len(_COLLAPSE_HEADINGS), ADAPTER))
+
+# Cláusula 3: un solo sitio de escritura, atado al flag y a las dos casas únicas.
+_COLLAPSE_SITES = [n for nm in sorted(RUTA_ESCRITURA) for n in ast.walk(FUNCS[nm])
+                   if isinstance(n, ast.Name) and n.id == "COLLAPSE_ANCHOR"
+                   and isinstance(n.ctx, ast.Load)]
+require_nonempty(_COLLAPSE_SITES,
+                 "[69] ninguna función del grafo de map:write carga COLLAPSE_ANCHOR; "
+                 "las cláusulas del sitio y de las resoluciones probarían sobre el "
+                 "conjunto vacío")
+_COLLAPSE_LOADS = [n for n in ast.walk(ARBOL) if isinstance(n, ast.Name)
+                   and n.id == "COLLAPSE_ANCHOR" and isinstance(n.ctx, ast.Load)]
+if len(_COLLAPSE_LOADS) != 1:
+    fail("[69] COLLAPSE_ANCHOR se carga %d veces en %s y tiene que cargarse una sola, "
+         "en el sitio de escritura del flag" % (len(_COLLAPSE_LOADS), ADAPTER))
+elif "_ediciones_de" not in RUTA_ESCRITURA:
+    fail("[69] _ediciones_de no está en el grafo de map:write, así que el sitio de "
+         "escritura del colapso no es alcanzable desde el handler")
+else:
+    _COLLAPSE_CALLS = [n for n in ast.walk(FUNCS["_ediciones_de"])
+                       if isinstance(n, ast.Call) and invocado(n.func) == "anotar"
+                       and n.args and n.args[0] is _COLLAPSE_LOADS[0]]
+    _COLLAPSE_LOOPS = [loop for loop in ast.walk(FUNCS["_ediciones_de"])
+                       if isinstance(loop, ast.For)
+                       and isinstance(loop.iter, ast.Attribute)
+                       and loop.iter.attr == "append_collapse"
+                       and isinstance(loop.iter.value, ast.Name)
+                       and loop.iter.value.id == "args"
+                       and any(c is _COLLAPSE_CALLS[0] for c in ast.walk(loop))
+                       ] if _COLLAPSE_CALLS else []
+    if not _COLLAPSE_CALLS:
+        fail("[69] la carga de COLLAPSE_ANCHOR no está en _ediciones_de como primer "
+             "argumento de una llamada a anotar")
+    elif not _COLLAPSE_LOOPS:
+        fail("[69] la llamada a anotar con COLLAPSE_ANCHOR no está dentro de un for "
+             "sobre args.append_collapse")
+    else:
+        for _collapse_house in ("_validar_vineta", "_linea_de_vineta"):
+            if not any(isinstance(n, ast.Call) and invocado(n.func) == _collapse_house
+                       for n in ast.walk(_COLLAPSE_LOOPS[0])):
+                fail("[69] el for sobre args.append_collapse no llama a %s por Name"
+                     % _collapse_house)
+
+# Cláusula 4: ninguna resolución alcanza la edición del colapso. Se camina el grafo
+# alcanzable y no _ANCLAS_H, que solo junta los Name con prefijo ANCLA_ y dejaría la
+# cláusula pasando siempre.
+_RESOLUTION_GRAPH = alcanzable(_H_RESOLVE) | alcanzable(_H_RULE_OUT)
+require_nonempty(_RESOLUTION_GRAPH,
+                 "[69] el grafo alcanzable desde las dos resoluciones dio vacío; la "
+                 "cláusula probaría sobre el conjunto vacío")
+if "_ediciones_de" in _RESOLUTION_GRAPH:
+    fail("[69] una resolución alcanza _ediciones_de, que es la edición de map:write")
+_RESOLUTION_HITS = sorted(
+    nm for nm in _RESOLUTION_GRAPH
+    if any(isinstance(n, ast.Name) and n.id == "COLLAPSE_ANCHOR"
+           for n in ast.walk(FUNCS[nm])))
+if _RESOLUTION_HITS:
+    fail("[69] estas funciones alcanzables desde una resolución nombran "
+         "COLLAPSE_ANCHOR: %s" % _RESOLUTION_HITS)
+
 report()
-print("%s: OK - las veintinueve afirmaciones de AST sobre %s cierran, bajo Python "
+print("%s: OK - las treinta y cuatro afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))

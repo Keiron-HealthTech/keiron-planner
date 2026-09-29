@@ -47,7 +47,9 @@ genérica pasaría las cuatro sin distinguirlas. Reformular una marca sin tocar 
 mensaje, o al revés, deja el contrato y el script en desacuerdo.
 
 Los otros tres códigos que el adapter puede devolver no son fallas duras del preflight.
-El **9** es el de los stubs, los dos subcomandos que todavía no tienen cuerpo, `milestone:create` y `work:write`. El
+El **9** (`NO_IMPLEMENTADO`) es el de un subcomando sin cuerpo. Hoy los doce
+tienen cuerpo, así que ninguno lo emite: el código y la función `cmd_stub` que lo
+devuelve quedan definidos, sin ningún subcomando registrado contra ella. El
 **2** lo emite `argparse`, y cubre tres casos: falta el subcomando, falta un argumento
 requerido, o el subcomando no existe. El **1** queda reservado para lo que el script no
 pudo decidir.
@@ -62,15 +64,21 @@ mapa, que es lo que la vuelve utilizable como ancla.
 
 ### `frontier:query`
 
-Cinco claves de primer nivel, las cinco siempre presentes:
+Siete claves de primer nivel, las siete siempre presentes:
 
     found        bool. false cuando el Project no resolvió. Con found en false los tres
-                 conteos son cero y las dos listas están vacías, que es la misma forma
-                 que tiene un mapa ya terminado: found es lo único que los separa.
+                 conteos son cero y las cuatro listas están vacías, que es la misma
+                 forma que tiene un mapa ya terminado: found es lo único que los separa.
     truncated    lista de string. Subconjunto de issues, relations, inverseRelations y
                  projectMilestones, en ese orden fijo. Vacía si ninguna conexión vino
                  cortada. Cada nombre que aparece acá lleva además una línea a stderr, y
-                 el código de salida sigue siendo 0 en todos los casos.
+                 el código de salida sigue siendo 0 en todos los casos. Con issues
+                 truncada, unlanded también queda como cota inferior; con relations
+                 truncada, una decisión con más de diez relaciones puede aparecer en
+                 unlanded aunque ya esté ligada a trabajo de ejecución; con
+                 projectMilestones truncada, milestones también queda como cota
+                 inferior además de counts.milestones, y el vecino que hace falta para
+                 insertar un corte en el medio puede no estar en la lista.
     counts       objeto de tres claves enteras, open, takeable y milestones. open cuenta
                  los tickets cuyo state.id no es ninguno de los dos ids cerrados del
                  ctx. takeable cuenta los que además pasan las otras dos condiciones.
@@ -79,6 +87,17 @@ Cinco claves de primer nivel, las cinco siempre presentes:
                  cuando esa conexión vino cortada.
     tickets      lista de objeto. Los abiertos tomables, createdAt ascendente.
     notTakeable  lista de objeto. Los abiertos no tomables, createdAt ascendente.
+    milestones   lista de objeto, ordenada por sortOrder ascendente. Cada uno con id,
+                 name, sortOrder, status, createdAt y hasIssues. Vacía cuando el
+                 Project no tiene ningún milestone todavía, el mismo caso que
+                 counts.milestones en cero.
+    unlanded     lista de objeto. Los tickets de decisión CERRADOS cuyo label de tipo es
+                 map:grilling o map:prototype, cerrados después del createdAt del
+                 milestone más viejo del Project, sin ninguna relación related en
+                 relations y sin el label map:no-landing. completedAt ascendente. Vacía
+                 cuando no hay ninguno o cuando el Project no tiene ningún milestone
+                 todavía (sin milestone no hay umbral de nacimiento, así que nada puede
+                 estar sin aterrizar).
 
 No hay campo de veredicto, con ningún nombre. Ni `verdict`, ni `stuck`, ni
 `readyToCollapse`, ni un booleano equivalente: el veredicto se deriva de los tres
@@ -127,6 +146,18 @@ Dos invariantes que el consumidor puede asertar gratis:
 
     len(tickets) == counts.takeable
     len(tickets) + len(notTakeable) == counts.open
+
+Una entrada de `unlanded` lleva cuatro claves, las cuatro siempre presentes:
+
+    identifier   string. El identificador de Linear del ticket de decisión.
+    title        string. El nombre del ticket.
+    url          string. El enlace de Linear.
+    completedAt  string. ISO 8601 en Z con milisegundos: cuándo se cerró.
+
+`unlanded` es un ticket **cerrado**, así que no repite `labels`: quien lo necesita ya sabe,
+por estar en esta lista, que lleva el label de tipo `map:grilling` o `map:prototype` y no
+lleva `map:no-landing`. Y no repite `createdAt`: `completedAt` es el dato que importa acá,
+igual que `blockers` no repite el `state` de su bloqueante.
 
 ### `map:read`
 
@@ -389,3 +420,98 @@ stdout, la misma forma que `ticket:resolve`, con las mismas nueve claves. Con
 `--defer-map`, `mapLine` es la viñeta entera con su marcador y `mapArgs` empieza con
 `--append-out-of-scope`: la línea de esta operación va a `## Fuera de alcance` también
 cuando el mapa lo escribe otro conductor.
+
+## La salida de las operaciones que escriben sobre el colapso
+
+### `milestone:create`
+
+Una sola línea de JSON compacto, con la misma regla de separadores y de escapado a
+ASCII que las demás. Tres claves de primer nivel, las tres siempre presentes:
+
+    id         string. El id que devolvió la mutation.
+    name       string. El nombre que devolvió la mutation, igual al que se pasó.
+    sortOrder  number. El sortOrder que devolvió la mutation, y NUNCA el que se pidió:
+               es la regla de las anclas. Con `--sort-order` en cero la mutation
+               falla del lado del adapter antes de tocar la red, así que el valor que
+               vuelve siempre coincide con el pedido salvo por redondeo del lado de
+               la API.
+
+El write es un solo `projectMilestoneCreate`, sin `targetDate` en ninguna rama: es lo
+que sostiene la afirmación 13. `status` no se pide de vuelta: es derivado, tiene lag,
+y quien lo necesita lo lee por `frontier:query` antes de escribir, nunca después.
+
+No reintenta: `_post` traga la falla de transporte y no distingue "no llegó" de
+"llegó y se perdió la respuesta", y el plugin no tiene ninguna operación para borrar
+un milestone.
+
+### `work:write`
+
+Una sola línea de JSON compacto, con la misma regla de separadores y de escapado a
+ASCII que las demás. Tres claves de primer nivel, las tres siempre presentes:
+
+    issues      lista de objeto. Las issues de ejecución que se crearon en esta
+                corrida, vacía cuando la invocación no traía ningún `--issue`. Cada
+                una lleva cuatro claves, las cuatro siempre presentes: identifier, id,
+                title y url, la misma forma que `tickets` de `ticket:resolve`.
+    related     lista de objeto. Las relaciones `related` que confirmaron, en el
+                orden en que entraron, vacía cuando la invocación no traía ningún
+                `--relate`. Cada una lleva dos claves: decision, el ticket de decisión,
+                e issue, el id de la issue de ejecución del otro lado, ya resuelto
+                (sea que `--relate` lo haya nombrado por índice o por id existente).
+    noLanding   string o null. El identificador que recibió el label
+                `map:no-landing`, y null en los otros dos desenlaces.
+
+Las tres siempre presentes y nunca omitidas: los tres desenlaces tienen la misma forma
+y se distinguen por el contenido.
+
+Las tres escrituras van adentro de una sola invocación y en este orden, que el adapter
+garantiza y ninguna combinación de flags reordena:
+
+| Nº | Mutation | Cuándo |
+| --- | --- | --- |
+| 1 | `issueBatchCreate` | solo si hay al menos un `--issue` |
+| 2 | `issueRelationCreate` con `type: related` | solo si hay al menos un `--relate` |
+| 3 | `issueAddLabel` | solo con `--no-landing` |
+
+Las dos primeras son condicionales por la misma razón que en `ticket:resolve`: la API
+rechaza un `issueBatchCreate` con la lista vacía. Las relaciones van después de las
+issues porque necesitan los ids que devuelve la primera escritura; el label va último
+porque es el único desenlace que convive con cero de las otras dos.
+
+Las issues de ejecución que crea no llevan `estimate` ni ningún `labelIds`: no son
+tickets de decisión, así que no llevan el label `map`, y `frontier:query` sigue
+funcionando igual después de que aterrizan. Toda `issueRelationCreate` que emite pone
+el ticket de decisión del lado `issueId`, al revés que `ticket:block`, para que la
+relación caiga en `relations` y no en `inverseRelations`.
+
+No reintenta ninguna de las tres. `_post` traga la falla de transporte, así que
+ninguna rama puede distinguir "no llegó" de "llegó y se perdió la respuesta", y
+repetir la invocación entera solo es seguro cuando nada quedó escrito: con parte de la
+secuencia ya confirmada, la remediación que cada falla imprime dice exactamente qué
+repetir y qué no.
+
+### map:write bajo el colapso
+
+`map:write` escribe bajo `## El colapso` con `--append-collapse VINETA`. El flag es
+repetible y lleva un solo valor por ocurrencia, así que la pasada entera entra en una
+sola invocación: el colapso escribe todos sus cortes juntos, y el aterrizaje escribe
+uno. Solo `map:write` lo declara; `ticket:resolve` y `ticket:rule-out` no lo tienen.
+
+La línea que agrega es una viñeta con título en negrita:
+
+    **<nombre del corte>.** <una frase que dice qué demuestra ese corte>
+
+Sin enlace, porque un milestone no expone `url`: los cortes van por nombre. El adapter
+no compone texto propio. Valida el valor con las mismas cinco reglas de forma que
+`--append-fog` y `--append-out-of-scope` y lo renderiza con el mismo marcador, así que
+las tres secciones de viñetas escriben la misma clase de línea.
+
+El título en negrita es la clave de unicidad. Un corte cuyo nombre ya está en la
+sección aborta la invocación, y en el segundo intento de un `map:write` que ya escribió
+esa línea la repetición pasa a no-op con reporte y no duplica nada.
+
+La sección sale de la lista de encabezados por posición, la sexta, y el adapter nunca
+reescribe su texto. Un overview sin el encabezado `## El colapso` aborta sin escribir y
+sin agregar la línea al final del documento. `--expect-sections` cubre la sección igual
+que las otras cinco y sigue siendo opcional: la deriva de su huella se avisa por
+stderr y nunca aborta. El envelope de stdout no cambia: `written`, `attempts` y `noop`.

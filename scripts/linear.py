@@ -44,12 +44,13 @@ ANCLAS = ["Destino", "Notas", "Decisiones hasta ahora", "Aún no especificado",
 # esqueleto, porque desde que corta el recorrido la primitiva es su consumidora.
 ANTES_DEL_MAPA = "Antes del mapa"
 
-# Las tres anclas que map:write edita, tomadas de ANCLAS por posición y nunca
+# Las cuatro anclas que map:write edita, tomadas de ANCLAS por posición y nunca
 # reescritas: una segunda copia del texto del encabezado se desincroniza en el primer
 # rename, y el orden de ANCLAS ya es contrato.
 ANCLA_DECISIONES = ANCLAS[2]
 ANCLA_NIEBLA = ANCLAS[3]
 ANCLA_FUERA = ANCLAS[4]
+COLLAPSE_ANCHOR = ANCLAS[5]
 
 # Las seis secciones del comentario de resolución, sin el "## ", en su orden de
 # contrato. Misma regla que ANCLAS: el orden ES contrato, el render itera esta lista y
@@ -119,8 +120,9 @@ query($team: String!, $labels: [String!]!) {
 
 # Los tamaños de página van adentro del string y nunca en una constante: así la
 # query y la medición de complejidad que la aprobó no pueden divergir. relations
-# viaja sin nodes a propósito: el predicado no la lee, y no pedirla deja el payload
-# incapaz de entregar un bloqueante por la conexión equivocada.
+# gana nodes con type: el predicado de unlanded_decisions la lee para descartar
+# una decisión ya ligada a trabajo de ejecución, y no pedirla dejaría el payload
+# incapaz de distinguirla de una que nunca aterrizó.
 FRONTIER_QUERY = """
 query($project: String!, $label: String!) {
   project(id: $project) {
@@ -131,11 +133,13 @@ query($project: String!, $label: String!) {
         title
         url
         createdAt
+        completedAt
         state { id name }
         assignee { displayName }
         labels { nodes { name } }
         relations(first: 10) {
           pageInfo { hasNextPage }
+          nodes { type }
         }
         inverseRelations(first: 10) {
           pageInfo { hasNextPage }
@@ -145,7 +149,7 @@ query($project: String!, $label: String!) {
     }
     projectMilestones(first: 10) {
       pageInfo { hasNextPage }
-      nodes { id }
+      nodes { id name sortOrder status createdAt issues(first: 1) { nodes { id } } }
     }
   }
 }
@@ -192,6 +196,25 @@ mutation($team: String!, $name: String!, $content: String!) {
 """
 
 
+# Sin targetDate en ninguno de los dos lados, y eso es la afirmación 13 entera. En el
+# input porque un milestone del mapa nunca es un corte temporal y la fecha es lo único
+# que habilita que status se ponga en overdue. Y en la selección de vuelta porque pedir
+# un campo que este archivo se niega a escribir es pedirle a la API que confirme un
+# nulo: no lo consume nadie, y su sola presencia volvería vacua la afirmación que
+# prohíbe el campo. status tampoco se pide: es derivado, y quien lo necesita lo lee por
+# frontier:query antes de escribir, nunca después.
+PROJECT_MILESTONE_CREATE = """
+mutation($name: String!, $project: String!, $description: String!, $orden: Float!) {
+  projectMilestoneCreate(input: {
+    name: $name, projectId: $project, description: $description, sortOrder: $orden
+  }) {
+    success
+    projectMilestone { id name sortOrder }
+  }
+}
+"""
+
+
 ISSUE_LABEL_CREATE = """
 mutation($nombre: String!) {
   issueLabelCreate(input: { name: $nombre }) {
@@ -220,6 +243,36 @@ mutation($bloqueante: String!, $bloqueado: String!) {
   }) {
     success
     issueRelation { id }
+  }
+}
+"""
+
+# La segunda constante de issueRelationCreate, y a propósito una segunda y no un
+# parámetro: el enum de GraphQL va sin comillas ADENTRO del cuerpo de la mutation y
+# nunca como variable, que es la regla que ISSUE_RELATION_CREATE ya escribió y el
+# defecto que dejó a ticket:block inservible al nacer. El nombre de las variables es lo
+# que hace legible la orientación en el sitio de llamada: el ticket de decisión SIEMPRE
+# del lado issueId, al revés que en los bloqueos y a propósito, para que la relación
+# caiga en relations y no en inverseRelations.
+ISSUE_RELATION_RELATED = """
+mutation($decision: String!, $trabajo: String!) {
+  issueRelationCreate(input: {
+    type: related, issueId: $decision, relatedIssueId: $trabajo
+  }) {
+    success
+    issueRelation { id }
+  }
+}
+"""
+
+# issueAddLabel y NUNCA issueUpdate con labelIds: labelIds es una escritura de
+# conjunto, así que aplicar map:no-landing por esa vía le borraría al ticket de
+# decisión sus labels map, de tipo y Discovery de un saque. Esta mutation es aditiva y
+# no lee nada antes de escribir.
+ISSUE_ADD_LABEL = """
+mutation($issue: String!, $label: String!) {
+  issueAddLabel(id: $issue, labelId: $label) {
+    success
   }
 }
 """
@@ -515,11 +568,11 @@ def _no_es_encabezado(etiqueta, valor):
 
 def _validar_vineta(etiqueta, valor):
     """Las cinco reglas de forma de una viñeta con título en negrita, sobre el valor que
-    llegó por argumento. La comparten los dos flags que agregan una viñeta, y la etiqueta
-    es un parámetro para que el mensaje nombre el flag que la persona escribió. Devuelve
-    el título, que es además su clave de unicidad. La guarda del encabezado no hace falta
-    acá: la regla de que el valor empieza con ** ya impide que la viñeta sea un
-    encabezado."""
+    llegó por argumento. La comparten los tres flags que agregan una viñeta, y la
+    etiqueta es un parámetro para que el mensaje nombre el flag que la persona escribió.
+    Devuelve el título, que es además su clave de unicidad. La guarda del encabezado no
+    hace falta acá: la regla de que el valor empieza con ** ya impide que la viñeta sea
+    un encabezado."""
     _sin_saltos(etiqueta, valor)
     titulo = titulo_en_negrita(valor) if valor.startswith("**") else None
     if titulo is None:
@@ -564,9 +617,9 @@ def _linea_de_decision(enlace, gist):
 
 
 def _linea_de_vineta(valor):
-    """La ÚNICA casa del marcador de una viñeta del mapa, la de niebla y la de Fuera de
-    alcance. Recibe el valor ya validado por _validar_vineta y solo le pone el
-    marcador."""
+    """La ÚNICA casa del marcador de una viñeta del mapa, la de niebla, la de Fuera de
+    alcance y la de El colapso. Recibe el valor ya validado por _validar_vineta y solo
+    le pone el marcador."""
     return "- %s" % valor
 
 
@@ -840,12 +893,18 @@ def _ediciones_de(args):
         _validar_vineta("--append-out-of-scope", valor)
         anotar(ANCLA_FUERA, 1, _linea_de_vineta(valor))
 
+    for value in args.append_collapse:
+        # El título en negrita es el nombre del corte y también la clave de unicidad,
+        # así que un corte repetido aborta en vez de contarse dos veces.
+        _validar_vineta("--append-collapse", value)
+        anotar(COLLAPSE_ANCHOR, 1, _linea_de_vineta(value))
+
     if not ediciones:
         die(SIN_KEY,
             "map:write no recibió ninguna edición, y escribir cero ediciones es un "
             "error de invocación y no un no-op silencioso",
-            "pasá al menos uno de --append-decision, --append-fog, --remove-fog o "
-            "--append-out-of-scope")
+            "pasá al menos uno de --append-decision, --append-fog, --remove-fog, "
+            "--append-out-of-scope o --append-collapse")
     return ediciones
 
 
@@ -1064,6 +1123,41 @@ def _resolver_creacion(payload):
     return (True, "", datos.get("project") or {})
 
 
+def _sort_order_from(args):
+    """El --sort-order ya validado: float y distinto de cero. Cero es el único valor
+    que Linear reinterpreta -lo manda al final de la lista en vez de respetarlo
+    literal-, así que se rechaza en vez de dejarlo pasar. Vive aparte del handler para
+    que el mensaje de la remediación tenga una sola casa y para que la guarda corra
+    antes de leer_key(), igual que _destino_de, _ediciones_de y _tickets_de."""
+    try:
+        sort_order = float(args.sort_order)
+    except ValueError:
+        die(SIN_KEY,
+            "--sort-order recibió %r y no parsea como número" % args.sort_order,
+            "pasá un valor numérico, distinto de cero")
+    if sort_order == 0.0:
+        die(SIN_KEY,
+            "--sort-order recibió 0, y es el único valor que Linear reinterpreta: lo "
+            "manda al final de la lista en vez de respetarlo literal",
+            "pasá un valor distinto de cero, calculado a partir de una lectura fresca "
+            "de los milestones vecinos")
+    return sort_order
+
+
+def _resolve_milestone(payload):
+    """La puerta de projectMilestoneCreate: la misma regla de tres casos que
+    _resolver_creacion, _resolver_label y _resolver_tickets, sobre su propia clave del
+    payload. Devuelve (ok, detalle, hito)."""
+    errors = _errores_de(payload)
+    if errors:
+        return (False, "; ".join(errors), {})
+    data = (payload.get("data") or {}).get("projectMilestoneCreate") or {}
+    if data.get("success") is not True:
+        return (False,
+                "projectMilestoneCreate devolvió success=%s" % data.get("success"), {})
+    return (True, "", data.get("projectMilestone") or {})
+
+
 def tiene_las_seis(rangos):
     """True si el overview lleva las seis anclas, que es la forma que esqueleto produce.
     Un solo sitio de definición porque tiene dos consumidores que TIENEN que coincidir:
@@ -1187,6 +1281,33 @@ def truncadas(proyecto):
     if (hitos.get("pageInfo") or {}).get("hasNextPage"):
         cortadas.append("projectMilestones")
     return cortadas
+
+
+def unlanded_decisions(nodes, closed_ids, oldest_milestone_created_at):
+    """Los tickets de decisión cerrados que no aterrizaron. NUNCA nombra
+    inverseRelations ni issue: los bloqueos salen de bloqueantes_abiertos y de
+    ninguna otra función, y mezclar las dos acá pondría roja la afirmación 53."""
+    unlanded = []
+    for n in sorted(nodes, key=lambda n: (n.get("completedAt") or "",
+                                          n.get("identifier") or "")):
+        if (n.get("state") or {}).get("id") not in closed_ids:
+            continue
+        names = [label.get("name") for label
+                in ((n.get("labels") or {}).get("nodes") or [])]
+        if not any(t in names for t in TIPOS[1:3]):   # map:prototype y map:grilling
+            continue
+        if LABELS[8] in names:                         # map:no-landing
+            continue
+        closed_at = n.get("completedAt")
+        if (not closed_at or not oldest_milestone_created_at
+                or closed_at <= oldest_milestone_created_at):
+            continue
+        if any(relation.get("type") == "related"
+               for relation in ((n.get("relations") or {}).get("nodes") or [])):
+            continue
+        unlanded.append({"identifier": n.get("identifier"), "title": n.get("title"),
+                         "url": n.get("url"), "completedAt": closed_at})
+    return unlanded
 
 
 def _tickets_de(args):
@@ -1523,17 +1644,19 @@ def cmd_frontier_query(args):
     proyecto = resolver_datos(payload)
     if proyecto is None:
         # found es lo único que separa un --project que no resolvió de un mapa ya
-        # colapsado: los dos llevan los conteos en cero y las dos listas vacías.
+        # colapsado: los dos llevan los conteos en cero y las cuatro listas vacías.
         salida = {"found": False, "truncated": [],
                   "counts": {"open": 0, "takeable": 0, "milestones": 0},
-                  "tickets": [], "notTakeable": []}
+                  "tickets": [], "notTakeable": [], "milestones": [], "unlanded": []}
     else:
         cortadas = truncadas(proyecto)
         # Cada conexión cortada miente distinto: decirle a quien perdió relations
         # que un ticket bloqueado puede parecer tomable sería falso.
         consecuencias = {
-            "issues": "los dos conteos son cotas inferiores y falta frontera",
-            "relations": "no afecta la frontera: el predicado no lee esta conexión",
+            "issues": "los dos conteos son cotas inferiores y falta frontera, y la "
+                     "lista de decisiones sin aterrizar es una cota inferior",
+            "relations": "no afecta la frontera, pero una decisión con más de diez "
+                        "relaciones puede aparecer como sin aterrizar",
             "inverseRelations": "un ticket bloqueado puede parecer tomable, y la "
                                 "lista de bloqueantes de una entrada puede venir "
                                 "incompleta",
@@ -1541,20 +1664,37 @@ def cmd_frontier_query(args):
             # contra más de cero, y una página cortada trajo al menos un nodo. Lo
             # que sí queda mal es el número.
             "projectMilestones": "el veredicto no cambia, porque solo distingue "
-                                 "cero de más de cero, pero counts.milestones "
-                                 "queda como cota inferior",
+                                 "cero de más de cero, pero counts.milestones y "
+                                 "milestones quedan como cota inferior, y el "
+                                 "vecino que hace falta para insertar un corte en "
+                                 "el medio puede no estar en la lista",
         }
         for nombre in cortadas:
             print("aviso: %s vino truncada: %s" % (nombre, consecuencias[nombre]),
                   file=sys.stderr)
-        tomables, no_tomables = clasificar_frontera(
-            (proyecto.get("issues") or {}).get("nodes") or [], cerrados)
+        issue_nodes = (proyecto.get("issues") or {}).get("nodes") or []
+        tomables, no_tomables = clasificar_frontera(issue_nodes, cerrados)
         nodos_hitos = (proyecto.get("projectMilestones") or {}).get("nodes") or []
+        oldest_milestone_created_at = min(
+            (n.get("createdAt") for n in nodos_hitos if n.get("createdAt")),
+            default=None)
+        milestones = []
+        for milestone in nodos_hitos:
+            has_issues = bool((milestone.get("issues") or {}).get("nodes"))
+            milestones.append({
+                "id": milestone.get("id"), "name": milestone.get("name"),
+                "sortOrder": milestone.get("sortOrder"),
+                "status": milestone.get("status"),
+                "createdAt": milestone.get("createdAt"), "hasIssues": has_issues})
+        milestones.sort(key=lambda m: m["sortOrder"])
+        unlanded = unlanded_decisions(issue_nodes, cerrados,
+                                      oldest_milestone_created_at)
         salida = {"found": True, "truncated": cortadas,
                   "counts": {"open": len(tomables) + len(no_tomables),
                              "takeable": len(tomables),
                              "milestones": len(nodos_hitos)},
-                  "tickets": tomables, "notTakeable": no_tomables}
+                  "tickets": tomables, "notTakeable": no_tomables,
+                  "milestones": milestones, "unlanded": unlanded}
     print(json.dumps(salida, separators=(",", ":")))
 
 
@@ -1633,11 +1773,14 @@ def cmd_ticket_resolve(args):
                                              plan["tickets"], key)
         if not ok:
             die(SIN_KEY,
-                "el issueBatchCreate no confirmó: %s. No quedó escrito nada de esta "
-                "resolución: ni los tickets nuevos, ni el cableado, ni el comentario, "
-                "ni el estado, ni el mapa" % detalle,
-                "volvé a correr la misma invocación entera: como no aterrizó nada, "
-                "repetirla no duplica nada")
+                "el issueBatchCreate no confirmó y NO SE SABE si los tickets nuevos "
+                "quedaron escritos: un rechazo y una respuesta perdida no se "
+                "distinguen: %s. El cableado, el comentario, el estado y el mapa no "
+                "se intentaron" % detalle,
+                "mirá en Linear si los tickets nuevos de esta resolución existen "
+                "ANTES de volver a correr: si no están, repetí la misma invocación "
+                "entera; si están, no la repitas, porque repetirla tras un lote que "
+                "aterrizó duplica cada ticket y este adaptador no sabe borrarlos")
     if plan["pares"]:
         # Los títulos se resuelven a ids recién acá, con lo que devolvió la escritura 1.
         por_titulo = dict((i.get("title"), i.get("id")) for i in issues)
@@ -1760,11 +1903,15 @@ def cmd_ticket_rule_out(args):
                                              plan["tickets"], key)
         if not ok:
             die(SIN_KEY,
-                "el issueBatchCreate no confirmó: %s. No quedó escrito nada de este "
-                "fuera de alcance: ni los tickets nuevos, ni el cableado, ni el "
-                "comentario, ni el estado, ni el mapa" % detalle,
-                "volvé a correr la misma invocación entera: como no aterrizó nada, "
-                "repetirla no duplica nada")
+                "el issueBatchCreate no confirmó y NO SE SABE si los tickets nuevos "
+                "quedaron escritos: un rechazo y una respuesta perdida no se "
+                "distinguen: %s. El cableado, el comentario, el estado y el mapa no "
+                "se intentaron" % detalle,
+                "mirá en Linear si los tickets nuevos de este fuera de alcance "
+                "existen ANTES de volver a correr: si no están, repetí la misma "
+                "invocación entera; si están, no la repitas, porque repetirla tras un "
+                "lote que aterrizó duplica cada ticket y este adaptador no sabe "
+                "borrarlos")
     if plan["pares"]:
         por_titulo = dict((i.get("title"), i.get("id")) for i in issues)
         ok, detalle, escritos = _bloquear_pares(
@@ -1844,6 +1991,191 @@ def cmd_ticket_rule_out(args):
     print(json.dumps(salida, separators=(",", ":")))
 
 
+def cmd_milestone_create(args):
+    sort_order = _sort_order_from(args)  # valida antes de tocar la red: float y distinto de cero
+    _sin_saltos("--name", args.name)
+    key = leer_key()
+    ok, detail, milestone = _resolve_milestone(
+        _post(PROJECT_MILESTONE_CREATE,
+              {"name": args.name, "project": args.project,
+               "description": args.description, "orden": sort_order}, key))
+    if not ok:
+        die(SIN_KEY, "el milestone %s no se pudo crear: %s" % (args.name, detail),
+            "mirá en Linear si el corte quedó hecho ANTES de reintentar: esta "
+            "operación no reintenta sola, y un segundo intento sobre un corte que ya "
+            "nació deja dos hermanos con el mismo nombre que nada sabe deshacer")
+    print(json.dumps({"id": milestone.get("id"), "name": milestone.get("name"),
+                      "sortOrder": milestone.get("sortOrder")}, separators=(",", ":")))
+
+
+def _work_from(args):
+    """Todo lo que work:write puede romper sin un round trip, roto acá y en un solo
+    lugar, antes del primer POST. Mismo orden que ticket:create y ticket:block ya usan:
+    la función pura primero, después leer_key, y recién entonces la red. La invocación
+    entera no puede ser vacía: cero --issue, cero --relate y sin --no-landing es un
+    error de invocación y no un no-op silencioso, igual que ticket:create sin --ticket
+    y ticket:block sin --block."""
+    ctx = _ctx_de(args)
+    issues = []
+    for title, body, milestone_id in args.issue:
+        _sin_saltos("--issue", title)
+        _sin_saltos("--issue", body)
+        _sin_saltos("--issue", milestone_id)
+        if not title.strip() or not body.strip() or not milestone_id.strip():
+            die(SIN_KEY,
+                "--issue recibió un título, un cuerpo o un corte vacío: %r"
+                % ((title, body, milestone_id),),
+                "los tres campos de --issue son obligatorios: título, cuerpo y el id "
+                "del milestone donde nace")
+        issues.append((title, body, milestone_id))
+    relations = []
+    for decision, target in args.relate:
+        _sin_saltos("--relate", decision)
+        _sin_saltos("--relate", target)
+        if not decision.strip() or not target.strip():
+            die(SIN_KEY,
+                "--relate recibió un operando vacío: %r" % ((decision, target),),
+                "los dos operandos de --relate son obligatorios: el ticket de "
+                "decisión y el destino")
+        # El discriminador es "todo dígitos decimales": los ids de Linear son UUIDs y
+        # los identificadores son CRM-3404, así que ninguno de los dos matchea esto, y
+        # un token todo dígitos fuera de rango es un typo y no un id.
+        if target.isdigit():
+            position = int(target)
+            if not (1 <= position <= len(args.issue)):
+                die(SIN_KEY,
+                    "--relate nombra el índice %s, y esta invocación declara %d "
+                    "--issue" % (target, len(args.issue)),
+                    "el segundo operando de --relate es o un índice de base 1 "
+                    "dentro de los --issue de esta invocación, o el id de una issue "
+                    "de ejecución que ya existe; %s no es ninguno de los dos"
+                    % target)
+        relations.append((decision, target))
+    if args.no_landing:
+        _sin_saltos("--no-landing", args.no_landing)
+        if not args.no_landing.strip():
+            die(SIN_KEY, "--no-landing recibió un texto vacío",
+                "pasá el identificador del ticket de decisión")
+    if not issues and not relations and not args.no_landing:
+        die(SIN_KEY,
+            "work:write no recibió ningún --issue, ningún --relate y ningún "
+            "--no-landing",
+            "una invocación sin nada que escribir es un error de invocación y no un "
+            "no-op silencioso, igual que ticket:create sin --ticket y ticket:block "
+            "sin --block")
+    return {"ctx": ctx, "issues": issues, "relations": relations}
+
+
+def _create_execution(ctx, project, issues, key):
+    """La escritura del lote de issues de ejecución, en una sola llamada atómica. NO
+    crea labels: la única casa que los crea sigue siendo _crear_labels_faltantes, con
+    su único llamador cmd_ticket_create, que es lo que mantiene verde la afirmación
+    38."""
+    entries = []
+    for title, body, milestone_id in issues:
+        # stateId explícito: sin él la issue nace en Triage, medido. Sin estimate,
+        # porque un agente adivinando fibonacci es precisión falsa. Y SIN labelIds de
+        # ninguna clase: una issue de ejecución no lleva label map, y eso es lo que
+        # hace que frontier:query siga funcionando igual después del colapso.
+        entries.append({"teamId": ctx["team"], "projectId": project,
+                        "projectMilestoneId": milestone_id, "title": title,
+                        "description": body, "stateId": ctx["default"]})
+    return _resolver_tickets(_post(ISSUE_BATCH_CREATE, {"issues": entries}, key))
+
+
+def _link_decisions(relations, issues, key):
+    """El cableado de una pasada de relaciones related, sobre las issues que esta
+    misma invocación acaba de crear. El DESTINO de cada --relate se resuelve acá, con
+    lo que devolvió la escritura 1: un token todo dígitos es un índice de base 1
+    dentro de issues, cualquier otro es el id de una issue de ejecución que ya existe.
+    Corta en la primera relación que no confirma y NO termina el proceso: devuelve
+    (ok, detalle, linked) con las que sí entraron, exactamente la forma de
+    _bloquear_pares."""
+    linked = []
+    for decision, target in relations:
+        issue_id = issues[int(target) - 1]["id"] if target.isdigit() else target
+        ok, detail = _resolver_relaciones(
+            _post(ISSUE_RELATION_RELATED,
+                  {"decision": decision, "trabajo": issue_id}, key))
+        if not ok:
+            return (False,
+                    "la relación de %s con %s no confirmó: %s"
+                    % (decision, issue_id, detail), linked)
+        linked.append((decision, issue_id))
+    return (True, "", linked)
+
+
+def _resolve_add_label(payload):
+    """La puerta de issueAddLabel: la misma regla de tres casos que las demás, sin
+    objeto anidado que devolver. Devuelve (ok, detalle)."""
+    errors = _errores_de(payload)
+    if errors:
+        return (False, "; ".join(errors))
+    data = (payload.get("data") or {}).get("issueAddLabel") or {}
+    if data.get("success") is not True:
+        return (False, "issueAddLabel devolvió success=%s" % data.get("success"))
+    return (True, "")
+
+
+def _mark_no_landing(ctx, ticket_id, key):
+    """Aplica el label map:no-landing al ticket de decisión, vía issueAddLabel. Nunca
+    lo crea: si ctx no lo tiene, aborta con la misma guarda y el mismo mensaje que
+    cmd_ticket_resolve ya usa para sus labels faltantes."""
+    label_id = (ctx.get("labels") or {}).get(LABELS[8])
+    if label_id is None:
+        die(SIN_KEY,
+            "el label %s vino en null en el ctx" % LABELS[8],
+            "corré /map-new en este workspace: es quien crea los labels del plugin "
+            "cuando faltan, y esta operación nunca los crea por su cuenta")
+    return _resolve_add_label(
+        _post(ISSUE_ADD_LABEL, {"issue": ticket_id, "label": label_id}, key))
+
+
+def cmd_work_write(args):
+    plan = _work_from(args)         # valida TODO antes de tocar la red
+    ctx = plan["ctx"]
+    key = leer_key()
+    issues = []
+    if plan["issues"]:
+        # La guarda de la afirmación 51: medido, la API rechaza la lista vacía con
+        # Argument Validation Error y el constraint arrayNotEmpty.
+        ok, detail, issues = _create_execution(ctx, args.project, plan["issues"], key)
+        if not ok:
+            die(SIN_KEY,
+                "el issueBatchCreate no confirmó y NO SE SABE si las issues quedaron "
+                "escritas: un rechazo y una respuesta perdida no se distinguen: %s. "
+                "Las relaciones y el label no se intentaron" % detail,
+                "mirá en Linear si las issues de ejecución de este aterrizaje existen "
+                "ANTES de volver a correr: si no están, repetí la misma invocación "
+                "entera; si están, no la repitas, porque repetirla tras un lote que "
+                "aterrizó duplica cada issue y este adaptador no sabe borrarlas")
+    linked = []
+    if plan["relations"]:
+        ok, detail, linked = _link_decisions(plan["relations"], issues, key)
+        if not ok:
+            die(SIN_KEY,
+                "%s. Las issues ya quedaron escritas, y de las relaciones entraron "
+                "%s" % (detail, len(linked)),
+                "volvé a correr esta misma invocación sin --issue y solo con los "
+                "--relate que faltan: repetir una relación que ya entró la "
+                "duplicaría")
+    marked = None
+    if args.no_landing:
+        ok, detail = _mark_no_landing(ctx, args.no_landing, key)
+        if not ok:
+            die(SIN_KEY,
+                "el label map:no-landing no se pudo aplicar a %s: %s"
+                % (args.no_landing, detail),
+                "aplicalo a mano en Linear, o volvé a correr esta invocación solo "
+                "con --no-landing: aplicar dos veces el mismo label no duplica nada")
+        marked = args.no_landing
+    print(json.dumps(
+        {"issues": [{"identifier": i.get("identifier"), "id": i.get("id"),
+                     "title": i.get("title"), "url": i.get("url")} for i in issues],
+         "related": [{"decision": d, "issue": t} for d, t in linked],
+         "noLanding": marked}, separators=(",", ":")))
+
+
 def cmd_stub(args):
     die(NO_IMPLEMENTADO,
         "el subcomando %s todavía no está implementado" % args.operacion,
@@ -1891,12 +2223,14 @@ def construir_parser():
                              metavar="TITULO")
     p_map_write.add_argument("--append-out-of-scope", action="append", default=[],
                              metavar="LINEA")
+    p_map_write.add_argument("--append-collapse", action="append", default=[],
+                             metavar="VINETA")
     p_map_write.add_argument("--expect-sections")
     p_map_write.set_defaults(func=cmd_map_write)
 
     # --ticket copia la forma de --append-decision: nargs fijo, repetible y con el
     # default explícito. Repetible por la misma razón por la que map:write tiene sus
-    # cuatro flags repetibles: la pasada entera entra en una sola invocación. LABELS es
+    # cinco flags repetibles: la pasada entera entra en una sola invocación. LABELS es
     # una lista separada por comas, y cero labels se pasa como "".
     p_ticket_create = subs.add_parser("ticket:create")
     p_ticket_create.add_argument("--ctx", required=True)
@@ -1982,12 +2316,31 @@ def construir_parser():
     p_ticket_rule_out.add_argument("--defer-map", action="store_true")
     p_ticket_rule_out.set_defaults(func=cmd_ticket_rule_out)
 
+    # Sin --ctx a propósito: milestone:create es una de las cinco operaciones que no
+    # lo consumen. --sort-order es requerido y nunca omitido: el cero es el único
+    # valor que Linear reinterpreta, así que _sort_order_from lo rechaza en vez de
+    # dejarlo pasar. Ningún flag de fecha, con ningún nombre: targetDate no tiene superficie
+    # de CLI, así que no hay forma de pasarlo ni por accidente.
     p_milestone_create = subs.add_parser("milestone:create")
-    p_milestone_create.set_defaults(func=cmd_stub)
+    p_milestone_create.add_argument("--project", required=True)
+    p_milestone_create.add_argument("--name", required=True)
+    p_milestone_create.add_argument("--description", required=True)
+    p_milestone_create.add_argument("--sort-order", required=True, metavar="ORDEN")
+    p_milestone_create.set_defaults(func=cmd_milestone_create)
 
+    # --issue lleva nargs=3 y copia la forma de --ticket/--new-ticket; --relate copia
+    # la de --block. Flags semánticos repetibles y NUNCA un blob de JSON: el adapter
+    # sostiene desde el preflight que el modelo no compone GraphQL ni JSON, y el único
+    # blob que toca es --ctx, que es opaco y no lo escribe él.
     p_work_write = subs.add_parser("work:write")
     p_work_write.add_argument("--ctx", required=True)
-    p_work_write.set_defaults(func=cmd_stub)
+    p_work_write.add_argument("--project", required=True)
+    p_work_write.add_argument("--issue", nargs=3, action="append", default=[],
+                              metavar=("TITULO", "CUERPO", "CORTE"))
+    p_work_write.add_argument("--relate", nargs=2, action="append", default=[],
+                              metavar=("DECISION", "DESTINO"))
+    p_work_write.add_argument("--no-landing", metavar="IDENTIFICADOR")
+    p_work_write.set_defaults(func=cmd_work_write)
 
     return parser
 

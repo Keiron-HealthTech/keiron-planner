@@ -41,8 +41,9 @@ La frase que dictó la persona, la que dice adónde va este mapa.
 ## El colapso
 ```
 
-`## El colapso` nace vacío con el mapa y lo llena el colapso. Las otras cinco las
-llena el trabajo.
+`## El colapso` nace vacío con el mapa, lo llena el colapso, y después
+el aterrizaje le agrega una línea por cada corte que crea. Las otras cinco las llena el
+trabajo.
 
 ## El cuerpo de una issue de ejecución
 
