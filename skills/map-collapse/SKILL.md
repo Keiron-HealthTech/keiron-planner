@@ -101,11 +101,16 @@ by `hasIssues` in the entries of `milestones`:
   and close with `next_recommended: sdd-new`. The collapse is idempotent by refusal and never
   by merge. Merging two collapses is the destructive operation nobody asked for, and there is
   no uncollapse.
-- No milestone has issues. A collapse died after step 6 and before step 7. Say so, show the
-  cuts that already exist BY NAME and with no link, because `ProjectMilestone` does not expose
-  a `url`, and offer to resume by reusing those milestones and starting at step 5. Steps 4 and
-  6 do not run again and no `milestone:create` is invoked for a cut that exists. Take the id
-  of each cut from `milestones`, as the API returned it in this run.
+- No milestone has issues. A collapse died before step 7, and step 6 may have died at cut k of
+  N or timed out after creating one, so the cuts that exist may be only some of the approved
+  ones. Say so, show the cuts that already exist BY NAME and with no link, because
+  `ProjectMilestone` does not expose a `url`, and ask the person whether those are all the cuts
+  of the collapse. Take the id of each existing cut from `milestones`, as the API returned it
+  in this run. If they are all, offer to resume by reusing those milestones and starting at
+  step 5, and steps 4 and 6 do not run again. If some are missing, the round of step 4 runs
+  only for the missing cuts, and step 6 creates only those, never one that exists, each with a
+  `--sort-order` after or between the existing ones. Step 5 then covers all the cuts, the
+  existing and the new.
 
 When `hasIssues` is missing from the entries, or `truncated` names `projectMilestones` so the
 list is a lower bound, do not decide alone. Show the cuts that are there by name and ask the
@@ -158,7 +163,9 @@ Keep the `id` each invocation prints. It is what step 7 puts in the third value 
 `--issue`, and it comes from the payload of the mutation and never from what you believe you
 typed. This is the first write of the session, and nothing wrote before it.
 
-A resumed run skips this step: the ids are the ones step 3 took from `milestones`.
+A resumed run whose cuts are all there skips this step: the ids are the ones step 3 took from
+`milestones`. A resumed run with missing cuts creates only the missing ones and takes the ids
+of the existing cuts from step 3.
 
 ## Step 7, the work, one atomic call
 
