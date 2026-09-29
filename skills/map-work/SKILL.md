@@ -31,8 +31,9 @@ yourself and never touch the Linear API directly.
 The ninth, `map:write`, belongs to the research branch of step 8 and to no other path. A
 ticket of any other type still reaches the map through the operation that resolves it, and
 this skill never invokes `map:write` on that path. The one other place it runs is the landing
-of step 9, and only when that landing created a cut. The tenth and the eleventh,
-`milestone:create` and `work:write`, belong to step 9 alone.
+of step 9, and only when that landing created a cut: there it runs once, with
+`--append-collapse` and with nothing else, to put the cut under `## El colapso`. The tenth
+and the eleventh, `milestone:create` and `work:write`, belong to step 9 alone.
 
 The map lands last and exactly once, by construction rather than by your discipline, and
 there are two constructions because there are two branches. On the normal path the write
@@ -428,8 +429,13 @@ never typed from memory. The `Fuera de alcance` of the map is not copied into an
 
 ### The map, only when a cut was born
 
-Run `map:write` once, to add the new cut to `## El colapso`. When no cut was born, the map is
-not touched again.
+`map:write` runs once, with a single
+`--append-collapse "**<name of the cut>.** <one sentence>"`. The bold title is the name of
+the cut exactly as it was passed to `milestone:create`, final period included. You condense
+the sentence from the `description` the milestone was created with, which the person already
+saw in the round, so nothing new is shown before the write. The line carries no link,
+because `ProjectMilestone` does not expose a `url`. The sentence is in Spanish, like the rest
+of the map. When no cut was born, the map is not touched again.
 
 A landing that dies halfway is named and not repaired. When a cut was born and `work:write`
 then failed, what is left is an empty milestone and an unlanded decision, and both are
