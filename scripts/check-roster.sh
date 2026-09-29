@@ -222,6 +222,53 @@ if [ "$citan" != "$esperado_subagente" ]; then
   fail "[67] a $SUBAGENTE lo tienen que nombrar skills/map-new/SKILL.md y skills/map-work/SKILL.md, y lo nombran: $(printf '%s\n' "$citan" | tr '\n' ' ')"
 fi
 
+# --- afirmación 70: cada skill declara un name: igual a su directorio ---
+
+# Reusa $fuentes por la misma regla que la 67: una segunda extracción sería una segunda
+# copia del alcance del roster, y las dos podrían divergir.
+skills_md="$(printf '%s\n' "$fuentes" | grep '^skills/' || true)"
+require_nonempty "$skills_md" "[70] el recorrido de skills/ no matcheó ningún SKILL.md; la comparación de name: con el directorio probaría sobre el conjunto vacío"
+
+while IFS= read -r f; do
+  if [ -z "$f" ]; then continue; fi
+  dir="${f#skills/}"
+  dir="${dir%/SKILL.md}"
+  if [ "$(head -1 "$f")" != "---" ]; then
+    fail "[70] $f no abre con un frontmatter"
+    continue
+  fi
+  # Sin esta guarda, la extracción de abajo leería el cuerpo entero y un name: del cuerpo
+  # contaría como si fuera del frontmatter.
+  if ! awk 'NR > 1 && $0 == "---" { c = 1; exit } END { exit !c }' "$f"; then
+    fail "[70] $f abre un frontmatter y nunca lo cierra"
+    continue
+  fi
+  frontmatter="$(awk 'NR==1 && $0 != "---" {exit} NR==1 {next} /^---$/ {exit} {print}' "$f")"
+  lineas="$(printf '%s\n' "$frontmatter" | grep '^name:' || true)"
+  if [ -z "$lineas" ]; then
+    fail "[70] $f no declara name: en su frontmatter"
+    continue
+  fi
+  if [ "${lineas%%$'\n'*}" != "$lineas" ]; then
+    fail "[70] $f declara más de una línea name:"
+    continue
+  fi
+  valor="$(printf '%s\n' "${lineas#name:}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  case "$valor" in
+    \"*\") valor="${valor#\"}"; valor="${valor%\"}" ;;
+    \'*\') valor="${valor#\'}"; valor="${valor%\'}" ;;
+  esac
+  if [ -z "$valor" ]; then
+    fail "[70] $f declara name: vacío"
+    continue
+  fi
+  if [ "$valor" != "$dir" ]; then
+    fail "[70] $f declara name: '$valor' y su directorio es $dir"
+  fi
+done <<EOF
+$skills_md
+EOF
+
 report
 
 # Conteos derivados y no escritos, igual que los que imprime check-language: el cardinal
@@ -233,4 +280,5 @@ quienes="$(printf '%s\n' "$citadores" | tr '\n' ' ')"
 quienes="${quienes% }"
 subagentistas="$(printf '%s\n' "$citan" | tr '\n' ' ')"
 subagentistas="${subagentistas% }"
-echo "$CHECK_NAME: OK - el ROUTE: de $COMANDO es read-only y no tiene skill, los $tokens tokens de $CONTRATO son exactamente los que citan los $archivos archivos de commands/ y skills/, y quienes citan son $quienes, el ROUTE: de cada archivo de commands/ que rutea a una skill apunta a una que existe, $ruteadores en total, el flag de bootstrap vive solo en $esperado_flag, y a $SUBAGENTE lo nombran por su ruta exactamente $subagentistas"
+skills_ok="$(printf '%s\n' "$skills_md" | grep -c . || true)"
+echo "$CHECK_NAME: OK - el ROUTE: de $COMANDO es read-only y no tiene skill, los $tokens tokens de $CONTRATO son exactamente los que citan los $archivos archivos de commands/ y skills/, y quienes citan son $quienes, el ROUTE: de cada archivo de commands/ que rutea a una skill apunta a una que existe, $ruteadores en total, el flag de bootstrap vive solo en $esperado_flag, a $SUBAGENTE lo nombran por su ruta exactamente $subagentistas, y las $skills_ok skills de skills/ declaran un name: igual a su directorio"
