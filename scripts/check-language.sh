@@ -13,7 +13,9 @@ fi
 
 # La fuente es lo trackeado y no lo que haya en disco, así que .gitignore se respeta sin
 # reimplementarlo.
-archivos="$(git ls-files '*.md' | grep -v '^vendor/' | grep -v '^\.scratch/' || true)"
+# El filtro va por grep -i y no por un glob de ls-files, que es case-sensitive: un
+# README.MD no lo matchea y quedaría fuera del check sin que nadie lo note.
+archivos="$(git ls-files | grep -iE '\.md$' | grep -v '^vendor/' | grep -v '^\.scratch/' || true)"
 require_nonempty "$archivos" "[49] la extracción de .md del árbol dio vacío; el filtro de vendor/ y .scratch/ o el glob se movieron"
 
 # El acumulador se llena en el mismo while que ya parsea el frontmatter para la 49, así
