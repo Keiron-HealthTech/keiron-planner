@@ -1579,6 +1579,37 @@ else:
         if _keys52 != ["decision", "trabajo"]:
             fail("[52] un _post de %s pasa las claves %s, y tienen que ser "
                  "exactamente decision y trabajo" % (_RELATED_CONST, _keys52))
+            continue
+        _loops52 = [f for nm in sorted(WORK_ROUTE) for f in ast.walk(FUNCS[nm])
+                    if isinstance(f, ast.For) and isinstance(f.target, ast.Tuple)
+                    and len(f.target.elts) == 2
+                    and all(isinstance(e, ast.Name) for e in f.target.elts)
+                    and any(x is _n52 for x in ast.walk(f))]
+        if len(_loops52) != 1:
+            fail("[52] el _post de %s tiene que vivir dentro de un único for con "
+                 "target de dos nombres, y vive dentro de %d" % (_RELATED_CONST,
+                                                                len(_loops52)))
+            continue
+        _decision_name, _target_name = [e.id for e in _loops52[0].target.elts]
+        _values52 = dict((k.value, v) for k, v in zip(_dict52.keys, _dict52.values))
+        _decision_value = _values52["decision"]
+        _work_value = _values52["trabajo"]
+        if not (isinstance(_decision_value, ast.Name)
+                and _decision_value.id == _decision_name):
+            fail("[52] la clave decision de un _post de %s no recibe %s, el primer "
+                 "nombre del for sobre las relaciones, que es el ticket de decisión"
+                 % (_RELATED_CONST, _decision_name))
+        # El destino se deriva del segundo nombre del for, por una asignación local.
+        _derived52 = [a for a in ast.walk(_loops52[0]) if isinstance(a, ast.Assign)
+                      and any(isinstance(t, ast.Name) and isinstance(_work_value, ast.Name)
+                              and t.id == _work_value.id for t in a.targets)
+                      and any(isinstance(x, ast.Name) and x.id == _target_name
+                              for x in ast.walk(a.value))]
+        if not (isinstance(_work_value, ast.Name) and _derived52
+                and _work_value.id != _decision_name):
+            fail("[52] la clave trabajo de un _post de %s no recibe un nombre "
+                 "derivado de %s, el segundo nombre del for, que es la issue de "
+                 "ejecución" % (_RELATED_CONST, _target_name))
     _BLOCKS_IN_WORK_ROUTE = [nm for nm in sorted(WORK_ROUTE)
                             if _post_con(FUNCS[nm], "type: blocks")]
     if _BLOCKS_IN_WORK_ROUTE:
