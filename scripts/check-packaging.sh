@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 . scripts/_common.sh
 
-# Afirmaciones 14, 15, 17, 18, 21, 56 y 57.
+# Afirmaciones 14, 15, 17, 18, 20, 21, 56 y 57.
 
 # --- tercer tier: sin fuente y sin herramientas no hay nada que chequear ---
 
@@ -29,6 +29,12 @@ instalador=scripts/install.sh
 
 if [ ! -f "$instalador" ]; then
   bail "[17] falta $instalador; las afirmaciones sobre el instalador quedan sin correr"
+fi
+
+readme=README.md
+
+if [ ! -f "$readme" ]; then
+  bail "[20] falta $readme; no hay dónde buscar el snippet de instalación"
 fi
 
 if ! command -v dash > /dev/null 2>&1; then
@@ -133,6 +139,16 @@ else
   if [ "$(dato deps_0_value)" != "spec-driven-dev" ]; then
     fail "[15] el único elemento de dependencies es '$(dato deps_0_value)' y tiene que ser 'spec-driven-dev'"
   fi
+fi
+
+# --- afirmación 20: el README tiene el snippet de instalación y nombra el setup ---
+
+if ! grep -qF '/plugin install keiron-planner@spec-driven-dev' "$readme"; then
+  fail "[20] $readme no tiene el snippet /plugin install keiron-planner@spec-driven-dev"
+fi
+
+if ! grep -qF '/planner-setup' "$readme"; then
+  fail "[20] $readme no nombra /planner-setup, que es lo que la persona corre después de instalar"
 fi
 
 # --- afirmación 21: ninguna key trackeada, y .gitignore la cubre ---
@@ -323,4 +339,4 @@ fi
 
 report
 
-echo "$CHECK_NAME: OK - manifiesto válido con author, dependencies en un string pelado, nada trackeado matchea *.key, y el instalador chequea el intérprete, guarda la key en su ruta sin imprimirla, corre bajo dash sin diagnóstico, y su validación manda la credencial en una línea de config, distingue los tres desenlaces, y no culpa a la credencial de una herramienta que falta"
+echo "$CHECK_NAME: OK - manifiesto válido con author, dependencies en un string pelado, el README trae el snippet de instalación y nombra /planner-setup, nada trackeado matchea *.key, y el instalador chequea el intérprete, guarda la key en su ruta sin imprimirla, corre bajo dash sin diagnóstico, y su validación manda la credencial en una línea de config, distingue los tres desenlaces, y no culpa a la credencial de una herramienta que falta"
