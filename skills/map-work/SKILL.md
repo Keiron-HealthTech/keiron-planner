@@ -221,13 +221,16 @@ a line of the map. So show the whole thing and ask for confirmation ONCE, before
 anything. On the research branch the batch was the dispatch and step 7 already asked, which is
 the same single confirmation standing where the writes are.
 
-Show five things, and show them as they will read rather than as a summary:
+Show six things, and show them as they will read rather than as a summary:
 
 1. the six sections of the resolution comment, already written out;
 2. the new tickets, each with the type label it will carry;
 3. the wiring between them, if any;
-4. the fog this resolution graduates;
-5. the gist of the line that goes to the map, or the bullet that goes to `Fuera de alcance`.
+4. the fog this resolution graduates, and for each patch whether it leaves the map or moves to
+   `Fuera de alcance`;
+5. the gist of the line that goes to the map, or the bullet that goes to `Fuera de alcance`;
+6. every correction to what the map already says: a `Fuera de alcance` bullet rewritten, or
+   the `Destino` amended, each shown as it reads now and as it will read.
 
 The `Niebla graduada` section carries `ninguna` when this resolution graduated no patch, and
 names every graduated title when it did. Writing that negative by hand is not ceremony: the
@@ -240,7 +243,20 @@ After the confirmation, invoke once and do not ask again:
       --issue <the chosen ticket> --section <NOMBRE> <LINEA> [--section ...] \
       --gist <gist> [--new-ticket <title> <body> <labels>] \
       [--block <blocker title> <blocked title>] [--append-fog <bullet>] \
-      [--remove-fog <title>]
+      [--remove-fog <title>] [--graduate-out-of-scope <title> <bullet>] \
+      [--replace-out-of-scope <title> <bullet>] [--amend-destination <destination>]
+
+A decision often moves more than one line of the map, and every one of those moves travels in
+this same invocation, never as a later edit of the overview by hand: a hand edit outside the
+adapter changes the fingerprints and breaks the map's single write. A fog patch the decision
+put beyond the destination goes with `--graduate-out-of-scope`, which takes the patch out of
+the fog and puts its bullet under `Fuera de alcance` in one write, rather than with
+`--remove-fog`, which would drop the patch and lose the record. A `Fuera de alcance` bullet
+the decision made false is rewritten in place with `--replace-out-of-scope`. A `Destino` the
+decision contradicts is amended with `--amend-destination`, which is rare and has to be
+visible: some line of `Qué corrige o empuja` names the `Destino`, or the adapter refuses
+before the first write. A graduated title is named in `Niebla graduada`, exactly like one
+passed to `--remove-fog`.
 
 or `linear.py ticket:rule-out`, the same shape with `--out-of-scope <bullet>` in place of
 `--gist`, when the discipline concludes the ticket ended up beyond the destination. Its line

@@ -298,7 +298,7 @@ es la remediación correcta y no duplica nada.
 
 ### `ticket:resolve`
 
-Once flags, y `--ctx`, `--project`, `--issue` y `--gist` son los cuatro requeridos:
+Catorce flags, y `--ctx`, `--project`, `--issue` y `--gist` son los cuatro requeridos:
 
     --ctx              el blob del preflight, opaco.
     --project          el Project cuyo overview lleva el mapa, en cualquiera de las
@@ -319,12 +319,32 @@ Once flags, y `--ctx`, `--project`, `--issue` y `--gist` son los cuatro requerid
     --append-fog       una viñeta de niebla nueva, con su título en negrita.
     --remove-fog       el título de una viñeta que esta resolución graduó. Tiene que
                        estar nombrado en alguna línea de --section "Niebla graduada".
+    --graduate-out-of-scope
+                       TITULO VINETA, repetible. Saca de la niebla la viñeta de ese
+                       título y agrega VINETA a Fuera de alcance, en la misma escritura.
+                       El título pasa por la misma guarda que --remove-fog.
+    --replace-out-of-scope
+                       TITULO VINETA, repetible. Reemplaza en su lugar la viñeta de
+                       Fuera de alcance de ese título por VINETA, que puede cambiar de
+                       título. Un título que no existe aborta sin escribir nada.
+    --amend-destination
+                       el Destino corregido entero, en una sola línea. Alguna línea de
+                       --section "Qué corrige o empuja" tiene que nombrar el Destino.
     --expect-sections  el JSON de huellas que map:read emitió, para el aviso de deriva.
     --defer-map        booleano. Difiere la quinta escritura a otro conductor: las
                        cuatro primeras corren igual, la quinta no se manda, y la línea
                        que le tocaba sale por stdout en mapLine y mapArgs. Con el flag
                        puesto, --expect-sections queda sin uso y no avisa nada, porque
                        su único consumidor vive adentro de la escritura que no ocurre.
+
+Los tres flags de corrección no hacen falta para el camino normal, y sin ellos la
+resolución manda exactamente las mismas escrituras que antes. `--replace-out-of-scope` y
+`--amend-destination` son los únicos que pueden apuntar a algo que no está, así que con
+cualquiera de los dos la resolución lee el mapa antes de la primera escritura y le aplica
+sus ediciones sin escribir: un título que no existe o un encabezado que falta aborta ahí,
+con nada escrito. El ensayo corre también con `--defer-map`, porque leer el mapa no es
+escribirlo. La quinta escritura relee igual, así que un título borrado entre las dos
+lecturas aborta en la quinta, con la remediación de su fila.
 
 No hay `--append-decision`, y su ausencia es la decisión: el enlace de la línea del
 mapa sale de `issue.url`, que la escritura 4 devuelve en su propio round trip. Así es
@@ -364,11 +384,12 @@ distingue a cada uno es qué dice que aterrizó y cómo terminar a mano:
 | Falla en | Qué quedó escrito | Remediación que imprime |
 | --- | --- | --- |
 | antes de la red | nada | corregir la invocación; el transporte no se llamó ni una vez |
+| el ensayo, con `--replace-out-of-scope` o `--amend-destination` | nada | corregir el título o el encabezado que el mensaje nombra, y volver a correr la misma invocación |
 | 1, `issueBatchCreate` | nada | volver a correr la misma invocación entera |
 | 2, `issueRelationCreate` | los tickets nuevos, y cuántos bloqueos entraron | `ticket:block` con los pares que faltan, y después esta misma invocación sin `--new-ticket` ni `--block` |
 | 3, `commentCreate` | los tickets y su cableado | esta misma invocación sin `--new-ticket` ni `--block` |
-| 4, `issueUpdate` | los tickets, el cableado y **el comentario**; el estado en sí queda incierto, porque un timeout no distingue que el `issueUpdate` no haya llegado de que haya llegado y se perdió la respuesta | fijarse en Linear si el ticket ya cambió de estado antes de tocarlo a mano, y después correr `map:write`: repetir la invocación duplicaría el comentario. Nombra además los `--remove-fog`/`--append-fog` pendientes, para que la niebla ya validada contra el comentario no se pierda en silencio |
-| 5, `projectUpdate` | todo menos la línea del mapa | **la invocación exacta de `map:write` que falta**, impresa con su `--project`, la url real, el gist y los `--remove-fog` que correspondan |
+| 4, `issueUpdate` | los tickets, el cableado y **el comentario**; el estado en sí queda incierto, porque un timeout no distingue que el `issueUpdate` no haya llegado de que haya llegado y se perdió la respuesta | fijarse en Linear si el ticket ya cambió de estado antes de tocarlo a mano, y después correr `map:write`: repetir la invocación duplicaría el comentario. Nombra además los flags del mapa pendientes, de niebla y de corrección, para que lo ya validado contra el comentario no se pierda en silencio |
+| 5, `projectUpdate` | todo menos la línea del mapa | **la invocación exacta de `map:write` que falta**, impresa con su `--project`, la url real, el gist y los flags del mapa que correspondan |
 
 La fila 4 no tiene la misma suerte que la 5: en el punto de la falla, la url que
 `--append-decision` necesita la devolvería el mismo `issueUpdate` que acaba de fallar,
@@ -392,9 +413,13 @@ flag, `false` con él. `mapLine` es la línea completa del mapa, con su marcador
 que se habría escrito; es lo que se le muestra a una persona antes de escribir. `mapArgs`
 es esa misma línea como lista de tokens de argv, lista para concatenar adentro de una
 única invocación de `map:write`: lleva el `--append-decision` con su enlace y su gist,
-después un `--remove-fog` por título graduado, y después un `--append-fog` por viñeta
-nueva, ya sin marcador. Es lo que se ejecuta, y hacen falta las dos porque no existe
-ningún flag de `map:write` que reciba una línea ya renderizada.
+después un `--remove-fog` por título graduado, un `--append-fog` por viñeta nueva, un
+`--append-out-of-scope` por viñeta graduada a Fuera de alcance, un
+`--replace-out-of-scope` por reemplazo y el `--amend-destination`, en ese orden y ya sin
+marcador. Un `--graduate-out-of-scope` viaja partido en su `--remove-fog` y su
+`--append-out-of-scope`, porque `map:write` ya sabe hacer las dos mitades. Es lo que se
+ejecuta, y hacen falta las dos porque no existe ningún flag de `map:write` que reciba una
+línea ya renderizada.
 
 **Cada token de `mapArgs` llega crudo: el adapter no lo entrecomilla.** Un gist o una
 viñeta de niebla los escribió una persona o un modelo, y pueden traer cualquier
@@ -514,6 +539,23 @@ ninguna rama puede distinguir "no llegó" de "llegó y se perdió la respuesta",
 repetir la invocación entera solo es seguro cuando nada quedó escrito: con parte de la
 secuencia ya confirmada, la remediación que cada falla imprime dice exactamente qué
 repetir y qué no.
+
+### map:write: reemplazar y corregir
+
+`map:write` declara `--replace-out-of-scope TITULO VINETA` y `--amend-destination
+DESTINO` con la misma forma que `ticket:resolve`, para que los `mapArgs` de una
+resolución diferida y la remediación de su quinta escritura se puedan correr. Acá no hay
+comentario, así que no hay guarda contra él: la guarda vive en la resolución.
+
+El reemplazo deja la viñeta nueva en el lugar de la vieja, con sus líneas de
+continuación incluidas en lo que se va. Un título que no matchea ninguna viñeta aborta, y
+uno que matchea más de una también. En el segundo intento de un `map:write` que ya
+escribió, un título que ya no está pero cuya viñeta nueva sí pasa a no-op con reporte.
+La corrección del Destino reemplaza todo el texto de la sección por la línea, y
+conserva las líneas en blanco que la separan de los encabezados.
+
+Adentro de una sección, el orden es remover, reemplazar y agregar: un append no puede
+caer sobre la viñeta que se está reemplazando.
 
 ### map:write bajo el colapso
 

@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 . scripts/_common.sh
 
-# Afirmaciones 60, 47, 61, 66 y 73.
+# Afirmaciones 60, 47, 61, 66, 73 y 74.
 
 adapter=scripts/linear.py
 
@@ -155,7 +155,7 @@ CREAR = ["map:create", "--ctx", CTX, "--destino", DESTINO]
 # Dos acumuladores y no uno: este harness lleva los desenlaces de dos afirmaciones, y
 # un [N] que no distinga cuál falló manda a leer el script equivocado. La afirmación en
 # curso la fija el bucle del final, así que ningún caso puede anotar en el balde ajeno.
-FALLAS = {"60": [], "47": [], "61": [], "66": [], "73": []}
+FALLAS = {"60": [], "47": [], "61": [], "66": [], "73": [], "74": []}
 AFIRMACION = ["60"]
 
 
@@ -1377,6 +1377,150 @@ def caso_36():
              (tr.variables[0] if tr.variables else {}).get("project"), "CRM-7")
 
 
+# --- las correcciones del mapa desde una resolución -------------------------------
+# Graduar niebla a Fuera de alcance, reemplazar una viñeta de Fuera de alcance y corregir
+# el Destino. Los dos últimos ensayan sus ediciones contra una lectura del mapa antes de
+# la primera escritura, así que un título que no existe aborta sin escribir nada.
+
+MUDADA = "**La niebla mudada.** quedo fuera del destino"
+CORREGIDA = "**Algo corregido.** con cuerpo nuevo"
+DESTINO_NUEVO = "que el mapa exista solo por correo"
+GRADUAR = ["--graduate-out-of-scope", GRADUADA, MUDADA]
+REEMPLAZAR = ["--replace-out-of-scope", "Algo ruled out.", CORREGIDA]
+CORREGIR = ["--amend-destination", DESTINO_NUEVO]
+CON_GUARDAS = secciones(**{SEIS[3]: ["se graduo " + GRADUADA],
+                           SEIS[5]: ["corrige el Destino y Algo ruled out."]})
+
+
+def caso_37():
+    """Graduar a Fuera de alcance: la niebla se va y la viñeta entra en la misma
+    escritura, con cuatro POSTs como cualquier resolución sin tickets nuevos."""
+    n = "37-graduar-niebla-a-fuera-de-alcance"
+    rc, out, err, tr = correr(n, RESOLVER + CON_GUARDAS + GIST + GRADUAR,
+                              [COMENTADO, CERRADO, leido(overview()), ESCRITO_OK])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "CUATRO llamadas al transporte", tr.llamadas, 4)
+    contenidos = tr.contents
+    chequear(n, "UNA sola escritura del mapa", len(contenidos), 1)
+    cuerpos = mod.cortar_secciones(contenidos[0] if contenidos else "")
+    chequear(n, "la niebla perdio el parche",
+             any(GRADUADA in l for l in cuerpos.get(mod.ANCLA_NIEBLA) or []), False)
+    chequear(n, "Fuera de alcance gano la vineta",
+             "- " + MUDADA in (cuerpos.get(mod.ANCLA_FUERA) or []), True)
+    chequear(n, "la vineta previa de Fuera de alcance sobrevive",
+             "- **Algo ruled out.** con cuerpo" in (cuerpos.get(mod.ANCLA_FUERA) or []),
+             True)
+    flags = json_de(n, out).get("mapArgs") or []
+    chequear(n, "mapArgs lleva el parche como --remove-fog",
+             "--remove-fog" in flags and GRADUADA in flags, True)
+    chequear(n, "y la vineta como --append-out-of-scope",
+             "--append-out-of-scope" in flags and MUDADA in flags, True)
+
+    r = n + "-CONTROL-sin-la-linea-de-niebla-graduada-aborta-antes-de-la-red"
+    rc, out, err, tr = correr(r, RESOLVER + secciones() + GIST + GRADUAR, [])
+    chequear(r, "rc", rc, mod.SIN_KEY)
+    chequear(r, "stderr nombra el titulo", GRADUADA in err, True)
+    chequear(r, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+
+def caso_38():
+    """Reemplazar una viñeta de Fuera de alcance: un ensayo de lectura antes de la
+    primera escritura, y la viñeta nueva en el mismo lugar que la vieja."""
+    n = "38-reemplazar-fuera-de-alcance"
+    # Con una segunda viñeta abajo, reemplazar en el lugar y agregar al final dejan de
+    # producir el mismo cuerpo.
+    base = overview().replace("- **Algo ruled out.** con cuerpo",
+                              "- **Algo ruled out.** con cuerpo\n- **Otra cosa.** sigue")
+    rc, out, err, tr = correr(
+        n, RESOLVER + CON_GUARDAS + GIST + REEMPLAZAR,
+        [leido(base), COMENTADO, CERRADO, leido(base), ESCRITO_OK])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "CINCO llamadas al transporte", tr.llamadas, 5)
+    chequear(n, "el primer POST es una lectura y no escribe",
+             "mutation" in (tr.queries[0] if tr.queries else "mutation"), False)
+    fuera = mod.cortar_secciones(tr.contents[0] if tr.contents else "").get(
+        mod.ANCLA_FUERA) or []
+    chequear(n, "Fuera de alcance queda con la vineta nueva en el lugar de la vieja",
+             [l for l in fuera if l.strip()], ["- " + CORREGIDA, "- **Otra cosa.** sigue"])
+
+
+def caso_39():
+    """Un reemplazo con un título que no existe aborta después del ensayo y antes de
+    escribir nada: una sola llamada, y es la lectura."""
+    n = "39-reemplazo-sin-el-titulo-aborta-sin-escribir"
+    rc, out, err, tr = correr(
+        n, RESOLVER + CON_GUARDAS + GIST +
+        ["--replace-out-of-scope", "No existe.", CORREGIDA], [leido(overview())])
+    chequear(n, "rc", rc, mod.SIN_KEY)
+    chequear(n, "stdout vacio", out, "")
+    chequear(n, "UNA llamada al transporte", tr.llamadas, 1)
+    chequear(n, "y no escribe", "mutation" in (tr.queries[0] if tr.queries else ""),
+             False)
+    chequear(n, "stderr nombra el titulo", "No existe." in err, True)
+
+
+def caso_40():
+    """Corregir el Destino exige que Qué corrige o empuja lo nombre, y sin esa línea
+    aborta antes del primer POST."""
+    n = "40-corregir-destino-sin-nombrarlo-aborta-antes-de-la-red"
+    rc, out, err, tr = correr(n, RESOLVER + secciones() + GIST + CORREGIR, [])
+    chequear(n, "rc", rc, mod.SIN_KEY)
+    chequear(n, "stderr nombra la seccion", SEIS[5] in err, True)
+    chequear(n, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+
+def caso_41():
+    """Corregir el Destino: el cuerpo entero de la sección queda en la línea nueva."""
+    n = "41-corregir-destino"
+    rc, out, err, tr = correr(
+        n, RESOLVER + CON_GUARDAS + GIST + CORREGIR,
+        [leido(overview()), COMENTADO, CERRADO, leido(overview()), ESCRITO_OK])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "CINCO llamadas al transporte", tr.llamadas, 5)
+    destino = mod.cortar_secciones(tr.contents[0] if tr.contents else "").get(
+        mod.ANCLAS[0]) or []
+    chequear(n, "el Destino es la linea nueva y nada mas",
+             [l for l in destino if l.strip()], [DESTINO_NUEVO])
+    flags = json_de(n, out).get("mapArgs") or []
+    chequear(n, "mapArgs lleva --amend-destination",
+             flags[-2:], ["--amend-destination", DESTINO_NUEVO])
+
+
+def caso_42():
+    """Los tres flags juntos con --defer-map, y los mapArgs que devuelve corridos por
+    map:write: el mapa que queda es byte a byte el de la misma resolución sin el flag,
+    así que las dos puntas salen de una sola construcción."""
+    n = "42-defer-map-y-map-write-reproducen-la-resolucion"
+    argv = RESOLVER + CON_GUARDAS + GIST + GRADUAR + REEMPLAZAR + CORREGIR
+    rc, out, err, directa = correr(
+        n, argv, [leido(overview()), COMENTADO, CERRADO, leido(overview()), ESCRITO_OK])
+    chequear(n, "rc sin el flag", rc, 0)
+    rc, out, err, tr = correr(n, argv + ["--defer-map"],
+                              [leido(overview()), COMENTADO, CERRADO])
+    chequear(n, "rc con el flag", rc, 0)
+    flags = json_de(n, out).get("mapArgs") or []
+    if not flags or not directa.contents:
+        anotar("%s: una de las dos corridas no dejo nada que comparar" % n)
+        return
+    rc, out, err, escrito = correr(n, ESCRIBIR + flags,
+                                   [leido(overview()), ESCRITO_OK])
+    chequear(n, "rc de map:write", rc, 0)
+    chequear(n, "map:write deja el mismo mapa que la resolucion directa",
+             escrito.contents[0] if escrito.contents else "", directa.contents[0])
+
+
+def caso_43():
+    """Sin ninguno de los tres flags no hay ensayo: la resolución gasta los mismos
+    cuatro POSTs que antes."""
+    n = "43-sin-los-flags-nuevos-no-hay-ensayo"
+    rc, out, err, tr = correr(n, RESOLVER + secciones() + GIST,
+                              [COMENTADO, CERRADO, leido(overview()), ESCRITO_OK])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "CUATRO llamadas al transporte", tr.llamadas, 4)
+    chequear(n, "el primer POST es el comentario",
+             "commentCreate" in (tr.queries[0] if tr.queries else ""), True)
+
+
 CASOS =[("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("60", caso_5), ("60", caso_6), ("60", caso_7), ("60", caso_8),
          ("60", caso_9), ("47", caso_10), ("47", caso_11), ("47", caso_12),
@@ -1385,12 +1529,14 @@ CASOS =[("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("61", caso_21), ("61", caso_22), ("61", caso_23), ("61", caso_24),
          ("66", caso_25), ("66", caso_26), ("66", caso_27), ("66", caso_28),
          ("66", caso_29), ("66", caso_30), ("73", caso_31), ("73", caso_32),
-         ("73", caso_33), ("73", caso_34), ("73", caso_35), ("73", caso_36)]
+         ("73", caso_33), ("73", caso_34), ("73", caso_35), ("73", caso_36),
+         ("74", caso_37), ("74", caso_38), ("74", caso_39), ("74", caso_40),
+         ("74", caso_41), ("74", caso_42), ("74", caso_43)]
 for _afirmacion, _caso in CASOS:
     AFIRMACION[0] = _afirmacion
     _caso()
 
-for _afirmacion in ("60", "47", "61", "66", "73"):
+for _afirmacion in ("60", "47", "61", "66", "73", "74"):
     print("casos%s=%d" % (_afirmacion,
                           len([c for c in CASOS if c[0] == _afirmacion])))
     print("fallas%s=%s" % (_afirmacion, plano(FALLAS[_afirmacion])
@@ -1410,7 +1556,8 @@ if printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas60=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas47=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas61=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas66=ninguna' \
-   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas73=ninguna'; then
+   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas73=ninguna' \
+   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas74=ninguna'; then
   :
 else
   echo "$CHECK_NAME: la corrida del harness dijo:" >&2
@@ -1437,6 +1584,10 @@ if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas73=ninguna'; then
   fail "[73] --project no resuelve el Project de un ticket de decisión pasado por URL o identificador, o resuelve lo que no es un issue, o no rechaza el que no es del mapa"
 fi
 
+if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas74=ninguna'; then
+  fail "[74] ticket:resolve no gradúa niebla a Fuera de alcance, no reemplaza una viñeta de Fuera de alcance o no corrige el Destino como dice el contrato, o alguno escribe antes de abortar"
+fi
+
 report
 
 # Los cardinales salen de la corrida y no de una palabra escrita a mano: un conteo
@@ -1451,6 +1602,8 @@ casos66="$(printf '%s\n' "$salida" | sed -n 's/^casos66=//p')"
 require_nonempty "$casos66" "[66] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 casos73="$(printf '%s\n' "$salida" | sed -n 's/^casos73=//p')"
 require_nonempty "$casos73" "[73] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
+casos74="$(printf '%s\n' "$salida" | sed -n 's/^casos74=//p')"
+require_nonempty "$casos74" "[74] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 plural=""
 [ "$casos" = 1 ] || plural="s"
-echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, y $casos66 del reparto de la escritura del mapa con --defer-map, y $casos73 de --project con un ticket, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
+echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, y $casos66 del reparto de la escritura del mapa con --defer-map, y $casos73 de --project con un ticket, y $casos74 de las correcciones del mapa desde una resolución, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
