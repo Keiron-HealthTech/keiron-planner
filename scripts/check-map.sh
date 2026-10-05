@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 . scripts/_common.sh
 
-# Afirmaciones 60 y 47.
+# Afirmaciones 60, 47, 61, 66 y 73.
 
 adapter=scripts/linear.py
 
@@ -155,7 +155,7 @@ CREAR = ["map:create", "--ctx", CTX, "--destino", DESTINO]
 # Dos acumuladores y no uno: este harness lleva los desenlaces de dos afirmaciones, y
 # un [N] que no distinga cuál falló manda a leer el script equivocado. La afirmación en
 # curso la fija el bucle del final, así que ningún caso puede anotar en el balde ajeno.
-FALLAS = {"60": [], "47": [], "61": [], "66": []}
+FALLAS = {"60": [], "47": [], "61": [], "66": [], "73": []}
 AFIRMACION = ["60"]
 
 
@@ -1250,6 +1250,133 @@ def caso_30():
              "tickets nuevos" in err, True)
 
 
+# --- los desenlaces de --project con un issue ------------------------------------
+# Estos pasan por main y no por args.func: la resolución del issue vive en main, y un
+# caso que llamara al handler directo probaría el handler sin la resolución.
+
+URL_ISSUE = "https://linear.app/keiron/issue/CRM-7/el-slug-del-ticket"
+
+
+def issue_resuelto(labels=("map", "map:grilling"), project="p-del-issue"):
+    return {"data": {"issue": {
+        "identifier": "CRM-7",
+        "project": {"id": project} if project else None,
+        "labels": {"nodes": [{"name": n} for n in labels]}}}}
+
+
+def correr_main(nombre, argv, secuencia):
+    transporte = Transporte(nombre, secuencia)
+    mod.urllib.request.urlopen = transporte
+    so, se = io.StringIO(), io.StringIO()
+    rc = 0
+    try:
+        with contextlib.redirect_stdout(so), contextlib.redirect_stderr(se):
+            mod.main(argv)
+    except SystemExit as exc:
+        rc = exc.code if isinstance(exc.code, int) else 1
+    except AssertionError as exc:
+        rc = -1
+        se.write(str(exc))
+    return rc, so.getvalue(), se.getvalue(), transporte
+
+
+def caso_31():
+    """La URL de un ticket en map:read: un POST al issue con el identificador sacado de
+    la URL, y la lectura del mapa sobre el Project de ese issue."""
+    n = "31-map-read-con-la-url-de-un-ticket"
+    rc, out, err, tr = correr_main(n, ["map:read", "--project", URL_ISSUE],
+                                   [issue_resuelto(), leido(overview())])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "DOS llamadas al transporte", tr.llamadas, 2)
+    chequear(n, "la primera query es la del issue",
+             tr.queries[0] if tr.queries else "", mod.ISSUE_PROJECT_QUERY)
+    chequear(n, "el identificador sale de la URL",
+             (tr.variables[0] if tr.variables else {}).get("issue"), "CRM-7")
+    chequear(n, "la lectura usa el Project del issue",
+             (tr.variables[1] if len(tr.variables) > 1 else {}).get("project"),
+             "p-del-issue")
+    chequear(n, "found", json_de(n, out).get("found"), True)
+
+
+def caso_32():
+    """El identificador pelado en frontier:query, la otra lectura del contrato."""
+    n = "32-frontier-query-con-el-identificador"
+    vacio = {"data": {"project": {
+        "issues": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+        "projectMilestones": {"pageInfo": {"hasNextPage": False}, "nodes": []}}}}
+    rc, out, err, tr = correr_main(
+        n, ["frontier:query", "--ctx", CTX, "--project", "CRM-7"],
+        [issue_resuelto(), vacio])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "DOS llamadas al transporte", tr.llamadas, 2)
+    chequear(n, "la frontera usa el Project del issue",
+             (tr.variables[1] if len(tr.variables) > 1 else {}).get("project"),
+             "p-del-issue")
+
+
+def caso_33():
+    """Lo que no es un issue viaja tal cual y sin round trip de más: la URL de un
+    Project, y un slug cuyo slugId termina solo en dígitos."""
+    for n, valor in (("33-url-de-project-sin-round-trip",
+                      "https://linear.app/keiron/project/campanas-a06fa7500fde"),
+                     ("33-slug-terminado-en-digitos", "campanas-123456789012")):
+        rc, out, err, tr = correr_main(n, ["map:read", "--project", valor],
+                                       [leido(overview())])
+        chequear(n, "rc", rc, 0)
+        chequear(n, "UNA llamada al transporte", tr.llamadas, 1)
+        chequear(n, "el valor viaja tal cual",
+                 (tr.variables[0] if tr.variables else {}).get("project"), valor)
+
+
+def caso_34():
+    """Los tres rechazos con NO_ES_DEL_MAPA, cada uno después de un solo POST y sin
+    leer el mapa: sin el label map, sin Project, y un issue que no existe."""
+    no_existe = {"errors": [{"message": "Entity not found: Issue",
+                             "extensions": {"code": "INPUT_ERROR", "statusCode": 400}}],
+                 "data": None}
+    for n, respuesta, aguja in (
+            ("34-issue-sin-label-map", issue_resuelto(labels=("Improvement",)),
+             "label map"),
+            ("34-issue-sin-project", issue_resuelto(project=None), "ningún Project"),
+            ("34-issue-que-no-existe", no_existe, "no existe")):
+        rc, out, err, tr = correr_main(n, ["map:read", "--project", URL_ISSUE],
+                                       [respuesta])
+        chequear(n, "rc", rc, mod.NO_ES_DEL_MAPA)
+        chequear(n, "stdout vacio", out, "")
+        chequear(n, "UNA llamada al transporte", tr.llamadas, 1)
+        chequear(n, "stderr explica el rechazo", aguja in err, True)
+
+
+def caso_35():
+    """Un error que no es de existencia no se disfraza de rechazo: la credencial sale
+    con SIN_KEY y un rate limit con SIN_API."""
+    for n, respuesta, esperado in (
+            ("35-credencial-rechazada",
+             {"errors": [{"message": "Authentication required",
+                          "extensions": {"code": "AUTHENTICATION_ERROR"}}]},
+             mod.SIN_KEY),
+            ("35-rate-limit",
+             {"errors": [{"message": "Rate limit exceeded",
+                          "extensions": {"code": "RATELIMITED"}}]},
+             mod.SIN_API)):
+        rc, out, err, tr = correr_main(n, ["map:read", "--project", "CRM-7"],
+                                       [respuesta])
+        chequear(n, "rc", rc, esperado)
+        chequear(n, "UNA llamada al transporte", tr.llamadas, 1)
+
+
+def caso_36():
+    """map:create no resuelve el issue: adopta un Project que todavía no tiene mapa, y
+    su --project viaja tal cual a la primera lectura."""
+    n = "36-map-create-no-resuelve-el-issue"
+    rc, out, err, tr = correr_main(n, CREAR + ["--project", "CRM-7"],
+                                   [{"data": {"project": None}}])
+    chequear(n, "la primera query no es la del issue",
+             (tr.queries[0] if tr.queries else "") != mod.ISSUE_PROJECT_QUERY, True)
+    chequear(n, "el valor viaja tal cual",
+             (tr.variables[0] if tr.variables else {}).get("project"), "CRM-7")
+
+
 CASOS =[("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("60", caso_5), ("60", caso_6), ("60", caso_7), ("60", caso_8),
          ("60", caso_9), ("47", caso_10), ("47", caso_11), ("47", caso_12),
@@ -1257,12 +1384,13 @@ CASOS =[("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("61", caso_17), ("61", caso_18), ("61", caso_19), ("61", caso_20),
          ("61", caso_21), ("61", caso_22), ("61", caso_23), ("61", caso_24),
          ("66", caso_25), ("66", caso_26), ("66", caso_27), ("66", caso_28),
-         ("66", caso_29), ("66", caso_30)]
+         ("66", caso_29), ("66", caso_30), ("73", caso_31), ("73", caso_32),
+         ("73", caso_33), ("73", caso_34), ("73", caso_35), ("73", caso_36)]
 for _afirmacion, _caso in CASOS:
     AFIRMACION[0] = _afirmacion
     _caso()
 
-for _afirmacion in ("60", "47", "61", "66"):
+for _afirmacion in ("60", "47", "61", "66", "73"):
     print("casos%s=%d" % (_afirmacion,
                           len([c for c in CASOS if c[0] == _afirmacion])))
     print("fallas%s=%s" % (_afirmacion, plano(FALLAS[_afirmacion])
@@ -1281,7 +1409,8 @@ PY
 if printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas60=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas47=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas61=ninguna' \
-   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas66=ninguna'; then
+   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas66=ninguna' \
+   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas73=ninguna'; then
   :
 else
   echo "$CHECK_NAME: la corrida del harness dijo:" >&2
@@ -1304,6 +1433,10 @@ if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas66=ninguna'; then
   fail "[66] con --defer-map las dos resoluciones no distinguen sus desenlaces de runtime con el transporte mockeado, o alguna query sigue alcanzando el mapa"
 fi
 
+if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas73=ninguna'; then
+  fail "[73] --project no resuelve el Project de un ticket de decisión pasado por URL o identificador, o resuelve lo que no es un issue, o no rechaza el que no es del mapa"
+fi
+
 report
 
 # Los cardinales salen de la corrida y no de una palabra escrita a mano: un conteo
@@ -1316,6 +1449,8 @@ casos61="$(printf '%s\n' "$salida" | sed -n 's/^casos61=//p')"
 require_nonempty "$casos61" "[61] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 casos66="$(printf '%s\n' "$salida" | sed -n 's/^casos66=//p')"
 require_nonempty "$casos66" "[66] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
+casos73="$(printf '%s\n' "$salida" | sed -n 's/^casos73=//p')"
+require_nonempty "$casos73" "[73] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 plural=""
 [ "$casos" = 1 ] || plural="s"
-echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, y $casos66 del reparto de la escritura del mapa con --defer-map, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
+echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, y $casos66 del reparto de la escritura del mapa con --defer-map, y $casos73 de --project con un ticket, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"

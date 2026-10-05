@@ -10,8 +10,8 @@ Load `${CLAUDE_PLUGIN_ROOT}/skills/map-work/SKILL.md`, work whatever `$ARGUMENTS
 stop. The steps live in that file and are not restated here.
 
 `$ARGUMENTS` follows the general contract and not the exception that `/map-new` declares: the
-URL of a Linear Project, or the URL of one decision ticket of its map. With no argument, ask
-which map and stop.
+URL of a Linear Project, or the URL or identifier of one decision ticket of its map. With no
+argument, ask which map and stop.
 
 This command lands. After the ticket is resolved, a session working a `map:grilling` or a
 `map:prototype` ticket on a Project that already carries at least one milestone hangs the

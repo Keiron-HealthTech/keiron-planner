@@ -107,10 +107,9 @@ contract gives it, and none of them asks anything:
 
 ## Step 4, pick the ticket
 
-With no `$ARGUMENTS` the command already asked and stopped, per the contract. With the URL of
-a ticket instead of the URL of the Project, say exactly that, ask for the URL of the Project,
-and stop: the adapter resolves no Project from the URL of an issue, and that limit is the
-contract's.
+With no `$ARGUMENTS` the command already asked and stopped, per the contract. With the URL or
+the identifier of a ticket, steps 1 to 3 already ran on the map that ticket belongs to, and
+the last paragraph of this step is the one that picks.
 
 With the Project, look at `tickets` for the type label `map:research` before anything else.
 When at least one carries it, take EVERY one of them: they are the fan-out of this session.
@@ -125,9 +124,13 @@ a criterion of your own. Name which one you took and why it was first.
 
 When `$ARGUMENTS` names one specific ticket, that ticket is the whole of this session, whatever
 its type: a `map:research` named by the argument is dispatched alone and the rest of the
-frontier is not touched. And when that ticket is not in `tickets`, say why it is not takeable,
-which `notTakeable` already tells you: it is claimed, it is blocked, or it is closed. Then
-stop. Never substitute another ticket for the one that was named.
+frontier is not touched, and the first by `createdAt` criterion does not apply. Find it by
+its `identifier`. When that ticket is not in `tickets`, say why it is not takeable and stop,
+with no claim and no write: an entry of `notTakeable` with a non-null `assignee` is claimed,
+one with a non-empty `blockers` is blocked, and a ticket in neither list is closed, because
+`frontier:query` leaves closed tickets out of both. When `truncated` names `issues`, a ticket
+in neither list may only be missing from the page, so say that instead of calling it closed.
+Never substitute another ticket for the one that was named. Step 5 still runs on it.
 
 ## Step 5, the role check, before claiming
 
