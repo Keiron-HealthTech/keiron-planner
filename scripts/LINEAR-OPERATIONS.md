@@ -47,13 +47,36 @@ salida, y las cinco marcas tienen que ser distintas entre sí, porque una remedi
 genérica pasaría las cinco sin distinguirlas. Reformular una marca sin tocar el
 mensaje, o al revés, deja el contrato y el script en desacuerdo.
 
-Los otros tres códigos que el adapter puede devolver no son fallas duras del preflight.
-El **9** (`NO_IMPLEMENTADO`) es el de un subcomando sin cuerpo. Hoy los doce
-tienen cuerpo, así que ninguno lo emite: el código y la función `cmd_stub` que lo
+Los otros cuatro códigos que el adapter puede devolver no son fallas duras del
+preflight. El **8** (`NO_ES_DEL_MAPA`) es el de un `--project` que nombra un issue que no
+sirve para encontrar un mapa, y lo explica la sección siguiente. El **9**
+(`NO_IMPLEMENTADO`) es el de un subcomando sin cuerpo. Hoy los doce tienen cuerpo, así que ninguno lo emite: el código y la función `cmd_stub` que lo
 devuelve quedan definidos, sin ningún subcomando registrado contra ella. El
 **2** lo emite `argparse`, y cubre tres casos: falta el subcomando, falta un argumento
 requerido, o el subcomando no existe. El **1** queda reservado para lo que el script no
 pudo decidir.
+
+## Cómo se resuelve `--project`
+
+Toda operación que declara `--project`, salvo `map:create`, lo acepta en cinco formas.
+Tres son del Project y viajan tal cual a `project(id:)`, que las resuelve por su cuenta:
+el UUID, el slugId pelado y la URL del Project. Medido el 2026-10-05: la URL acepta la
+forma pelada y no la que termina en `/overview`. Las otras dos son de un ticket de
+decisión del mapa: su URL y su identificador, `CRM-3559`.
+
+Con un ticket, `main` resuelve el Project antes de llamar al handler, con un POST de
+`ISSUE_PROJECT_QUERY`, y el handler recibe el id del Project de ese ticket como si se lo
+hubieran pasado. `issue(id:)` no acepta la URL, así que el identificador se saca de la URL
+antes de mandarlo. El identificador va en mayúsculas y el slugId es hex en minúsculas, así
+que lo que no es un issue nunca paga ese round trip.
+
+El ticket tiene que llevar el label `map` y vivir en un Project. Un issue que no existe,
+que no lleva el label o que no tiene Project sale con `NO_ES_DEL_MAPA`, que es 8, antes de
+leer el mapa. Un error de la API que no es de existencia sale con `SIN_KEY` si es de
+credencial y con `SIN_API` si no lo es, por la misma regla que el preflight.
+
+`map:create` queda afuera porque adopta un Project que todavía no tiene mapa, y un ticket
+de decisión solo existe en un Project que ya lo tiene.
 
 ## La salida de las dos operaciones de lectura
 
@@ -278,7 +301,7 @@ Once flags, y `--ctx`, `--project`, `--issue` y `--gist` son los cuatro requerid
 
     --ctx              el blob del preflight, opaco.
     --project          el Project cuyo overview lleva el mapa, en cualquiera de las
-                       tres formas que el adapter resuelve.
+                       formas que resuelve la sección de `--project`.
     --issue            el identificador del ticket que se resuelve, CRM-3401, tal como
                        lo devolvió frontier:query y sin tipearlo de nuevo.
     --section          NOMBRE LINEA, repetible. NOMBRE es una de las seis secciones de

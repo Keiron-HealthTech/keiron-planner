@@ -48,19 +48,19 @@ one is a substitute for the other.
 
 ## The `$ARGUMENTS` contract
 
-`$ARGUMENTS` is a Linear URL: the Project's, or any decision ticket of the map. With no
-argument the command asks for one and stops. It never guesses and never searches: in a
-workspace where product opens Projects all the time, a command that goes looking for the
-map on its own picks the wrong one silently.
+`$ARGUMENTS` names a map: the URL of its Project, or the URL or the identifier of any of its
+decision tickets. With no argument the command asks for one and stops. It never guesses and
+never searches: in a workspace where product opens Projects all the time, a command that goes
+looking for the map on its own picks the wrong one silently.
 
 `/map-new` is the declared exception. It also takes a loose idea, or nothing at all.
 
-**The limit as of today.** The adapter resolves `--project` from a UUID, a slugId or the URL
-of a Project, and no operation of the adapter resolves the Project from the URL of an issue.
-So a command handed a ticket URL says exactly that, asks for the URL of the Project, and
-stops. It does not guess the Project and does not go looking for the one the ticket belongs
-to. This paragraph is stale the day the adapter gains that resolution, and the change that
-adds it deletes the paragraph.
+Pass the argument as it came to every `--project`, whichever of the two it is. The adapter
+resolves a ticket's URL or identifier to the Project that ticket belongs to, before the
+operation runs, so no command looks the Project up on its own. A ticket that does not carry
+the `map` label, or that belongs to no Project, makes the adapter exit non-zero with its own
+remediation, and the command relays it like any other hard failure. What a ticket named by
+the argument means beyond finding the map is the business of the command that works it.
 
 ## Ticket type to discipline
 

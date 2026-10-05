@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import socket
 import sys
 import urllib.error
@@ -64,6 +65,7 @@ SIN_TEAM = 4
 SIN_CERRADOS = 5
 SIN_LABEL_MAP = 6
 SIN_API = 7
+NO_ES_DEL_MAPA = 8
 NO_IMPLEMENTADO = 9
 
 # Lo que Linear manda cuando la credencial no sirve, medido: HTTP 401 con
@@ -171,6 +173,20 @@ MAP_READ_QUERY = """
 query($project: String!) {
   project(id: $project) {
     content
+  }
+}
+"""
+
+
+# issue(id:) acepta el identificador y el UUID, y rechaza la URL con el mismo
+# "Entity not found" de un issue que no existe, medido: el identificador se saca de la
+# URL antes de mandarlo.
+ISSUE_PROJECT_QUERY = """
+query($issue: String!) {
+  issue(id: $issue) {
+    identifier
+    project { id }
+    labels { nodes { name } }
   }
 }
 """
@@ -435,6 +451,68 @@ def resolver_datos(payload):
             "/planner-setup de nuevo con una key nueva, si no, puede ser un "
             "límite temporal o un problema de la consulta")
     return (payload.get("data") or {}).get("project")
+
+
+# El identificador va en mayúsculas y el slugId de un Project es hex en minúsculas, así
+# que un slug de Project que termine en dígitos nunca se lee como un issue.
+IDENTIFICADOR = re.compile(r"^[A-Z][A-Z0-9]*-[0-9]+$")
+URL_DE_ISSUE = re.compile(r"^https?://linear\.app/[^/]+/issue/([A-Z][A-Z0-9]*-[0-9]+)(/.*)?$")
+
+
+def identificador_de_issue(valor):
+    """El identificador si el valor es la URL o el identificador de un issue, y None
+    si es cualquier otra cosa, que el adapter le pasa a project(id:) tal cual."""
+    valor = valor.strip()
+    if IDENTIFICADOR.match(valor):
+        return valor
+    encontrado = URL_DE_ISSUE.match(valor)
+    return encontrado.group(1) if encontrado else None
+
+
+def resolver_project_del_issue(payload, identificador):
+    """Pura: de la respuesta de ISSUE_PROJECT_QUERY al id del Project. Un issue que no
+    existe, que no lleva el label del mapa o que no vive en un Project sale con
+    NO_ES_DEL_MAPA, porque no hay Project que usar en su lugar."""
+    errores = payload.get("errors") or []
+    no_existe = any(isinstance(e, dict) and "not found" in str(e.get("message")).lower()
+                    for e in errores)
+    if errores and not no_existe:
+        if _rechaza_la_credencial(errores):
+            die(SIN_KEY, "la API de Linear rechazó la credencial guardada",
+                "corre /planner-setup de nuevo con una key nueva")
+        die(SIN_API,
+            "la API de Linear falló al buscar el issue %s: %s"
+            % (identificador, "; ".join(_errores_de(payload))),
+            "reintenta en un minuto; la credencial guardada no se toca")
+    issue = (payload.get("data") or {}).get("issue")
+    if not issue:
+        die(NO_ES_DEL_MAPA,
+            "el issue %s no existe o la credencial no lo ve" % identificador,
+            "pasa la URL del Project del mapa o la de uno de sus tickets de decisión")
+    etiquetas = [e.get("name") for e in ((issue.get("labels") or {}).get("nodes") or [])]
+    if LABEL_MAPA not in etiquetas:
+        die(NO_ES_DEL_MAPA,
+            "el issue %s no lleva el label %s, así que no es un ticket de decisión "
+            "de un mapa" % (identificador, LABEL_MAPA),
+            "pasa la URL del Project del mapa o la de uno de sus tickets de decisión")
+    project = (issue.get("project") or {}).get("id")
+    if not project:
+        die(NO_ES_DEL_MAPA,
+            "el issue %s lleva el label %s pero no pertenece a ningún Project"
+            % (identificador, LABEL_MAPA),
+            "mueve el ticket al Project del mapa, o pasa la URL de ese Project")
+    return project
+
+
+def resolver_project(valor):
+    """El --project de toda operación que lo declara, salvo map:create. Con la URL o el
+    identificador de un issue, un POST y el Project de ese issue; con cualquier otra
+    cosa, el valor tal cual y ningún round trip."""
+    identificador = identificador_de_issue(valor)
+    if identificador is None:
+        return valor
+    payload = _post(ISSUE_PROJECT_QUERY, {"issue": identificador}, leer_key())
+    return resolver_project_del_issue(payload, identificador)
 
 
 def es_frontera_del_mapa(linea):
@@ -2375,6 +2453,10 @@ def construir_parser():
 
 def main(argv):
     args = construir_parser().parse_args(argv)
+    # map:create queda afuera: adopta un Project que todavía no tiene mapa, y un ticket
+    # de decisión solo existe en un Project que ya lo tiene.
+    if getattr(args, "project", None) and args.operacion != "map:create":
+        args.project = resolver_project(args.project)
     args.func(args)
 
 
