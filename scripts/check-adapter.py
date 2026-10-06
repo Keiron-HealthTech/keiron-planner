@@ -310,7 +310,7 @@ else:
             and invocado(n.args[0].func) == "json.dumps"):
         fail("[36] el argumento del único print a stdout no es un json.dumps")
 
-# --- afirmación 37: las nueve claves y discovery separado ---------------------
+# --- afirmación 37: las diez claves y discovery separado ----------------------
 etiquetas = []
 for n in ARBOL.body:
     if isinstance(n, ast.Assign) and any(getattr(x, "id", None) == "LABELS"
@@ -1164,12 +1164,13 @@ else:
         fail("[38] la función que crea labels no compara nada contra None, así que no "
              "distingue el que falta del que ya está")
 
-# --- afirmación 54: lo que crea son los nueve de LABELS, map:no-landing incluido --
+# --- afirmación 54: lo que crea son los diez de LABELS, con los dos que no son tipo --
 
 # El cardinal NO se escribe acá y es a propósito: su casa es la celda Afirmación de la
 # fila 54, y la 37 ya ata LABELS a la tabla del glosario por igualdad de conjuntos, así
-# que un décimo elemento la pone roja. Lo que esta afirmación agrega es que la función
-# que crea recorra esa constante y no una copia propia, y que map:no-landing esté.
+# que un undécimo elemento la pone roja. Lo que esta afirmación agrega es que la función
+# que crea recorra esa constante y no una copia propia, y que los dos labels que no son
+# tipo estén.
 if len(_CREAN_LABEL) == 1:
     _RECORRIDAS = [n.iter.id for n in ast.walk(FUNCS[_CREAN_LABEL[0]])
                    if isinstance(n, ast.For) and isinstance(n.iter, ast.Name)]
@@ -1181,6 +1182,9 @@ elif len(_CREAN_LABEL) > 1:
 if "map:no-landing" not in etiquetas:
     fail("[54] map:no-landing no está en LABELS, así que ticket:create no lo crea "
          "cuando falta y un aterrizaje sin trabajo se queda sin su marcador")
+if "map:design-delivery" not in etiquetas:
+    fail("[54] map:design-delivery no está en LABELS, así que ticket:create no lo crea "
+         "cuando falta y la entrega de diseño nace sin su marcador")
 
 # --- afirmación 41: la cadena de cinco mutations de las dos resoluciones ----------
 

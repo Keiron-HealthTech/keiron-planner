@@ -102,6 +102,11 @@ guarantee it.
 first two rows decide and the third count takes no part. The natural mistake is to branch on
 milestones first, and this line is here to prevent it.
 
+`designDeliveries` takes no part in the verdict either. A design delivery carries no `map`, so
+it is never a ticket of the frontier and no count sees it. Only `/map-collapse` reads that list,
+on `listo para colapsar`, and refuses while it is not empty. That refusal emits no token, so the
+table above stays as it is.
+
 The first row is the one place where a command that reads and a command that works part ways,
 and they part in the action rather than in the derivation: a read-only command emits the token
 there, and a command that works the frontier cannot recommend itself, so it works instead.

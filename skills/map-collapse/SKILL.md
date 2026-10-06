@@ -74,7 +74,7 @@ passed through any other command. Three answers stop the session here:
 
 Whether a section exists comes from `sections`, never from a search inside `content`.
 
-## Step 3, the verdict, and the two refusals
+## Step 3, the verdict, and the three refusals
 
 Derive the verdict with the contract's table, cited and never copied, out of `counts` and
 `notTakeable` and nothing else. Read `counts.milestones` ONLY when `counts.open` is zero.
@@ -92,10 +92,20 @@ be verifiably empty. A lower bound above zero still proves open tickets, so it t
 branch above.
 
 With `counts.open` zero and `counts.milestones` zero, the verdict is `listo para colapsar`.
-This session is the one that serves it, so it recommends nothing and goes to step 4.
+This session is the one that serves it, so it recommends nothing and, past the third refusal,
+goes to step 4.
 
-With `counts.open` zero and `counts.milestones` above zero, the map already collapsed. Split
-by `hasIssues` in the entries of `milestones`:
+The third refusal reads `designDeliveries`, and only on this verdict. When the list is not
+empty, a design delivery of the map is still open and the collapse waits for it. Name each one
+by its `identifier`, its `title`, its `url` and its `assignee`, say that `Diseño` closes it
+by hand in Linear and that no command closes it, write nothing, and stop with no token. When
+the list is empty and `truncated` names `designDeliveries`, the empty list is a lower bound
+and the zero proves nothing: say that and stop with no token. Only an empty list that
+`truncated` does not name lets the session go on.
+
+With `counts.open` zero and `counts.milestones` above zero, the map already collapsed, and
+`designDeliveries` is not read: an open delivery blocks nothing once the collapse has started.
+Split by `hasIssues` in the entries of `milestones`:
 
 - Some milestone has issues. This is a second run for real: refuse, say why, write nothing,
   and close with `next_recommended: sdd-new`. The collapse is idempotent by refusal and never

@@ -13,20 +13,23 @@ import urllib.request
 
 ENDPOINT = "https://api.linear.app/graphql"
 
-# Los nueve del ctx. Su segunda copia es la tabla Tipos de ticket de CONTEXT.md.
+# Los diez del ctx. Su segunda copia son las tablas de labels de CONTEXT.md.
 # El orden es contrato: TIPOS y HITL salen de acá por posición.
 LABELS = ["map", "map:research", "map:prototype", "map:grilling", "map:task",
-          "hitl:pm", "hitl:design", "hitl:dev", "map:no-landing"]
+          "hitl:pm", "hitl:design", "hitl:dev", "map:no-landing",
+          "map:design-delivery"]
 
 # Aparte de LABELS a propósito: Discovery es del equipo, se busca y nunca se crea.
 DISCOVERY = "Discovery"
 
 # Los cuatro tipos y los tres roles, tomados de LABELS por posición y nunca reescritos:
 # una segunda copia de esos nombres se desincroniza en el primer rename, y el orden de
-# LABELS ya es contrato. El primero de la lista, map, no es un tipo, y el noveno,
-# map:no-landing, lo aplica work:write y nunca un ticket de decisión.
+# LABELS ya es contrato. El primero de la lista, map, no es un tipo; el noveno,
+# map:no-landing, lo aplica work:write, y el décimo lo lleva la entrega de diseño que
+# nace al cerrar una decisión de Diseño. Ningún ticket de decisión lleva esos dos.
 TIPOS = LABELS[1:5]
 HITL = LABELS[5:8]
+DESIGN_DELIVERY = LABELS[9]
 
 # El nombre del label del mapa, no su id: el ctx que cierra /map-new todavía dice
 # map: null porque el label nació después del preflight. Constante y no argumento,
@@ -133,9 +136,10 @@ query($team: String!, $labels: [String!]!) {
 # query y la medición de complejidad que la aprobó no pueden divergir. relations
 # gana nodes con type: el predicado de unlanded_decisions la lee para descartar
 # una decisión ya ligada a trabajo de ejecución, y no pedirla dejaría el payload
-# incapaz de distinguirla de una que nunca aterrizó.
+# incapaz de distinguirla de una que nunca aterrizó. designDeliveries no pide
+# relaciones: la entrega no lleva map, así que nunca es frontera ni bloquea a nadie.
 FRONTIER_QUERY = """
-query($project: String!, $label: String!) {
+query($project: String!, $label: String!, $delivery: String!) {
   project(id: $project) {
     issues(first: 50, filter: { labels: { some: { name: { eq: $label } } } }) {
       pageInfo { hasNextPage }
@@ -157,6 +161,10 @@ query($project: String!, $label: String!) {
           nodes { type issue { identifier title url state { id } } }
         }
       }
+    }
+    designDeliveries: issues(first: 50, filter: { labels: { some: { name: { eq: $delivery } } } }) {
+      pageInfo { hasNextPage }
+      nodes { identifier title url createdAt state { id } assignee { displayName } }
     }
     projectMilestones(first: 10) {
       pageInfo { hasNextPage }
@@ -1552,6 +1560,9 @@ def truncadas(proyecto):
     hitos = proyecto.get("projectMilestones") or {}
     if (hitos.get("pageInfo") or {}).get("hasNextPage"):
         cortadas.append("projectMilestones")
+    entregas = proyecto.get("designDeliveries") or {}
+    if (entregas.get("pageInfo") or {}).get("hasNextPage"):
+        cortadas.append("designDeliveries")
     return cortadas
 
 
@@ -1580,6 +1591,18 @@ def unlanded_decisions(nodes, closed_ids, oldest_milestone_created_at):
         unlanded.append({"identifier": n.get("identifier"), "title": n.get("title"),
                          "url": n.get("url"), "completedAt": closed_at})
     return unlanded
+
+
+def open_design_deliveries(project, closed_ids):
+    """Las entregas de diseño que siguen abiertas. Cerrada es el par de ids del ctx,
+    con la misma regla que clasificar_frontera."""
+    nodes = (project.get("designDeliveries") or {}).get("nodes") or []
+    return [{"identifier": n.get("identifier"), "title": n.get("title"),
+             "url": n.get("url"),
+             "assignee": (n.get("assignee") or {}).get("displayName")}
+            for n in sorted(nodes, key=lambda n: (n.get("createdAt") or "",
+                                                  n.get("identifier") or ""))
+            if (n.get("state") or {}).get("id") not in closed_ids]
 
 
 def _tickets_de(args):
@@ -1912,14 +1935,16 @@ def cmd_frontier_query(args):
     cerrados = {ctx["done"], ctx["canceled"]}
     key = leer_key()
     payload = _post(FRONTIER_QUERY,
-                    {"project": args.project, "label": LABEL_MAPA}, key)
+                    {"project": args.project, "label": LABEL_MAPA,
+                     "delivery": DESIGN_DELIVERY}, key)
     proyecto = resolver_datos(payload)
     if proyecto is None:
         # found es lo único que separa un --project que no resolvió de un mapa ya
-        # colapsado: los dos llevan los conteos en cero y las cuatro listas vacías.
+        # colapsado: los dos llevan los conteos en cero y las cinco listas vacías.
         salida = {"found": False, "truncated": [],
                   "counts": {"open": 0, "takeable": 0, "milestones": 0},
-                  "tickets": [], "notTakeable": [], "milestones": [], "unlanded": []}
+                  "tickets": [], "notTakeable": [], "milestones": [], "unlanded": [],
+                  "designDeliveries": []}
     else:
         cortadas = truncadas(proyecto)
         # Cada conexión cortada miente distinto: decirle a quien perdió relations
@@ -1940,6 +1965,8 @@ def cmd_frontier_query(args):
                                  "milestones quedan como cota inferior, y el "
                                  "vecino que hace falta para insertar un corte en "
                                  "el medio puede no estar en la lista",
+            "designDeliveries": "la lista de entregas de diseño abiertas es una cota "
+                                "inferior: una vacía no prueba que no quede ninguna",
         }
         for nombre in cortadas:
             print("aviso: %s vino truncada: %s" % (nombre, consecuencias[nombre]),
@@ -1966,7 +1993,8 @@ def cmd_frontier_query(args):
                              "takeable": len(tomables),
                              "milestones": len(nodos_hitos)},
                   "tickets": tomables, "notTakeable": no_tomables,
-                  "milestones": milestones, "unlanded": unlanded}
+                  "milestones": milestones, "unlanded": unlanded,
+                  "designDeliveries": open_design_deliveries(proyecto, cerrados)}
     print(json.dumps(salida, separators=(",", ":")))
 
 

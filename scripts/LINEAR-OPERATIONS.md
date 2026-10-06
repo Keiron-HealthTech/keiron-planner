@@ -23,7 +23,7 @@ para que el adapter tenga su contrato a mano.
 | `map:write` | Un read-modify-write entero adentro de una sola invocación. |
 | `ticket:create` | Los tickets de decisión de una pasada, en una sola invocación, cada uno con un cuerpo que es la pregunta y nada más. |
 | `ticket:block` | La relación nativa de bloqueo, en una segunda pasada. |
-| `frontier:query` | Los tickets abiertos, sin bloqueantes abiertos y sin assignee. |
+| `frontier:query` | Los tickets abiertos, sin bloqueantes abiertos y sin assignee, y las entregas de diseño abiertas. |
 | `ticket:claim` | Tomar. El primer write de la sesión, y con `--release` la escritura inversa, que devuelve la toma. |
 | `ticket:resolve` | Las cinco escrituras de una resolución, en una sola invocación, y con `--defer-map` solo las cuatro primeras: la quinta no se manda y la línea que le tocaba sale por stdout. |
 | `ticket:rule-out` | Cierra un ticket sin resolverlo. La única destructiva. Acepta `--defer-map` con el mismo efecto. |
@@ -89,21 +89,23 @@ mapa, que es lo que la vuelve utilizable como ancla.
 
 ### `frontier:query`
 
-Siete claves de primer nivel, las siete siempre presentes:
+Ocho claves de primer nivel, las ocho siempre presentes:
 
     found        bool. false cuando el Project no resolvió. Con found en false los tres
-                 conteos son cero y las cuatro listas están vacías, que es la misma
+                 conteos son cero y las cinco listas están vacías, que es la misma
                  forma que tiene un mapa ya terminado: found es lo único que los separa.
-    truncated    lista de string. Subconjunto de issues, relations, inverseRelations y
-                 projectMilestones, en ese orden fijo. Vacía si ninguna conexión vino
-                 cortada. Cada nombre que aparece acá lleva además una línea a stderr, y
-                 el código de salida sigue siendo 0 en todos los casos. Con issues
-                 truncada, unlanded también queda como cota inferior; con relations
-                 truncada, una decisión con más de diez relaciones puede aparecer en
-                 unlanded aunque ya esté ligada a trabajo de ejecución; con
-                 projectMilestones truncada, milestones también queda como cota
-                 inferior además de counts.milestones, y el vecino que hace falta para
-                 insertar un corte en el medio puede no estar en la lista.
+    truncated    lista de string. Subconjunto de issues, relations, inverseRelations,
+                 projectMilestones y designDeliveries, en ese orden fijo. Vacía si
+                 ninguna conexión vino cortada. Cada nombre que aparece acá lleva
+                 además una línea a stderr, y el código de salida sigue siendo 0 en
+                 todos los casos. Con issues truncada, unlanded también queda como cota
+                 inferior; con relations truncada, una decisión con más de diez
+                 relaciones puede aparecer en unlanded aunque ya esté ligada a trabajo
+                 de ejecución; con projectMilestones truncada, milestones también queda
+                 como cota inferior además de counts.milestones, y el vecino que hace
+                 falta para insertar un corte en el medio puede no estar en la lista;
+                 con designDeliveries truncada, la lista de entregas abiertas es una
+                 cota inferior y una vacía no prueba que no quede ninguna.
     counts       objeto de tres claves enteras, open, takeable y milestones. open cuenta
                  los tickets cuyo state.id no es ninguno de los dos ids cerrados del
                  ctx. takeable cuenta los que además pasan las otras dos condiciones.
@@ -123,6 +125,13 @@ Siete claves de primer nivel, las siete siempre presentes:
                  cuando no hay ninguno o cuando el Project no tiene ningún milestone
                  todavía (sin milestone no hay umbral de nacimiento, así que nada puede
                  estar sin aterrizar).
+    designDeliveries
+                 lista de objeto. Las issues del Project con map:design-delivery cuyo
+                 state.id no es ninguno de los dos ids cerrados del ctx, createdAt
+                 ascendente. Cada una con identifier, title, url (string) y assignee
+                 (string o null). Vacía con found en false. No lleva map, así que
+                 ningún conteo la ve y el veredicto no cambia por ella: solo la lee el
+                 colapso, que se niega mientras quede una.
 
 No hay campo de veredicto, con ningún nombre. Ni `verdict`, ni `stuck`, ni
 `readyToCollapse`, ni un booleano equivalente: el veredicto se deriva de los tres

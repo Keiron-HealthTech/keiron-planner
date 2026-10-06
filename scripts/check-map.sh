@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 . scripts/_common.sh
 
-# Afirmaciones 60, 47, 61, 66, 73 y 74.
+# Afirmaciones 60, 47, 61, 66, 73, 74 y 75.
 
 adapter=scripts/linear.py
 
@@ -155,7 +155,7 @@ CREAR = ["map:create", "--ctx", CTX, "--destino", DESTINO]
 # Dos acumuladores y no uno: este harness lleva los desenlaces de dos afirmaciones, y
 # un [N] que no distinga cuál falló manda a leer el script equivocado. La afirmación en
 # curso la fija el bucle del final, así que ningún caso puede anotar en el balde ajeno.
-FALLAS = {"60": [], "47": [], "61": [], "66": [], "73": [], "74": []}
+FALLAS = {"60": [], "47": [], "61": [], "66": [], "73": [], "74": [], "75": []}
 AFIRMACION = ["60"]
 
 
@@ -1521,6 +1521,73 @@ def caso_43():
              "commentCreate" in (tr.queries[0] if tr.queries else ""), True)
 
 
+# --- las entregas de diseño abiertas en frontier:query ---------------------------
+
+FRONTERA = ["frontier:query", "--ctx", CTX, "--project", "kp-falso"]
+
+
+def entrega(identifier, state, created, assignee=None):
+    return {"identifier": identifier, "title": "Diseño terminado: " + identifier,
+            "url": "https://linear.app/keiron/issue/" + identifier,
+            "createdAt": created, "state": {"id": state},
+            "assignee": {"displayName": assignee} if assignee else None}
+
+
+def frontera_con(entregas, cortada=False):
+    return {"data": {"project": {
+        "issues": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+        "designDeliveries": {"pageInfo": {"hasNextPage": cortada}, "nodes": entregas},
+        "projectMilestones": {"pageInfo": {"hasNextPage": False}, "nodes": []}}}}
+
+
+def caso_44():
+    """Dos entregas abiertas y una cerrada: viajan las abiertas, en createdAt
+    ascendente y con sus cuatro claves, y los conteos no las ven."""
+    n = "44-frontier-query-con-entregas-abiertas"
+    rc, out, err, tr = correr(n, FRONTERA, [frontera_con([
+        entrega("CRM-12", "s3", "2026-10-02T00:00:00.000Z", "Ana"),
+        entrega("CRM-11", "s1", "2026-10-01T00:00:00.000Z"),
+        entrega("CRM-10", "s3", "2026-10-01T00:00:00.000Z")])])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "UNA llamada al transporte", tr.llamadas, 1)
+    chequear(n, "la query pide designDeliveries",
+             "designDeliveries" in (tr.queries[0] if tr.queries else ""), True)
+    chequear(n, "la variable delivery es LABELS[9]",
+             (tr.variables[0] if tr.variables else {}).get("delivery"),
+             (mod.LABELS[9:10] or ["LABELS sin décimo elemento"])[0])
+    salida = json_de(n, out)
+    chequear(n, "designDeliveries", salida.get("designDeliveries"), [
+        {"identifier": "CRM-10", "title": "Diseño terminado: CRM-10",
+         "url": "https://linear.app/keiron/issue/CRM-10", "assignee": None},
+        {"identifier": "CRM-12", "title": "Diseño terminado: CRM-12",
+         "url": "https://linear.app/keiron/issue/CRM-12", "assignee": "Ana"}])
+    chequear(n, "counts no cuenta las entregas", salida.get("counts"),
+             {"open": 0, "takeable": 0, "milestones": 0})
+    chequear(n, "truncated", salida.get("truncated"), [])
+
+
+def caso_45():
+    """Un Project que no resolvió: la clave viaja igual, vacía."""
+    n = "45-frontier-query-sin-project"
+    rc, out, err, tr = correr(n, FRONTERA, [{"data": {"project": None}}])
+    chequear(n, "rc", rc, 0)
+    salida = json_de(n, out)
+    chequear(n, "found", salida.get("found"), False)
+    chequear(n, "designDeliveries vacía", salida.get("designDeliveries"), [])
+
+
+def caso_46():
+    """Solo entregas cerradas y la conexión cortada: la lista vacía no prueba nada, y
+    truncated lo dice."""
+    n = "46-frontier-query-con-las-entregas-cortadas"
+    rc, out, err, tr = correr(n, FRONTERA, [frontera_con(
+        [entrega("CRM-11", "s2", "2026-10-01T00:00:00.000Z")], cortada=True)])
+    chequear(n, "rc", rc, 0)
+    salida = json_de(n, out)
+    chequear(n, "la entrega cerrada no viaja", salida.get("designDeliveries"), [])
+    chequear(n, "truncated", salida.get("truncated"), ["designDeliveries"])
+    chequear(n, "stderr avisa del corte", "designDeliveries" in err, True)
+
 CASOS =[("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("60", caso_5), ("60", caso_6), ("60", caso_7), ("60", caso_8),
          ("60", caso_9), ("47", caso_10), ("47", caso_11), ("47", caso_12),
@@ -1531,12 +1598,13 @@ CASOS =[("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("66", caso_29), ("66", caso_30), ("73", caso_31), ("73", caso_32),
          ("73", caso_33), ("73", caso_34), ("73", caso_35), ("73", caso_36),
          ("74", caso_37), ("74", caso_38), ("74", caso_39), ("74", caso_40),
-         ("74", caso_41), ("74", caso_42), ("74", caso_43)]
+         ("74", caso_41), ("74", caso_42), ("74", caso_43),
+         ("75", caso_44), ("75", caso_45), ("75", caso_46)]
 for _afirmacion, _caso in CASOS:
     AFIRMACION[0] = _afirmacion
     _caso()
 
-for _afirmacion in ("60", "47", "61", "66", "73", "74"):
+for _afirmacion in ("60", "47", "61", "66", "73", "74", "75"):
     print("casos%s=%d" % (_afirmacion,
                           len([c for c in CASOS if c[0] == _afirmacion])))
     print("fallas%s=%s" % (_afirmacion, plano(FALLAS[_afirmacion])
@@ -1557,7 +1625,8 @@ if printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas60=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas61=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas66=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas73=ninguna' \
-   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas74=ninguna'; then
+   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas74=ninguna' \
+   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas75=ninguna'; then
   :
 else
   echo "$CHECK_NAME: la corrida del harness dijo:" >&2
@@ -1588,6 +1657,10 @@ if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas74=ninguna'; then
   fail "[74] ticket:resolve no gradúa niebla a Fuera de alcance, no reemplaza una viñeta de Fuera de alcance o no corrige el Destino como dice el contrato, o alguno escribe antes de abortar"
 fi
 
+if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas75=ninguna'; then
+  fail "[75] frontier:query no emite designDeliveries en sus dos ramas, deja pasar una entrega cerrada, no manda LABELS[9] en la query o no nombra designDeliveries en truncated cuando esa conexión viene cortada"
+fi
+
 report
 
 # Los cardinales salen de la corrida y no de una palabra escrita a mano: un conteo
@@ -1604,6 +1677,8 @@ casos73="$(printf '%s\n' "$salida" | sed -n 's/^casos73=//p')"
 require_nonempty "$casos73" "[73] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 casos74="$(printf '%s\n' "$salida" | sed -n 's/^casos74=//p')"
 require_nonempty "$casos74" "[74] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
+casos75="$(printf '%s\n' "$salida" | sed -n 's/^casos75=//p')"
+require_nonempty "$casos75" "[75] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 plural=""
 [ "$casos" = 1 ] || plural="s"
-echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, y $casos66 del reparto de la escritura del mapa con --defer-map, y $casos73 de --project con un ticket, y $casos74 de las correcciones del mapa desde una resolución, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
+echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, y $casos66 del reparto de la escritura del mapa con --defer-map, y $casos73 de --project con un ticket, y $casos74 de las correcciones del mapa desde una resolución, y $casos75 de las entregas de diseño abiertas en frontier:query, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
