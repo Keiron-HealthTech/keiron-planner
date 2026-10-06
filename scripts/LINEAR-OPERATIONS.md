@@ -551,6 +551,16 @@ funcionando igual después de que aterrizan. Toda `issueRelationCreate` que emit
 el ticket de decisión del lado `issueId`, al revés que `ticket:block`, para que la
 relación caiga en `relations` y no en `inverseRelations`.
 
+El cuerpo de un `--issue` puede tener varias líneas: la plantilla del cuerpo de
+ejecución tiene tres secciones. Cruza la CLI como un solo argumento con saltos reales, y
+en Bash eso es una cadena entre comillas simples que abarca varias líneas; una comilla
+simple adentro del cuerpo se escribe cerrando la comilla, `'\''` y volviéndola a abrir,
+la misma regla de `mapArgs`. El adapter normaliza `\r\n` y `\r` a `\n` antes de mandarlo
+en `description`, y aborta antes de la red si el cuerpo queda vacío o de espacios solos.
+El título y el corte del `--issue`, los dos operandos de `--relate` y el valor de
+`--no-landing` siguen siendo de una sola línea: un salto en cualquiera de ellos aborta
+antes de la red.
+
 No reintenta ninguna de las tres. `_post` traga la falla de transporte, así que
 ninguna rama puede distinguir "no llegó" de "llegó y se perdió la respuesta", y
 repetir la invocación entera solo es seguro cuando nada quedó escrito: con parte de la

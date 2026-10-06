@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 . scripts/_common.sh
 
-# Afirmaciones 60, 47, 61, 66, 73, 74 y 75.
+# Afirmaciones 60, 47, 61, 66, 73, 74, 75 y 78.
 
 adapter=scripts/linear.py
 
@@ -155,7 +155,7 @@ CREAR = ["map:create", "--ctx", CTX, "--destino", DESTINO]
 # Dos acumuladores y no uno: este harness lleva los desenlaces de dos afirmaciones, y
 # un [N] que no distinga cuál falló manda a leer el script equivocado. La afirmación en
 # curso la fija el bucle del final, así que ningún caso puede anotar en el balde ajeno.
-FALLAS = {"60": [], "47": [], "61": [], "66": [], "73": [], "74": [], "75": []}
+FALLAS = {"60": [], "47": [], "61": [], "66": [], "73": [], "74": [], "75": [], "78": []}
 AFIRMACION = ["60"]
 
 
@@ -1654,6 +1654,55 @@ def caso_46():
     chequear(n, "truncated", salida.get("truncated"), ["designDeliveries"])
     chequear(n, "stderr avisa del corte", "designDeliveries" in err, True)
 
+
+# --- el cuerpo de varias líneas de work:write ------------------------------------
+
+TRABAJO = ["work:write", "--ctx", CTX, "--project", "kp-falso"]
+CUERPO_DE_TRES = ("## Qué hay que hacer\r\nla vista de campañas\r\n\r\n"
+                  "## Por qué\rporque lo decidió CRM-1\n\n## Cómo se verifica\n"
+                  "se abre la vista")
+CUERPO_NORMALIZADO = ("## Qué hay que hacer\nla vista de campañas\n\n"
+                      "## Por qué\nporque lo decidió CRM-1\n\n## Cómo se verifica\n"
+                      "se abre la vista")
+LOTE_OK = {"data": {"issueBatchCreate": {"success": True, "issues": [
+    {"identifier": "CRM-20", "id": "i-20", "title": "La vista", "url": "u-20"}]}}}
+
+
+def caso_49():
+    """Un cuerpo de tres secciones llega íntegro a description, con los saltos \\r\\n
+    y \\r normalizados a \\n, en un solo issueBatchCreate."""
+    n = "49-work-write-con-un-cuerpo-de-tres-secciones"
+    rc, out, err, tr = correr(n, TRABAJO + ["--issue", "La vista", CUERPO_DE_TRES, "m1"],
+                              [LOTE_OK])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "UNA llamada al transporte", tr.llamadas, 1)
+    lote = (tr.variables[0] if tr.variables else {}).get("issues") or [{}]
+    chequear(n, "description es el cuerpo normalizado",
+             lote[0].get("description"), CUERPO_NORMALIZADO)
+    chequear(n, "el titulo viaja igual", lote[0].get("title"), "La vista")
+
+
+def caso_50():
+    """Un cuerpo vacío o de espacios, y un título con salto, abortan antes de la red."""
+    for n, issue in (("50-cuerpo-vacio", ["La vista", "", "m1"]),
+                     ("50-cuerpo-de-espacios-y-saltos", ["La vista", " \n \r\n ", "m1"]),
+                     ("50-titulo-con-salto", ["La\nvista", CUERPO_DE_TRES, "m1"])):
+        rc, out, err, tr = correr(n, TRABAJO + ["--issue"] + issue, [])
+        chequear(n, "rc", rc, mod.SIN_KEY)
+        chequear(n, "stdout vacio", out, "")
+        chequear(n, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+
+def caso_51():
+    """--relate y --no-landing siguen siendo de una sola línea."""
+    for n, extra in (("51-relate-con-salto", ["--relate", "CRM-1\nCRM-2", "1"]),
+                     ("51-no-landing-con-salto", ["--no-landing", "CRM-1\n"])):
+        rc, out, err, tr = correr(
+            n, TRABAJO + ["--issue", "La vista", CUERPO_DE_TRES, "m1"] + extra, [])
+        chequear(n, "rc", rc, mod.SIN_KEY)
+        chequear(n, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+
 CASOS =[("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("60", caso_5), ("60", caso_6), ("60", caso_7), ("60", caso_8),
          ("60", caso_9), ("47", caso_10), ("47", caso_11), ("47", caso_12),
@@ -1666,12 +1715,13 @@ CASOS =[("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("73", caso_47), ("73", caso_48),
          ("74", caso_37), ("74", caso_38), ("74", caso_39), ("74", caso_40),
          ("74", caso_41), ("74", caso_42), ("74", caso_43),
-         ("75", caso_44), ("75", caso_45), ("75", caso_46)]
+         ("75", caso_44), ("75", caso_45), ("75", caso_46),
+         ("78", caso_49), ("78", caso_50), ("78", caso_51)]
 for _afirmacion, _caso in CASOS:
     AFIRMACION[0] = _afirmacion
     _caso()
 
-for _afirmacion in ("60", "47", "61", "66", "73", "74", "75"):
+for _afirmacion in ("60", "47", "61", "66", "73", "74", "75", "78"):
     print("casos%s=%d" % (_afirmacion,
                           len([c for c in CASOS if c[0] == _afirmacion])))
     print("fallas%s=%s" % (_afirmacion, plano(FALLAS[_afirmacion])
@@ -1693,7 +1743,8 @@ if printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas60=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas66=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas73=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas74=ninguna' \
-   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas75=ninguna'; then
+   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas75=ninguna' \
+   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas78=ninguna'; then
   :
 else
   echo "$CHECK_NAME: la corrida del harness dijo:" >&2
@@ -1728,6 +1779,10 @@ if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas75=ninguna'; then
   fail "[75] frontier:query no emite designDeliveries en sus dos ramas, deja pasar una entrega cerrada, no manda LABELS[9] en la query o no nombra designDeliveries en truncated cuando esa conexión viene cortada"
 fi
 
+if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas78=ninguna'; then
+  fail "[78] work:write --issue no acepta un cuerpo de varias líneas, no lo manda en description con los saltos normalizados, o no aborta antes de la red con un cuerpo vacío o un título con salto"
+fi
+
 report
 
 # Los cardinales salen de la corrida y no de una palabra escrita a mano: un conteo
@@ -1746,6 +1801,8 @@ casos74="$(printf '%s\n' "$salida" | sed -n 's/^casos74=//p')"
 require_nonempty "$casos74" "[74] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 casos75="$(printf '%s\n' "$salida" | sed -n 's/^casos75=//p')"
 require_nonempty "$casos75" "[75] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
+casos78="$(printf '%s\n' "$salida" | sed -n 's/^casos78=//p')"
+require_nonempty "$casos78" "[78] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 plural=""
 [ "$casos" = 1 ] || plural="s"
-echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, y $casos66 del reparto de la escritura del mapa con --defer-map, y $casos73 de --project con un ticket o un Project, y $casos74 de las correcciones del mapa desde una resolución, y $casos75 de las entregas de diseño abiertas en frontier:query, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
+echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, y $casos66 del reparto de la escritura del mapa con --defer-map, y $casos73 de --project con un ticket o un Project, y $casos74 de las correcciones del mapa desde una resolución, y $casos75 de las entregas de diseño abiertas en frontier:query, y $casos78 del cuerpo de varias líneas de work:write, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"

@@ -703,6 +703,18 @@ def _sin_saltos(etiqueta, valor):
             "sacá el salto de línea del argumento y volvé a correr")
 
 
+def _validate_body(flag, body):
+    """El cuerpo de una issue, que sí puede tener varias líneas: cruza la CLI como un
+    solo argumento con saltos reales. Devuelve el cuerpo con los saltos normalizados a
+    \\n, y muere si queda vacío o de espacios solos."""
+    normalized = "\n".join(normalizar(body))
+    if not normalized.strip():
+        die(SIN_KEY, "%s recibió un cuerpo vacío" % flag,
+            "el cuerpo es obligatorio; si tiene varias líneas, pasalo como un solo "
+            "argumento entre comillas simples")
+    return normalized
+
+
 def _no_es_encabezado(etiqueta, valor):
     """La guarda de la frontera. Mira el VALOR que llegó por argumento y no la línea
     renderizada: la línea lleva el marcador de viñeta adelante, así que nunca empezaría
@@ -2344,15 +2356,14 @@ def _work_from(args):
     issues = []
     for title, body, milestone_id in args.issue:
         _sin_saltos("--issue", title)
-        _sin_saltos("--issue", body)
         _sin_saltos("--issue", milestone_id)
-        if not title.strip() or not body.strip() or not milestone_id.strip():
+        if not title.strip() or not milestone_id.strip():
             die(SIN_KEY,
-                "--issue recibió un título, un cuerpo o un corte vacío: %r"
+                "--issue recibió un título o un corte vacío: %r"
                 % ((title, body, milestone_id),),
                 "los tres campos de --issue son obligatorios: título, cuerpo y el id "
                 "del milestone donde nace")
-        issues.append((title, body, milestone_id))
+        issues.append((title, _validate_body("--issue", body), milestone_id))
     relations = []
     for decision, target in args.relate:
         _sin_saltos("--relate", decision)
