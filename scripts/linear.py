@@ -45,9 +45,10 @@ ANCLAS = ["Destino", "Notas", "Decisiones hasta ahora", "Aún no especificado",
 # esqueleto, porque desde que corta el recorrido la primitiva es su consumidora.
 ANTES_DEL_MAPA = "Antes del mapa"
 
-# Las cuatro anclas que map:write edita, tomadas de ANCLAS por posición y nunca
+# Las cinco anclas que map:write edita, tomadas de ANCLAS por posición y nunca
 # reescritas: una segunda copia del texto del encabezado se desincroniza en el primer
 # rename, y el orden de ANCLAS ya es contrato.
+ANCLA_DESTINO = ANCLAS[0]
 ANCLA_DECISIONES = ANCLAS[2]
 ANCLA_NIEBLA = ANCLAS[3]
 ANCLA_FUERA = ANCLAS[4]
@@ -730,6 +731,29 @@ def _linea_de_vineta(valor):
     return "- %s" % valor
 
 
+def _reemplazo_de(etiqueta, titulo, valor):
+    """Un reemplazo en el sitio de una viñeta de Fuera de alcance: el título de la que
+    se va, y la viñeta nueva ya validada y con su marcador. La nueva puede cambiar de
+    título."""
+    _sin_saltos(etiqueta, titulo)
+    if not titulo.strip():
+        die(SIN_KEY, "%s recibió un título vacío" % etiqueta,
+            "pasá el título de la viñeta que se reemplaza, sin los asteriscos")
+    _validar_vineta(etiqueta, valor)
+    return (titulo, _linea_de_vineta(valor))
+
+
+def _destino_corregido(texto):
+    """El reemplazo del cuerpo entero de Destino. Va con título None porque el Destino es
+    un párrafo y no una viñeta: no hay clave que buscar, se reemplaza todo."""
+    _sin_saltos("--amend-destination", texto)
+    _no_es_encabezado("--amend-destination", texto)
+    if not texto.strip():
+        die(SIN_KEY, "--amend-destination llegó vacío o con espacios solos",
+            "pasá el Destino corregido entero, en una sola línea")
+    return (None, texto)
+
+
 def _cuerpo_de_secciones(args):
     """El markdown del comentario de resolución, armado por el adapter y nunca por el
     modelo. Valida antes de renderizar: acá se rompe todo lo que se pueda romper sin
@@ -881,10 +905,12 @@ def _ctx_de(args):
             "pasá el blob que emitió el preflight, sin editarlo")
 
 
-def _niebla_de(args):
+def _niebla_de(args, otras_graduadas=()):
     """Las viñetas de niebla que se abren y los títulos que se gradúan, ya validados, más
     la guarda de consistencia contra la sección que los cuenta. Devuelve (niebla,
-    graduadas), con niebla ya renderizada con su marcador.
+    graduadas), con niebla ya renderizada con su marcador. otras_graduadas son los
+    títulos que se van del mapa por otro flag que --remove-fog, y pasan por la misma
+    guarda.
 
     La guarda es la mitad decidible de la regla: todo título que esta resolución saca del
     mapa tiene que estar nombrado en alguna línea de la sección que lo cuenta. La inversa,
@@ -903,6 +929,7 @@ def _niebla_de(args):
             die(SIN_KEY, "--remove-fog recibió un título vacío",
                 "pasá el título de la viñeta, sin los asteriscos")
         graduadas.append(titulo)
+    graduadas.extend(otras_graduadas)
     # Por posición y nunca reescrito, igual que ANCLA_DECISIONES sale de ANCLAS: el
     # orden de SECCIONES ya es contrato y una segunda copia del texto se desincroniza en
     # el primer rename.
@@ -931,12 +958,104 @@ def _resolucion_de(args):
             "tiene que decir algo")
     _validar_gist("--gist", args.gist)
     _no_es_encabezado("--gist", args.gist)
-    niebla, graduadas = _niebla_de(args)
+    titulos, fuera = _graduaciones_de(args)
+    niebla, graduadas = _niebla_de(args, titulos)
+    reemplazos = [_reemplazo_de("--replace-out-of-scope", t, v)
+                  for t, v in args.replace_out_of_scope]
+    destino = _destino_de_la_resolucion(args)
     tickets = [_validar_ticket("--new-ticket", t, c, e) for t, c, e in args.new_ticket]
     return {"ctx": ctx, "issue": issue, "cuerpo": cuerpo, "gist": args.gist,
-            "niebla": niebla, "graduadas": graduadas,
+            "niebla": niebla, "graduadas": graduadas, "fuera": fuera,
+            "reemplazos": reemplazos, "destino": destino,
             "tickets": tickets, "pares": _cableado_de(args, tickets),
             "esperadas": _esperadas_de(args)}
+
+
+def _graduaciones_de(args):
+    """Los parches de niebla que esta resolución muda a Fuera de alcance: los títulos que
+    salen de la niebla y las viñetas que entran a Fuera de alcance, en el orden de argv.
+    Los títulos pasan después por la guarda de Niebla graduada, igual que un
+    --remove-fog."""
+    titulos, fuera = [], []
+    for titulo, valor in args.graduate_out_of_scope:
+        _sin_saltos("--graduate-out-of-scope", titulo)
+        if not titulo.strip():
+            die(SIN_KEY, "--graduate-out-of-scope recibió un título vacío",
+                "pasá el título de la viñeta de niebla, sin los asteriscos")
+        _validar_vineta("--graduate-out-of-scope", valor)
+        titulos.append(titulo)
+        fuera.append(_linea_de_vineta(valor))
+    return titulos, fuera
+
+
+def _destino_de_la_resolucion(args):
+    """El Destino corregido, o None. Corregir el Destino es raro y tiene que verse en el
+    comentario: alguna línea de la sección que cuenta lo que la resolución corrige tiene
+    que nombrarlo, la misma guarda que --remove-fog tiene contra Niebla graduada."""
+    if args.amend_destination is None:
+        return None
+    destino = _destino_corregido(args.amend_destination)
+    contadas = [linea for nombre, linea in args.section if nombre == SECCIONES[5]]
+    if not any(ANCLA_DESTINO in linea for linea in contadas):
+        die(SIN_KEY,
+            "--amend-destination corrige el Destino y ninguna línea de la sección %s "
+            "del comentario lo nombra" % SECCIONES[5],
+            "nombrá el %s en esa sección, o sacá el --amend-destination: un Destino que "
+            "cambia sin que el comentario diga por qué no deja rastro"
+            % ANCLA_DESTINO)
+    return destino
+
+
+def _ediciones_de_la_resolucion(plan):
+    """Las ediciones del mapa de ticket:resolve menos la línea de Decisiones, que la
+    agrega el handler: así se ensayan antes de la primera escritura, cuando la url que
+    esa línea necesita todavía no existe."""
+    ediciones = {}
+    if plan["graduadas"] or plan["niebla"]:
+        ediciones[ANCLA_NIEBLA] = (plan["graduadas"], plan["niebla"], [])
+    if plan["fuera"] or plan["reemplazos"]:
+        ediciones[ANCLA_FUERA] = ([], plan["fuera"], plan["reemplazos"])
+    if plan["destino"] is not None:
+        ediciones[ANCLA_DESTINO] = ([], [], [plan["destino"]])
+    return ediciones
+
+
+def _flags_del_mapa(plan):
+    """Los flags de map:write que reproducen las ediciones del mapa de ticket:resolve,
+    salvo la de Decisiones. Una sola construcción para los tres sitios que los imprimen:
+    mapArgs, la remediación de la quinta escritura y la del estado sin confirmar."""
+    flags = []
+    for titulo in plan["graduadas"]:
+        flags += ["--remove-fog", titulo]
+    for vineta in plan["niebla"]:
+        flags += ["--append-fog", vineta[2:]]
+    for vineta in plan["fuera"]:
+        flags += ["--append-out-of-scope", vineta[2:]]
+    for titulo, vineta in plan["reemplazos"]:
+        flags += ["--replace-out-of-scope", titulo, vineta[2:]]
+    if plan["destino"] is not None:
+        flags += ["--amend-destination", plan["destino"][1]]
+    return flags
+
+
+def _ensayar_ediciones(project, ediciones, key):
+    """Lee el mapa y le aplica las ediciones sin escribir nada, para que un título que no
+    existe o un ancla que falta aborten antes del primer POST que escribe y no en la
+    quinta escritura, cuando el ticket ya está cerrado."""
+    lectura = _post(MAP_READ_QUERY, {"project": project}, key)
+    errores = _errores_de(lectura)
+    if errores:
+        die(SIN_KEY,
+            "no se pudo leer el mapa para ensayar sus ediciones: %s. Nada se escribió"
+            % "; ".join(errores),
+            "volvé a correr la misma invocación")
+    proyecto = (lectura.get("data") or {}).get("project")
+    if proyecto is None:
+        die(SIN_KEY,
+            "el Project %s no resolvió, así que no hay mapa que corregir. Nada se "
+            "escribió" % project,
+            "revisá el identificador que le pasaste a --project")
+    aplicar_ediciones(normalizar(proyecto.get("content") or ""), ediciones)
 
 
 def _fuera_de_alcance_de(args):
@@ -961,12 +1080,12 @@ def _fuera_de_alcance_de(args):
 def _ediciones_de(args):
     """Las ediciones agrupadas por ancla, ya validadas: acá se rompe todo lo que se pueda
     romper sin haber tocado la red, que es lo que hace que una invocación mal formada no
-    gaste un round trip. Devuelve {ancla: (removes, appends)}, con el orden de la línea
-    de comandos preservado adentro de cada lista."""
+    gaste un round trip. Devuelve {ancla: (removes, appends, replaces)}, con el orden de
+    la línea de comandos preservado adentro de cada lista."""
     ediciones = {}
 
     def anotar(ancla, indice, dato):
-        ediciones.setdefault(ancla, ([], []))[indice].append(dato)
+        ediciones.setdefault(ancla, ([], [], []))[indice].append(dato)
 
     for enlace, gist in args.append_decision:
         _sin_saltos("--append-decision", enlace)
@@ -1000,6 +1119,12 @@ def _ediciones_de(args):
         _validar_vineta("--append-out-of-scope", valor)
         anotar(ANCLA_FUERA, 1, _linea_de_vineta(valor))
 
+    for titulo, valor in args.replace_out_of_scope:
+        anotar(ANCLA_FUERA, 2, _reemplazo_de("--replace-out-of-scope", titulo, valor))
+
+    if args.amend_destination is not None:
+        anotar(ANCLA_DESTINO, 2, _destino_corregido(args.amend_destination))
+
     for value in args.append_collapse:
         # El título en negrita es el nombre del corte y también la clave de unicidad,
         # así que un corte repetido aborta en vez de contarse dos veces.
@@ -1011,7 +1136,8 @@ def _ediciones_de(args):
             "map:write no recibió ninguna edición, y escribir cero ediciones es un "
             "error de invocación y no un no-op silencioso",
             "pasá al menos uno de --append-decision, --append-fog, --remove-fog, "
-            "--append-out-of-scope o --append-collapse")
+            "--append-out-of-scope, --replace-out-of-scope, --amend-destination o "
+            "--append-collapse")
     return ediciones
 
 
@@ -1046,6 +1172,42 @@ def _sin_la_vineta(cuerpo, titulo):
         while indice < len(cuerpo) and _es_continuacion(cuerpo[indice]):
             indice += 1
     return salida, borradas
+
+
+def _con_el_reemplazo(cuerpo, titulo, linea, reintento):
+    """El cuerpo con la viñeta de ese título reemplazada en su lugar por la línea, o, con
+    título None, con todo el texto de la sección reemplazado por la línea. Un título que
+    no matchea ninguna viñeta aborta, porque no hay qué corregir; en la rama del
+    reintento, si la línea nueva ya está, es el primer intento que aterrizó."""
+    if titulo is None:
+        llenas = [i for i, texto in enumerate(cuerpo) if texto.strip()]
+        if not llenas:
+            return cuerpo + [linea]
+        return cuerpo[:llenas[0]] + [linea] + cuerpo[llenas[-1] + 1:]
+    sin, borradas = _sin_la_vineta(cuerpo, titulo)
+    if borradas > 1:
+        die(SIN_KEY,
+            "el título %s matchea %s viñetas y una escritura no puede elegir cuál "
+            "reemplazar" % (titulo, borradas),
+            "dejá una sola viñeta con ese título y volvé a correr")
+    if borradas == 0:
+        clave = _clave_de_unicidad(linea)
+        if reintento and any(_clave_de_unicidad(vieja) == clave for vieja in cuerpo):
+            print("aviso: el reemplazo ya estaba aplicado, así que este intento no lo "
+                  "repite: %s" % linea, file=sys.stderr)
+            return cuerpo
+        die(SIN_KEY,
+            "no hay ninguna viñeta titulada %s, así que no hay qué reemplazar" % titulo,
+            "pasá el título exacto de la viñeta, sin los asteriscos, tal como está en "
+            "el mapa")
+    clave = _clave_de_unicidad(linea)
+    if any(_clave_de_unicidad(vieja) == clave for vieja in sin):
+        die(SIN_KEY,
+            "la viñeta nueva repite el título de otra que ya está en el mapa: %s" % linea,
+            "elegí un título que no esté en la sección, o reemplazá esa otra viñeta")
+    indice = next(i for i, texto in enumerate(cuerpo)
+                  if titulo_en_negrita(texto) == titulo)
+    return sin[:indice] + [linea] + sin[indice:]
 
 
 def _con_la_linea(cuerpo, linea, reintento):
@@ -1086,10 +1248,11 @@ def aplicar_ediciones(lineas, ediciones, reintento=False):
     for ancla in ANCLAS:
         if ancla not in ediciones or ancla in rangos:
             continue
-        removes, appends = ediciones[ancla]
+        removes, appends, replaces = ediciones[ancla]
         die(SIN_KEY,
             "el overview no tiene el encabezado %s, así que no hay dónde escribir "
-            "esto: %s" % (ancla, "; ".join(removes + appends)),
+            "esto: %s" % (ancla, "; ".join(removes + appends +
+                                            [linea for _, linea in replaces])),
             "agregá ese encabezado al overview, o trazá el mapa con map:create; "
             "map:write nunca escribe al final del documento como reemplazo")
     noop = []
@@ -1098,10 +1261,11 @@ def aplicar_ediciones(lineas, ediciones, reintento=False):
     # más abajo, así que las secciones que faltan tienen que estar más arriba.
     for ancla in sorted(ediciones, key=lambda a: rangos[a][0], reverse=True):
         inicio, corte = rangos[ancla]
-        removes, appends = ediciones[ancla]
+        removes, appends, replaces = ediciones[ancla]
         cuerpo = list(lineas[inicio:corte])
         # Los remove antes que los append: es lo que le da sentido a graduar una niebla
-        # y abrir otra con el mismo título en una sola invocación.
+        # y abrir otra con el mismo título en una sola invocación. Los reemplazos van en
+        # el medio, así que un append no puede caer sobre la viñeta que se reemplaza.
         for titulo in removes:
             cuerpo, borradas = _sin_la_vineta(cuerpo, titulo)
             if borradas > 1:
@@ -1113,6 +1277,8 @@ def aplicar_ediciones(lineas, ediciones, reintento=False):
                 noop.append(titulo)
                 print("aviso: no hay ninguna viñeta titulada %s, así que no se borró "
                       "nada" % titulo, file=sys.stderr)
+        for titulo, linea in replaces:
+            cuerpo = _con_el_reemplazo(cuerpo, titulo, linea, reintento)
         for linea in appends:
             cuerpo = _con_la_linea(cuerpo, linea, reintento)
         nuevas[inicio:corte] = cuerpo
@@ -1873,6 +2039,10 @@ def cmd_ticket_resolve(args):
             "corré /map-new en este workspace: es quien crea los labels del plugin "
             "cuando faltan, y esta operación nunca los crea por su cuenta")
     key = leer_key()
+    # Solo las ediciones que corrigen lo que ya está pueden apuntar a algo que no existe.
+    # Sin ellas no hay ensayo y la resolución no gasta ningún round trip de más.
+    if plan["reemplazos"] or plan["destino"] is not None:
+        _ensayar_ediciones(args.project, _ediciones_de_la_resolucion(plan), key)
     issues, escritos = [], []
     if plan["tickets"]:
         ok, detalle, issues = _crear_tickets(ctx, args.project, labels,
@@ -1910,22 +2080,18 @@ def cmd_ticket_resolve(args):
     if not ok:
         # _post traga la falla de transporte, así que un timeout acá no distingue "el
         # issueUpdate no llegó" de "llegó y se perdió la respuesta": el estado puede
-        # haber cambiado igual. Nombrar los --remove-fog/--append-fog pendientes es lo
-        # único posible en este punto, porque la url que --append-decision necesita
+        # haber cambiado igual. Nombrar los flags del mapa pendientes es lo único
+        # posible en este punto, porque la url que --append-decision necesita
         # todavía no existe: la devuelve el mismo issueUpdate que acaba de fallar.
-        pendiente = []
-        for titulo in plan["graduadas"]:
-            pendiente += ["--remove-fog", titulo]
-        for vineta in plan["niebla"]:
-            pendiente += ["--append-fog", vineta[2:]]
-        niebla = (" Sumale estos flags de niebla al map:write de más abajo, que si no "
-                  "se pierden para siempre: %s."
-                  % " ".join(_citar(t) for t in pendiente)) if pendiente else ""
+        pendiente = _flags_del_mapa(plan)
+        resto = (" Sumale estos flags del mapa al map:write de más abajo, que si no "
+                 "se pierden para siempre: %s."
+                 % " ".join(_citar(t) for t in pendiente)) if pendiente else ""
         die(SIN_KEY,
             "el estado no se pudo confirmar: %s. Puede que el ticket ya esté en Done y "
             "puede que no: un timeout no distingue las dos. El comentario de "
             "resolución YA está escrito en el ticket, así que repetir esta invocación "
-            "lo duplicaría.%s" % (detalle, niebla),
+            "lo duplicaría.%s" % (detalle, resto),
             "fijate en Linear si el ticket ya quedó en Done antes de tocarlo; si no, "
             "cerralo a mano. Después corré map:write --project %s --append-decision "
             "con la url del ticket y el gist, para dejar la línea en el mapa"
@@ -1937,11 +2103,7 @@ def cmd_ticket_resolve(args):
     # mapArgs: el primero es uno solo para toda la invocación del llamador, y el
     # segundo es la huella de una lectura del mapa que esta operación nunca hizo.
     linea = _linea_de_decision(url, plan["gist"])
-    flags = ["--append-decision", url, plan["gist"]]
-    for titulo in plan["graduadas"]:
-        flags += ["--remove-fog", titulo]
-    for vineta in plan["niebla"]:
-        flags += ["--append-fog", vineta[2:]]
+    flags = ["--append-decision", url, plan["gist"]] + _flags_del_mapa(plan)
     salida = {"issue": issue.get("identifier") or plan["issue"], "url": url,
               "comment": comentario,
               "tickets": [{"identifier": i.get("identifier"), "id": i.get("id"),
@@ -1957,9 +2119,8 @@ def cmd_ticket_resolve(args):
         # y por lo tanto ninguno pudo detectar una línea ya aplicada.
         print(json.dumps(salida, separators=(",", ":")))
         return
-    ediciones = {ANCLA_DECISIONES: ([], [linea])}
-    if plan["graduadas"] or plan["niebla"]:
-        ediciones[ANCLA_NIEBLA] = (plan["graduadas"], plan["niebla"])
+    ediciones = _ediciones_de_la_resolucion(plan)
+    ediciones[ANCLA_DECISIONES] = ([], [linea], [])
     # Un solo intento y sin bucle propio: MAX_INTENTOS gobierna el reintento de
     # map:write y de map:create, y una tercera referencia lo desparramaría. Acá no hace
     # falta, porque una falla en la quinta no pierde nada y se recupera con el comando
@@ -1967,12 +2128,7 @@ def cmd_ticket_resolve(args):
     ok, detalle = _intentar_escribir(args.project, ediciones, plan["esperadas"],
                                      False, key)
     if not ok:
-        faltante = ["map:write", "--project", args.project,
-                    "--append-decision", url, plan["gist"]]
-        for titulo in plan["graduadas"]:
-            faltante += ["--remove-fog", titulo]
-        for vineta in plan["niebla"]:
-            faltante += ["--append-fog", vineta[2:]]
+        faltante = ["map:write", "--project", args.project] + flags
         die(SIN_KEY,
             "la línea del mapa no se pudo escribir: %s. Todo lo demás ya aterrizó: los "
             "tickets nuevos, su cableado, el comentario y el ticket en Done" % detalle,
@@ -2076,9 +2232,9 @@ def cmd_ticket_rule_out(args):
     if args.defer_map:
         print(json.dumps(salida, separators=(",", ":")))
         return
-    ediciones = {ANCLA_FUERA: ([], [linea])}
+    ediciones = {ANCLA_FUERA: ([], [linea], [])}
     if plan["graduadas"] or plan["niebla"]:
-        ediciones[ANCLA_NIEBLA] = (plan["graduadas"], plan["niebla"])
+        ediciones[ANCLA_NIEBLA] = (plan["graduadas"], plan["niebla"], [])
     ok, detalle = _intentar_escribir(args.project, ediciones, plan["esperadas"],
                                      False, key)
     if not ok:
@@ -2329,6 +2485,9 @@ def construir_parser():
                              metavar="TITULO")
     p_map_write.add_argument("--append-out-of-scope", action="append", default=[],
                              metavar="LINEA")
+    p_map_write.add_argument("--replace-out-of-scope", nargs=2, action="append",
+                             default=[], metavar=("TITULO", "VINETA"))
+    p_map_write.add_argument("--amend-destination", metavar="DESTINO")
     p_map_write.add_argument("--append-collapse", action="append", default=[],
                              metavar="VINETA")
     p_map_write.add_argument("--expect-sections")
@@ -2392,6 +2551,11 @@ def construir_parser():
                                   metavar="VINETA")
     p_ticket_resolve.add_argument("--remove-fog", action="append", default=[],
                                   metavar="TITULO")
+    p_ticket_resolve.add_argument("--graduate-out-of-scope", nargs=2, action="append",
+                                  default=[], metavar=("TITULO", "VINETA"))
+    p_ticket_resolve.add_argument("--replace-out-of-scope", nargs=2, action="append",
+                                  default=[], metavar=("TITULO", "VINETA"))
+    p_ticket_resolve.add_argument("--amend-destination", metavar="DESTINO")
     p_ticket_resolve.add_argument("--expect-sections")
     # Directo del subparser y NUNCA adentro de un grupo mutuamente excluyente: ahí el
     # extractor de check-adapter.py no lo vería y la afirmación 64 probaría sobre el
