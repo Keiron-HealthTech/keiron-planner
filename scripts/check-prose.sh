@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 . scripts/_common.sh
 
-# Afirmaciones 55, 79 y 81.
+# Afirmaciones 55, 79, 81 y 82.
 
 COMMAND_FILE=commands/map-work.md
 COLLAPSE_SKILL=skills/map-collapse/SKILL.md
@@ -25,6 +25,17 @@ DELIVERY_FLAG='--design-delivery'
 DELIVERY_TITLE='`Diseño terminado: <the view>`'
 HAND_CLOSE='closes it by hand in Linear, and no command closes it'
 
+PROTOTYPE_SKILL=skills/prototype/SKILL.md
+PROPOSAL_FILE=skills/prototype/PROPOSAL.md
+LABEL_RULE='The label decides before the question does'
+NOBODY_ASKED='nobody is asked'
+PROPOSAL_LINK='[PROPOSAL.md](PROPOSAL.md)'
+PROPOSAL_ROW='| Written proposal |'
+ONE_PROPOSAL='One proposal is the default'
+SEVERAL_APPROACHES='two or three approaches when the decision spans several views or `Diseño` asks for them'
+NO_TWO_VARIANTS='The minimum of two variants does not apply'
+LIVE_LINK='lives in Claude Design, behind its live link, and the agent never builds variants there'
+
 # --- tercer tier: un grep sobre un archivo que falta no mira nada ---
 
 if [ ! -f "$COMMAND_FILE" ]; then
@@ -37,6 +48,14 @@ fi
 
 if [ ! -f "$MAP_WORK_SKILL" ]; then
   bail "[81] falta $MAP_WORK_SKILL; el paso de la entrega de diseño se probaría sobre un archivo que no está"
+fi
+
+if [ ! -f "$PROTOTYPE_SKILL" ]; then
+  bail "[82] falta $PROTOTYPE_SKILL; la rama de Diseño se probaría sobre un archivo que no está"
+fi
+
+if [ ! -f "$PROPOSAL_FILE" ]; then
+  bail "[82] falta $PROPOSAL_FILE; un ticket de Diseño no tiene rama de propuesta escrita y cae en las de código"
 fi
 
 # --- afirmación 55: el comando nombra la prohibición de aterrizar en un corte terminado ---
@@ -90,6 +109,31 @@ if ! printf '%s
   fail "[81] el paso 10 de $MAP_WORK_SKILL no dice que Diseño cierra la entrega a mano y que ningún comando la cierra"
 fi
 
+# --- afirmación 82: con hitl:design, prototype conversa hasta una propuesta escrita ---
+
+# El rango es la sección que elige la rama: la regla del label escrita en otra sección
+# llegaría tarde, después de la pregunta que decide entre las ramas de código.
+pick="$(sed -n '/^## Pick a branch$/,/^## Rules/p' "$PROTOTYPE_SKILL")"
+for literal in '`hitl:design`' "$PROPOSAL_LINK" "$LABEL_RULE" "$NOBODY_ASKED"; do
+  if ! printf '%s\n' "$pick" | grep -qF -- "$literal"; then
+    fail "[82] la sección que elige la rama en $PROTOTYPE_SKILL no nombra $literal, así que un ticket de Diseño llega a la pregunta por código"
+  fi
+done
+if ! grep -qF -- "$PROPOSAL_ROW" "$PROTOTYPE_SKILL"; then
+  fail "[82] la tabla de elecciones de $PROTOTYPE_SKILL no tiene la fila de la propuesta escrita, así que la regla de dos variantes la alcanza"
+fi
+
+for part in '`Para qué es la vista`' '`Qué debe tener`' '`Qué considerar`' '`Qué queda abierto`'; do
+  if ! grep -qF -- "$part" "$PROPOSAL_FILE"; then
+    fail "[82] $PROPOSAL_FILE no nombra la parte $part de la propuesta"
+  fi
+done
+for literal in "$ONE_PROPOSAL" "$SEVERAL_APPROACHES" "$NO_TWO_VARIANTS" "$LIVE_LINK"; do
+  if ! grep -qF -- "$literal" "$PROPOSAL_FILE"; then
+    fail "[82] $PROPOSAL_FILE no dice: $literal"
+  fi
+done
+
 report
 
-echo "$CHECK_NAME: OK - $COMMAND_FILE nombra la prohibición de aterrizar en un corte con $DONE_STATUS, y el paso 3 de $COLLAPSE_SKILL lee $DELIVERIES_KEY en la tercera de sus negativas, con nueve pasos, y el paso 8 de $MAP_WORK_SKILL pasa $DELIVERY_FLAG y su paso 10 nombra la entrega que Diseño cierra a mano"
+echo "$CHECK_NAME: OK - $COMMAND_FILE nombra la prohibición de aterrizar en un corte con $DONE_STATUS, y el paso 3 de $COLLAPSE_SKILL lee $DELIVERIES_KEY en la tercera de sus negativas, con nueve pasos, y el paso 8 de $MAP_WORK_SKILL pasa $DELIVERY_FLAG y su paso 10 nombra la entrega que Diseño cierra a mano, y con hitl:design $PROTOTYPE_SKILL lleva a $PROPOSAL_FILE sin preguntar, con sus cuatro partes y una propuesta por defecto"

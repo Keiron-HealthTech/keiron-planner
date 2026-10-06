@@ -67,7 +67,7 @@ the argument means beyond finding the map is the business of the command that wo
 | Label | What it invokes | The rule that is not negotiable |
 | --- | --- | --- |
 | `map:grilling` | grilling and domain-modeling | The agent never answers for the person. |
-| `map:prototype` | prototype | The agent builds variants and never chooses. |
+| `map:prototype` | prototype | The agent builds variants and never chooses. With `hitl:design` the label picks the written proposal instead of code, and the agent still never chooses. |
 | `map:research` | subagents in parallel, one per ticket | The only AFK type, and the only exception to one ticket per session. |
 | `map:task` | no discipline | It does instead of deciding, and it earns its place by unblocking a decision, never by delivering a piece of the destination. |
 

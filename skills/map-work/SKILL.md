@@ -179,6 +179,11 @@ The contract's ticket type to discipline table decides, and this file does not c
 has four rows, one per type label, and each carries the rule of its own that is not
 negotiable. Read it there and run what it names for the label this ticket carries.
 
+A `map:prototype` ticket that carries `hitl:design` runs the written-proposal branch of
+prototype, `${CLAUDE_PLUGIN_ROOT}/skills/prototype/PROPOSAL.md`, and no code branch:
+the label decides, so do not ask the person which branch they want. The proposal `Diseño`
+approves is what step 8 passes as the body of the design delivery.
+
 `map:task` names no discipline, and that is not an omission: it does instead of deciding, so
 there is nothing to conduct. Do the work and carry what it produced into step 8.
 

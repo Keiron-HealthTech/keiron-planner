@@ -2,7 +2,8 @@
 name: prototype
 description: >
   Build throwaway code that answers the question a decision ticket asks: a driveable logic
-  demo, or several radically different UI variants for the person to choose between.
+  demo, or several radically different UI variants for the person to choose between; or, for
+  a `hitl:design` ticket, a written proposal with no code.
   Trigger: Building throwaway variants to answer a design question.
 license: MIT
 metadata:
@@ -22,6 +23,11 @@ of the type.
 
 ## Pick a branch
 
+The label decides before the question does. A ticket that carries `hitl:design` takes the
+written-proposal branch, [PROPOSAL.md](PROPOSAL.md), and nobody is asked whether they want
+code: `Diseño` decides without touching code, and the design itself lives in Claude Design.
+The two code branches below are for every ticket without `hitl:design`.
+
 The question being answered is **the body of the decision ticket**, which is a question and
 not a task. Do not reformulate it into something easier to prototype. If the question does not
 say enough to pick a branch, ask: the person is in the room.
@@ -40,7 +46,7 @@ There is no default to fall back on when the answer does not come. Ask and wait.
 for a state that cannot exist is exactly the rule an agent reaches for when it wants to move
 alone, and this file carries the opposite hardening.
 
-## Rules that apply to both
+## Rules that apply to the two code branches
 
 1. **Throwaway from day one, and clearly marked as such.** There is no single place for it: the
    polyrepo already settled that. The artifact lives where its nature asks for. A throwaway
@@ -73,13 +79,14 @@ alone, and this file carries the opposite hardening.
 2. **A `map:prototype` ticket does not resolve without a choice said by the person.** Without
    it the session ends with the prototype delivered and the ticket open.
 3. **The `## La decisión` section of the resolution comment has to name who chose.**
-4. **What counts as that choice is different in each branch**, and only one of the two is about
-   variants:
+4. **What counts as that choice is different in each branch**, and only one of the three is
+   about variants:
 
 | Branch | What counts as the person's choice |
 | --- | --- |
 | UI | Which variant wins, said by the person. With fewer than two variants built, the ticket does not resolve: one variant is not a prototype, it is a proposal, and it is how the choice slips in without being said. |
 | Logic | The verdict on the model, said by the person after driving the demo: whether it works, and what changes if it does not. Show what happened; never declare the verdict. |
+| Written proposal | The proposal, or one of the approaches, approved by `Diseño`, said by the person. The minimum of two variants does not apply here: one proposal is the default. |
 
 ---
 

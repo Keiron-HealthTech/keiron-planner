@@ -49,6 +49,7 @@ fuera del alcance.
 | Landing | Aterrizaje | El paso donde una decisión tomada **después** del colapso consigue su trabajo de ejecución. No es un colapso incremental: es un paso de `/map-work` para tickets `map:grilling` o `map:prototype`, y tiene tres desenlaces. Issues nuevas, ligar a una issue de ejecución que ya existe, o nada, y el tercero se marca con el label `map:no-landing`. Nunca aterriza en un corte terminado. Lo aprueba siempre un dev: corre en la misma sesión que resolvió cuando el ticket no lleva `hitl:pm` ni `hitl:design`, y si no, un dev lo hace después con `/map-work` sobre el ticket cerrado, sin claim y sin chequeo de rol. Lo decidieron el ticket 12 y CRM-3640. |
 | Unlanded decision | Decisión sin aterrizar | Un ticket `map:grilling` o `map:prototype` cerrado después del colapso, sin relación `related` hacia una issue de ejecución y sin `map:no-landing`. Es un estado esperado y no una falla: toda decisión de Diseño o PM sobre un mapa colapsado pasa por él. Es el `unlanded` de `frontier:query` y `/map-status` lo muestra. Se aterriza con `/map-work` nombrando el ticket, de a una por sesión. Lo decidió CRM-3640. |
 | Design delivery | Entrega de diseño | La issue «Diseño terminado: X» que nace al cerrar un ticket de decisión con `hitl:design`, en la misma primera escritura que los tickets nuevos, con `ticket:resolve --design-delivery`. Lleva `hitl:design` y `map:design-delivery`, no lleva `map` y la asigna el adapter a quien cerró la decisión. Su cuerpo es la propuesta que Diseño aprobó y enlaza la decisión. No entra en la frontera, ni en el veredicto, ni en el aterrizaje, y mientras esté abierta frena el colapso. La cierra Diseño a mano en Linear, con el link vivo de Claude Design; ningún comando la cierra. Lo decidió CRM-3629. |
+| Written proposal | Propuesta escrita | Lo que produce prototype con un ticket `hitl:design`, en lugar de código: una conversación con Diseño que termina en cuatro partes, para qué es la vista, qué debe tener, qué considerar (con las decisiones del mapa que la tocan) y qué queda abierto. Por defecto es una sola; son dos o tres enfoques si la decisión abarca varias vistas o Diseño lo pide, y la regla de dos variantes no aplica. La decide el label, sin preguntar. El diseño vive en Claude Design y el agente no arma variantes allí. La propuesta aprobada es el cuerpo de la entrega de diseño. Lo decidió CRM-3626. |
 
 ## Tipos de ticket
 
@@ -90,7 +91,7 @@ del árbol, y ese archivo es su única casa.
 | --- | --- | --- |
 | Grilling | `skills/grilling/SKILL.md` | Entrevistar a la persona en rondas sobre un design tree, hasta que no queda ninguna pregunta formulable. |
 | Domain modeling | `skills/domain-modeling/SKILL.md` | Afilar el vocabulario del dominio mientras se decide, desafiando los términos y estresándolos con escenarios. |
-| Prototype | `skills/prototype/SKILL.md` | Construir código descartable que contesta una pregunta de diseño. |
+| Prototype | `skills/prototype/SKILL.md` | Construir código descartable que contesta una pregunta de diseño, o, con `hitl:design`, conversar hasta una propuesta escrita sin código. |
 
 Todas son model-invoked: se llega a ellas desde `/map-new` y desde `/map-work`. La
 única puerta user-invoked es `/grill`, y abre grilling y ninguna otra.

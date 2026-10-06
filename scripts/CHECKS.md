@@ -10,7 +10,7 @@ existe, y ningún otro archivo del repo vuelve a contarlas. Los research donde
 nacieron quedan como registro de su momento, y pueden decir números que ya no
 valen.
 
-**81 acuñadas, 75 no retiradas, 6 retiradas.**
+**83 acuñadas, 77 no retiradas, 6 retiradas.**
 
 La columna Estado es lo que la afirmación 50 va a leer, y toma tres valores. Una
 afirmación acuñada que todavía no tiene script arranca en `pendiente`. Cambia de
@@ -106,6 +106,7 @@ una segunda copia.
 | --- | --- | --- | --- | --- | --- |
 | 6 | Los archivos de la columna inglés no tienen prosa en español, y al revés | camina los `.md` con `lang: en`, saca bloques de código y tramos entre backticks, y falla si queda `áéíóúñ¿¡` o su mayúscula | **el sentido inverso no se chequea.** Inglés adentro de un `lang: es` no tiene señal barata y queda para lectura humana | viva | 08 |
 | 49 | Todo `.md` del árbol del plugin, en cualquier capitalización, declara `lang:` con valor `en` o `es` | camina lo trackeado filtrado con `grep -iE '\.md$'`, excluidos `vendor/` y `.scratch/`, y exige el campo con valor del conjunto de dos | ninguna | viva | 10, celdas `Afirmación` y `Cómo` editadas por CRM-3420 |
+| 83 | Todo `.md` de un directorio `skills/<nombre>/` que tiene `SKILL.md` declara el mismo `lang:` que ese `SKILL.md`, y todo `.md` que el `SKILL.md` enlaza por nombre dentro de su directorio existe | por cada `skills/<nombre>/SKILL.md` trackeado: extrae los enlaces `](X.md)` y exige el archivo en disco, y compara la línea `lang:` del frontmatter de cada `.md` trackeado del mismo directorio con la del `SKILL.md` | solo mira enlaces sin ruta: un enlace a otro directorio no se sigue. Y un `.md` hermano sin trackear no entra a la comparación hasta que se agrega | viva | CRM-3626 |
 
 ### `check-py39.sh`
 | Nº | Afirmación | Cómo | Brecha | Estado | Origen |
@@ -133,6 +134,7 @@ una segunda copia.
 | 55 | `map-work.md` nombra la prohibición de aterrizar en un corte con `status: done` | un grep de prosa sobre `commands/map-work.md` | es un grep de prosa, así que reescribir la frase falla el check sin que la regla cambie. Es la misma brecha que la afirmación 25 y se acepta igual | viva | 12 |
 | 79 | El paso 3 de `skills/map-collapse/SKILL.md` se llama `the three refusals` y lee `designDeliveries`, y la skill sigue con nueve pasos | grep de prosa: el encabezado exacto del paso 3, la clave entre backticks dentro del rango del paso 3 al paso 4, y el conteo de encabezados `## Step N` | es un grep de prosa: prueba que el paso 3 nombra la clave y no que la negativa ordene parar sin escribir. Los números 76 a 78 están reservados para afirmaciones de `check-map.sh` | viva | CRM-3628 |
 | 81 | El paso 8 de `skills/map-work/SKILL.md` pasa `--design-delivery` con el título `Diseño terminado: <the view>`, y su paso 10 nombra la entrega de diseño en el reporte y dice que Diseño la cierra a mano en Linear y que ningún comando la cierra | grep de prosa por rango: el flag y el título entre backticks del encabezado del paso 8 al del paso 9, y `design delivery` y la frase `closes it by hand in Linear, and no command closes it` del encabezado del paso 10 al final | es un grep de prosa: prueba que los pasos nombran la entrega, no que la sesión pase el flag solo con `hitl:design`; esa mitad la sostiene el adapter, que rechaza el flag sin el label | viva | CRM-3627 |
+| 82 | Con `hitl:design`, `skills/prototype/SKILL.md` toma la rama de propuesta escrita sin preguntar, y `skills/prototype/PROPOSAL.md` nombra las cuatro partes de la propuesta, una propuesta por defecto, dos o tres enfoques cuando la decisión abarca varias vistas o Diseño los pide, que la regla de dos variantes no aplica, y que el diseño vive en el link vivo de Claude Design sin que el agente arme variantes allí | grep de prosa: la regla del label, `hitl:design`, el enlace a `PROPOSAL.md` y `nobody is asked` dentro de la sección `## Pick a branch`; la fila `Written proposal` en la tabla de elecciones; las cuatro partes entre backticks y cuatro frases literales en `PROPOSAL.md` | es un grep de prosa: prueba que la rama está escrita, no que la sesión no escriba código ni que Diseño haya aprobado lo que se pega en la entrega | viva | CRM-3626 |
 
 ## Las retiradas
 

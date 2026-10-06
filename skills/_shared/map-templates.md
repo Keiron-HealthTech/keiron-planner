@@ -122,9 +122,10 @@ negrita, y su título es también su clave única.
 La issue `Diseño terminado: <la vista>` que nace al cerrar un ticket de decisión
 con `hitl:design`, en la misma escritura que los tickets nuevos. Lleva
 `hitl:design` y `map:design-delivery`, no lleva `map` y la asigna el adapter a
-quien cerró la decisión. Su cuerpo es la propuesta escrita que Diseño aprobó, y
-abre con el enlace al ticket de decisión: la entrega no tiene relación con él, así
-que el enlace es lo único que las une.
+quien cerró la decisión. Su cuerpo es la propuesta escrita que Diseño aprobó en la
+rama de propuesta escrita de prototype, con sus cuatro partes, y abre con el
+enlace al ticket de decisión: la entrega no tiene relación con él, así que el
+enlace es lo único que las une.
 
 ```
 Decisión: <enlace al ticket de decisión>

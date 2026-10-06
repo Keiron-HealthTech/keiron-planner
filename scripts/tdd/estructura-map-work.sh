@@ -82,6 +82,13 @@ printf '%s\n' "$paso3" | grep -qF '`next_recommended: map-work`' && n "el paso 3
 # El paso 8 resuelve y no cierra: el token vive en el paso 10 y en ningun otro. Cada rango se
 # acota en el encabezado siguiente; sin el corte, awk leeria hasta el final y un literal del
 # paso 10 daria verde sobre el paso equivocado.
+# Con hitl:design el label decide la rama de prototype, y el paso 7 no pregunta si se
+# quiere codigo: esa pregunta es la que hacia caer a Diseño en una rama de codigo.
+step7="$(awk '/^## Step 7,/{f=1} /^## Step 8,/{f=0} f' "$SKILL")"
+for literal in "hitl:design" "PROPOSAL.md" "the label decides"; do
+  printf '%s\n' "$step7" | grep -qF "$literal" || n "el paso 7 de $SKILL no nombra '$literal' en la rama de Diseño"
+done
+printf '%s\n' "$step7" | grep -qiE 'ask[^.]*(want|wants)[^.]*code' && n "el paso 7 de $SKILL pregunta si se quiere codigo, y con hitl:design decide el label"
 step8="$(awk '/^## Step 8,/{f=1} /^## Step 9,/{f=0} f' "$SKILL")"
 printf '%s\n' "$step8" | grep -qF 'ticket:resolve --ctx' || n "el paso 8 de $SKILL no invoca ticket:resolve"
 # Con hitl:design el paso 8 pasa la entrega, y el paso 10 la nombra en el reporte.
