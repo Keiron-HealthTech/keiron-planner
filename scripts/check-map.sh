@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 . scripts/_common.sh
 
-# Afirmaciones 60, 47, 61, 66, 73, 74, 75 y 78.
+# Afirmaciones 60, 47, 61, 66, 73, 74, 75, 77 y 78.
 
 adapter=scripts/linear.py
 
@@ -115,7 +115,7 @@ class Transporte(object):
 DECISION_PREVIA = "- https://linear.app/keiron/issue/CRM-1: una decision previa"
 DECISION_NUEVA = ["--append-decision", "https://linear.app/keiron/issue/CRM-2",
                   "el gist nuevo"]
-LINEA_NUEVA = "- https://linear.app/keiron/issue/CRM-2: el gist nuevo"
+LINEA_NUEVA = "- [CRM-2](<https://linear.app/keiron/issue/CRM-2>): el gist nuevo"
 DESTINO = "que el mapa exista"
 
 
@@ -155,7 +155,7 @@ CREAR = ["map:create", "--ctx", CTX, "--destino", DESTINO]
 # Dos acumuladores y no uno: este harness lleva los desenlaces de dos afirmaciones, y
 # un [N] que no distinga cuál falló manda a leer el script equivocado. La afirmación en
 # curso la fija el bucle del final, así que ningún caso puede anotar en el balde ajeno.
-FALLAS = {"60": [], "47": [], "61": [], "66": [], "73": [], "74": [], "75": [], "78": []}
+FALLAS = {"60": [], "47": [], "61": [], "66": [], "73": [], "74": [], "75": [], "77": [], "78": []}
 AFIRMACION = ["60"]
 
 
@@ -884,7 +884,7 @@ def caso_16():
     chequear(n, "y no lleva assigneeId", "assigneeId" in entrada, False)
     contenido = tr.variables[5].get("content") or ""
     cuerpos = mod.cortar_secciones(contenido)
-    linea = "- %s: %s" % (URL_CERRADO, GIST[1])
+    linea = "- [CRM-5](<%s>): %s" % (URL_CERRADO, GIST[1])
     chequear(n, "el mapa gano la linea con la url que devolvio el issueUpdate",
              linea in cuerpos[mod.ANCLA_DECISIONES], True)
     chequear(n, "la decision previa sobrevive",
@@ -1703,6 +1703,85 @@ def caso_51():
         chequear(n, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
 
 
+# --- la línea de Decisiones como enlace explícito -------------------------------
+
+URL_CRM_2 = "https://linear.app/keiron/issue/CRM-2"
+# Las formas en que Linear guarda una línea de CRM-2 al reserializarla, medidas el
+# 2026-10-06: con ángulos, sin ángulos, y el autolink que se tragó los dos puntos.
+GUARDADAS_CRM_2 = ["* [CRM-2](<%s>): otro gist" % URL_CRM_2,
+                   "* [CRM-2](%s): otro gist" % URL_CRM_2,
+                   "* [CRM-2](%s/el-slug:) otro gist" % URL_CRM_2]
+A_MANO = ("* [12: el título a mano](<https://github.com/keiron/repo/blob/main/12.md>): "
+          "un gist escrito a mano")
+
+
+def caso_52():
+    """map:write y ticket:resolve escriben la línea como - [ID](<url>): gist."""
+    n = "52-map-write-escribe-el-enlace-explicito"
+    rc, out, err, tr = correr(n, ESCRIBIR + DECISION_NUEVA,
+                              [leido(overview()), ESCRITO_OK])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "la linea escrita",
+             LINEA_NUEVA in (tr.contents[0].split("\n") if tr.contents else []), True)
+
+    r = "52-ticket-resolve-escribe-el-enlace-explicito"
+    rc, out, err, tr = correr(r, RESOLVER + secciones() + GIST,
+                              [COMENTADO, CERRADO, leido(overview()), ESCRITO_OK])
+    chequear(r, "rc", rc, 0)
+    chequear(r, "mapLine", json_de(r, out).get("mapLine"),
+             "- [CRM-5](<%s>): %s" % (URL_CERRADO, GIST[1]))
+
+
+def caso_53():
+    """Un enlace con < o > rompería el enlace entre ángulos: aborta antes de la red."""
+    for n, enlace in (("53-enlace-con-menor", URL_CRM_2 + "<x"),
+                      ("53-enlace-con-mayor", URL_CRM_2 + ">x")):
+        rc, out, err, tr = correr(n, ESCRIBIR + ["--append-decision", enlace, "un gist"],
+                                  [])
+        chequear(n, "rc", rc, mod.SIN_KEY)
+        chequear(n, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+
+def caso_54():
+    """Una línea del mismo ticket en cualquiera de las formas guardadas: en el primer
+    intento aborta sin escribir, y en el reintento es no-op."""
+    for i, guardada in enumerate(GUARDADAS_CRM_2):
+        ya = overview().replace(DECISION_PREVIA, DECISION_PREVIA + "\n" + guardada)
+        n = "54-forma-%d-aborta-en-el-primer-intento" % i
+        rc, out, err, tr = correr(n, ESCRIBIR + DECISION_NUEVA, [leido(ya), ESCRITO_OK])
+        chequear(n, "rc no cero", rc != 0, True)
+        chequear(n, "no hubo projectUpdate", len(tr.contents), 0)
+        r = "54-forma-%d-es-noop-en-el-reintento" % i
+        rc, out, err, tr = correr(r, ESCRIBIR + DECISION_NUEVA,
+                                  [leido(overview()), socket.timeout(),
+                                   leido(ya), ESCRITO_OK])
+        chequear(r, "rc", rc, 0)
+        chequear(r, "stderr dice que la linea ya estaba aplicada",
+                 "ya estaba aplicada" in err, True)
+        chequear(r, "una sola linea de CRM-2",
+                 len([l for l in tr.contents[-1].split("\n") if "CRM-2" in l])
+                 if tr.contents else -1, 1)
+
+
+def caso_55():
+    """Las líneas escritas a mano que apuntan a GitHub conservan la clave de siempre, y
+    la clave de una línea de issue es su identificador."""
+    n = "55-lineas-a-mano-conservan-su-clave"
+    chequear(n, "clave de la linea a mano", mod._clave_de_unicidad(A_MANO),
+             mod._sin_marcador(A_MANO))
+    chequear(n, "clave de la linea escrita",
+             mod._clave_de_unicidad(mod._linea_de_decision(URL_CRM_2, "g")), "CRM-2")
+    chequear(n, "clave del formato anterior",
+             mod._clave_de_unicidad("- %s: un gist" % URL_CRM_2), "CRM-2")
+    con_mano = overview().replace(DECISION_PREVIA, DECISION_PREVIA + "\n" + A_MANO)
+    rc, out, err, tr = correr(n, ESCRIBIR + DECISION_NUEVA,
+                              [leido(con_mano), ESCRITO_OK])
+    chequear(n, "rc", rc, 0)
+    lineas = tr.contents[0].split("\n") if tr.contents else []
+    chequear(n, "la linea a mano sobrevive", A_MANO in lineas, True)
+    chequear(n, "la linea nueva entra", LINEA_NUEVA in lineas, True)
+
+
 CASOS =[("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("60", caso_5), ("60", caso_6), ("60", caso_7), ("60", caso_8),
          ("60", caso_9), ("47", caso_10), ("47", caso_11), ("47", caso_12),
@@ -1716,12 +1795,13 @@ CASOS =[("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("74", caso_37), ("74", caso_38), ("74", caso_39), ("74", caso_40),
          ("74", caso_41), ("74", caso_42), ("74", caso_43),
          ("75", caso_44), ("75", caso_45), ("75", caso_46),
-         ("78", caso_49), ("78", caso_50), ("78", caso_51)]
+         ("78", caso_49), ("78", caso_50), ("78", caso_51),
+         ("77", caso_52), ("77", caso_53), ("77", caso_54), ("77", caso_55)]
 for _afirmacion, _caso in CASOS:
     AFIRMACION[0] = _afirmacion
     _caso()
 
-for _afirmacion in ("60", "47", "61", "66", "73", "74", "75", "78"):
+for _afirmacion in ("60", "47", "61", "66", "73", "74", "75", "77", "78"):
     print("casos%s=%d" % (_afirmacion,
                           len([c for c in CASOS if c[0] == _afirmacion])))
     print("fallas%s=%s" % (_afirmacion, plano(FALLAS[_afirmacion])
@@ -1744,6 +1824,7 @@ if printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas60=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas73=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas74=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas75=ninguna' \
+   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas77=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas78=ninguna'; then
   :
 else
@@ -1779,6 +1860,10 @@ if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas75=ninguna'; then
   fail "[75] frontier:query no emite designDeliveries en sus dos ramas, deja pasar una entrega cerrada, no manda LABELS[9] en la query o no nombra designDeliveries en truncated cuando esa conexión viene cortada"
 fi
 
+if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas77=ninguna'; then
+  fail "[77] la línea de Decisiones no es un enlace explícito - [ID](<url>): gist, un enlace con < o > no aborta antes de la red, o una línea del mismo ticket en una forma que Linear guarda no se reconoce como presente"
+fi
+
 if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas78=ninguna'; then
   fail "[78] work:write --issue no acepta un cuerpo de varias líneas, no lo manda en description con los saltos normalizados, o no aborta antes de la red con un cuerpo vacío o un título con salto"
 fi
@@ -1801,8 +1886,10 @@ casos74="$(printf '%s\n' "$salida" | sed -n 's/^casos74=//p')"
 require_nonempty "$casos74" "[74] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 casos75="$(printf '%s\n' "$salida" | sed -n 's/^casos75=//p')"
 require_nonempty "$casos75" "[75] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
+casos77="$(printf '%s\n' "$salida" | sed -n 's/^casos77=//p')"
+require_nonempty "$casos77" "[77] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 casos78="$(printf '%s\n' "$salida" | sed -n 's/^casos78=//p')"
 require_nonempty "$casos78" "[78] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 plural=""
 [ "$casos" = 1 ] || plural="s"
-echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, y $casos66 del reparto de la escritura del mapa con --defer-map, y $casos73 de --project con un ticket o un Project, y $casos74 de las correcciones del mapa desde una resolución, y $casos75 de las entregas de diseño abiertas en frontier:query, y $casos78 del cuerpo de varias líneas de work:write, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
+echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, y $casos66 del reparto de la escritura del mapa con --defer-map, y $casos73 de --project con un ticket o un Project, y $casos74 de las correcciones del mapa desde una resolución, y $casos75 de las entregas de diseño abiertas en frontier:query, y $casos77 de la línea de Decisiones como enlace explícito, y $casos78 del cuerpo de varias líneas de work:write, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"

@@ -1422,7 +1422,7 @@ for _op64 in ("ticket:resolve", "ticket:rule-out"):
 # todo el archivo, portado a dos literales de string. Cada fila lleva el literal, la
 # función que tiene que ser su única casa, y las puntas que tienen que llamarla por
 # Name en vez de armar la cadena por su cuenta.
-CASAS_65 = [("- %s: %s", "_linea_de_decision",
+CASAS_65 = [("- [%s](<%s>): %s", "_linea_de_decision",
              ["_ediciones_de", "cmd_ticket_resolve"]),
             ("- %s", "_linea_de_vineta",
              ["_niebla_de", "_ediciones_de", "cmd_ticket_rule_out"])]

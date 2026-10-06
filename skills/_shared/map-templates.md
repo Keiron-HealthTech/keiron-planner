@@ -87,14 +87,15 @@ descartó. Una alternativa descartada leída antes de la razón no se entiende.
 
 ## Decisiones hasta ahora (ejemplo)
 
-Una decisión ocupa una línea física y nada más: el enlace del ticket, dos puntos,
-y el gist. El gist tiene tope de 120 caracteres, y el detalle vive en el
+Una decisión ocupa una línea física y nada más: el identificador del ticket
+enlazado a su url entre ángulos, dos puntos fuera del enlace, y el gist. Hay una
+sola línea por ticket. El gist tiene tope de 120 caracteres, y el detalle vive en el
 comentario de resolución del ticket, que el enlace ya alcanza. El índice con el
 formato colapsable que esta forma reemplazó se comía dos tercios del documento con
 diez entradas.
 
 ```
-- https://linear.app/keiron/issue/CRM-3401: el tracker es Linear y el mapa vive en el overview del Project
+- [CRM-3401](<https://linear.app/keiron/issue/CRM-3401>): el tracker es Linear y el mapa vive en el overview del Project
 ```
 
 ## La niebla (ejemplo)

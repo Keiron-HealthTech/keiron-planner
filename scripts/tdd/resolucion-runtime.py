@@ -430,7 +430,7 @@ if tr.llamadas == 6:
              (tr.variables[3].get("input") or {}).get("stateId"), "s-done")
     contenido = tr.variables[5].get("content") or ""
     chequear(n, "el mapa gano la linea con la url que devolvio el issueUpdate",
-             ("- %s: %s" % (URL_CERRADO, EL_GIST[1])) in contenido, True)
+             ("- [CRM-1](<%s>): %s" % (URL_CERRADO, EL_GIST[1])) in contenido, True)
     chequear(n, "la decision previa sobrevive", DECISION_PREVIA in contenido, True)
     chequear(n, "el mapa perdio la vineta graduada",
              NIEBLA_TITULO in contenido, False)

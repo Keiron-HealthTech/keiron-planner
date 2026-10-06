@@ -567,6 +567,22 @@ repetir la invocación entera solo es seguro cuando nada quedó escrito: con par
 secuencia ya confirmada, la remediación que cada falla imprime dice exactamente qué
 repetir y qué no.
 
+### map:write: la línea de Decisiones
+
+La línea que escriben `--append-decision` y la quinta escritura de `ticket:resolve` es
+`- [CRM-3401](<https://linear.app/keiron/issue/CRM-3401>): gist`: el identificador
+enlazado a la url entre ángulos, los dos puntos fuera del enlace y el gist. Medido el
+2026-10-06: escrita como `- <url>: gist`, Linear la guardaba con el autolink tragándose
+los dos puntos dentro del href. Un enlace que trae `<` o `>` rompería los ángulos, así que
+aborta antes de la red.
+
+Hay una sola línea por decisión, y la clave que lo decide es el identificador del issue:
+Linear reescribe la línea al guardarla, y lo que se relee no es byte a byte lo escrito.
+Una línea del mismo ticket ya presente en cualquiera de las formas medidas, con ángulos,
+sin ángulos o con los dos puntos dentro del href, aborta en el primer intento y es no-op
+con aviso en el reintento. Las líneas escritas a mano que apuntan a GitHub no llevan
+URL de issue y conservan como clave la línea despojada de su marcador.
+
 ### map:write: reemplazar y corregir
 
 `map:write` declara `--replace-out-of-scope TITULO VINETA` y `--amend-destination

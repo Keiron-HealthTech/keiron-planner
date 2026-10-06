@@ -685,12 +685,26 @@ def _es_continuacion(linea):
     return not (len(marca) > 1 and marca[0] in ("-", "*", "+") and marca[1] == " ")
 
 
+# Linear reescribe la línea de una decisión al guardarla: convierte la URL de un issue en
+# un enlace con el identificador como texto, y un autolink se traga los dos puntos dentro
+# del href. Lo que se relee no es byte a byte lo escrito, así que la clave es el
+# identificador de la primera URL de issue de la línea.
+ISSUE_URL_IN_LINE = re.compile(r"https?://linear\.app/[^/\s]+/issue/([A-Z][A-Z0-9]*-[0-9]+)")
+
+
+def _issue_key(linea):
+    """El identificador de la primera URL de issue de Linear en la línea, o None."""
+    found = ISSUE_URL_IN_LINE.search(linea)
+    return found.group(1) if found else None
+
+
 def _clave_de_unicidad(linea):
     """Con qué se compara si una línea ya está. El título en negrita cuando la línea lo
     tiene, porque una viñeta con el mismo título es la misma entrada aunque el cuerpo
-    haya cambiado, y la línea despojada de su marcador cuando no lo tiene, que es el
-    caso de una decisión."""
-    return titulo_en_negrita(linea) or _sin_marcador(linea)
+    haya cambiado; el identificador del issue cuando la línea enlaza uno, que es el caso
+    de una decisión, una sola línea por ticket; y la línea despojada de su marcador en
+    cualquier otro caso, como las decisiones escritas a mano que apuntan a GitHub."""
+    return titulo_en_negrita(linea) or _issue_key(linea) or _sin_marcador(linea)
 
 
 def _sin_saltos(etiqueta, valor):
@@ -771,12 +785,14 @@ def _validar_gist(etiqueta, gist):
 
 
 def _linea_de_decision(enlace, gist):
-    """La ÚNICA casa del formato de una línea de Decisiones hasta ahora: marcador,
-    enlace, dos puntos y gist. La comparten las tres puntas que la necesitan, el
+    """La ÚNICA casa del formato de una línea de Decisiones hasta ahora: marcador, el
+    identificador enlazado a la url entre ángulos, dos puntos fuera del enlace y gist.
+    Un enlace explícito y no la URL desnuda: el autolink de Linear se traga los dos
+    puntos dentro del href. La comparten las tres puntas que la necesitan, el
     --append-decision de map:write, la quinta escritura de ticket:resolve y la impresión
     que la reemplaza con --defer-map, así que ninguna la escribe a mano y no pueden
     divergir. Misma regla que _validar_gist, que es la única casa del literal 120."""
-    return "- %s: %s" % (enlace, gist)
+    return "- [%s](<%s>): %s" % (identificador_de_issue(enlace) or enlace, enlace, gist)
 
 
 def _linea_de_vineta(valor):
@@ -1150,6 +1166,11 @@ def _ediciones_de(args):
                 "el enlace de --append-decision está vacío o tiene espacios: %r"
                 % enlace,
                 "pasá la URL del ticket como un solo token, sin espacios")
+        if "<" in enlace or ">" in enlace:
+            die(SIN_KEY,
+                "el enlace de --append-decision tiene un < o un >, y la línea lo "
+                "escribe entre ángulos: %r" % enlace,
+                "pasá la URL del ticket tal como la da Linear, sin ángulos")
         _validar_gist("--append-decision", gist)
         _no_es_encabezado("--append-decision", enlace)
         _no_es_encabezado("--append-decision", gist)
