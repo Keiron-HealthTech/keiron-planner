@@ -138,7 +138,7 @@ futura contradicción.
 | Comando | Que hace |
 | --- | --- |
 | `/map-new` | Traza el mapa: nombra el destino, mapea la frontera, adopta o crea el Project, escribe el mapa en su overview y crea los primeros tickets. Sobre un Project que ya arrancó nunca se niega: muestra lo que encontró y pide confirmación una vez. |
-| `/map-work` | Resuelve un ticket. Nunca más de uno por sesión, salvo research. Sobre un Project que ya tiene milestones agrega el aterrizaje, después de resolver. |
+| `/map-work` | Resuelve un ticket. Nunca más de uno por sesión, salvo research. Sobre un Project que ya tiene milestones agrega el aterrizaje, después de resolver, salvo que el ticket lleve `hitl:pm` o `hitl:design`. Sobre un ticket cerrado que figura en `unlanded` solo aterriza, sin toma y sin chequeo de rol. |
 | `/map-collapse` | Colapsa el mapa en milestones e issues de ejecucion. |
 | `/map-status` | Lee el mapa y la frontera. No escribe. |
 | `/grill` | Grilla una idea, un plan o una decisión, sin mapa de por medio. Carga grilling y para. No es una operación del mapa. |

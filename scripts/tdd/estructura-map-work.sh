@@ -79,6 +79,13 @@ done
 # El paso 10 SI lo emite, y es legitimo: ahi ya se resolvio un ticket y la frontera cambio.
 paso3="$(awk '/^## Step 3,/{f=1} /^## Step 4,/{f=0} f' "$SKILL")"
 printf '%s\n' "$paso3" | grep -qF '`next_recommended: map-work`' && n "el paso 3 de $SKILL se recomienda a si mismo, y eso es un bucle"
+# Una decision cerrada sin aterrizar entra por una excepcion del paso 3 y una rama del
+# paso 4, y llega al paso 9 sin claim ni resolucion. Un cerrado fuera de unlanded sigue
+# parando en el paso 4.
+printf '%s\n' "$paso3" | grep -qF '`unlanded`' || n "el paso 3 de $SKILL no deja pasar al paso 4 un ticket de unlanded"
+paso4="$(awk '/^## Step 4,/{f=1} /^## Step 5,/{f=0} f' "$SKILL")"
+printf '%s\n' "$paso4" | grep -qF '`unlanded`' || n "el paso 4 de $SKILL no nombra unlanded"
+printf '%s\n' "$paso4" | grep -qF 'this session lands it and nothing else' || n "el paso 4 de $SKILL no dice que un cerrado de unlanded solo se aterriza"
 # El paso 8 resuelve y no cierra: el token vive en el paso 10 y en ningun otro. Cada rango se
 # acota en el encabezado siguiente; sin el corte, awk leeria hasta el final y un literal del
 # paso 10 daria verde sobre el paso equivocado.
@@ -101,6 +108,10 @@ printf '%s\n' "$step9" | grep -qF 'status: done' || n "el paso 9 de $SKILL no pr
 for tipo in "map:grilling" "map:prototype"; do
   printf '%s\n' "$step9" | grep -qF "$tipo" || n "el paso 9 de $SKILL no acota el aterrizaje al tipo $tipo"
 done
+# hitl:pm y hitl:design no aterrizan en la sesion que resolvio: lo hace un dev despues.
+for rol in "hitl:pm" "hitl:design"; do
+  printf '%s\n' "$step9" | grep -qF "$rol" || n "el paso 9 de $SKILL no excluye $rol del aterrizaje en la misma sesion"
+done
 printf '%s\n' "$step9" | grep -qF -- '--append-collapse' || n "el paso 9 de $SKILL no nombra --append-collapse, que es como el corte nuevo llega al mapa"
 step10="$(awk '/^## Step 10,/{f=1} f' "$SKILL")"
 # El puntero ADAPTER del preámbulo nombra las once operaciones a propósito, por eso el
@@ -110,6 +121,8 @@ for op in "milestone:create" "work:write"; do
   printf '%s\n' "$before_landing" | grep -qF "$op" && n "$SKILL nombra $op antes del paso 9, y solo el aterrizaje puede escribirlo"
   printf '%s\n' "$step10" | grep -qF "$op" && n "$SKILL nombra $op después del paso 9, y solo el aterrizaje puede escribirlo"
 done
+printf '%s\n' "$step10" | grep -qF 'decisión sin aterrizar' || n "el paso 10 de $SKILL no dice que la decision queda sin aterrizar"
+printf '%s\n' "$step10" | grep -qxF '### Reporting a landing of a closed decision' || n "el paso 10 de $SKILL no reporta el aterrizaje de una decision cerrada"
 printf '%s\n' "$step10" | grep -qF 'design delivery' || n "el paso 10 de $SKILL no nombra la entrega de diseño en el reporte"
 printf '%s\n' "$step10" | grep -qF '`next_recommended: map-work`' || n "el paso 10 de $SKILL no cierra con ningun token"
 grep -qF "ticket:claim --ctx" "$SKILL" || n "$SKILL no invoca ticket:claim en su paso 6"

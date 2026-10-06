@@ -107,6 +107,12 @@ it is never a ticket of the frontier and no count sees it. Only `/map-collapse` 
 on `listo para colapsar`, and refuses while it is not empty. That refusal emits no token, so the
 table above stays as it is.
 
+`unlanded` takes no part in it either. A decision ticket closed after the collapse with no
+landing is `sin aterrizar`, an expected state and not a failure: a decision that `hitl:pm` or
+`hitl:design` took is never landed in the session that resolved it. It is closed, so no count
+sees it. A developer lands it later with `/map-work` on that ticket, and that session closes
+with the token of the verdict as it stands. The set of six tokens stays closed.
+
 The first row is the one place where a command that reads and a command that works part ways,
 and they part in the action rather than in the derivation: a read-only command emits the token
 there, and a command that works the frontier cannot recommend itself, so it works instead.

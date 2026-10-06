@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 . scripts/_common.sh
 
-# Afirmaciones 55, 79, 81 y 82.
+# Afirmaciones 55, 79, 81, 82, 84 y 85.
 
 COMMAND_FILE=commands/map-work.md
 COLLAPSE_SKILL=skills/map-collapse/SKILL.md
@@ -36,6 +36,15 @@ SEVERAL_APPROACHES='two or three approaches when the decision spans several view
 NO_TWO_VARIANTS='The minimum of two variants does not apply'
 LIVE_LINK='lives in Claude Design, behind its live link, and the agent never builds variants there'
 
+ONE_PER_SESSION='one decision per session'
+FOUR_CONDITIONS='when all four conditions hold at once'
+LANDING_REPORT='### Reporting a landing of a closed decision'
+OTHER_UNLANDED='the other entries of `unlanded`'
+COMMAND_LANDING_ONLY='runs only the landing'
+
+CONTRACT_FILE=skills/_shared/map-contract.md
+UNLANDED_STATE='`sin aterrizar`'
+
 # --- tercer tier: un grep sobre un archivo que falta no mira nada ---
 
 if [ ! -f "$COMMAND_FILE" ]; then
@@ -56,6 +65,10 @@ fi
 
 if [ ! -f "$PROPOSAL_FILE" ]; then
   bail "[82] falta $PROPOSAL_FILE; un ticket de Diseño no tiene rama de propuesta escrita y cae en las de código"
+fi
+
+if [ ! -f "$CONTRACT_FILE" ]; then
+  bail "[85] falta $CONTRACT_FILE; el estado sin aterrizar y la clave de las entregas se probarían sobre un archivo que no está"
 fi
 
 # --- afirmación 55: el comando nombra la prohibición de aterrizar en un corte terminado ---
@@ -134,6 +147,42 @@ for literal in "$ONE_PROPOSAL" "$SEVERAL_APPROACHES" "$NO_TWO_VARIANTS" "$LIVE_L
   fi
 done
 
+# --- afirmación 84: /map-work aterriza una decisión cerrada de a una, y nunca la de hitl:pm o hitl:design en su sesión ---
+
+# Cada frase se busca en el rango de su paso: la regla de una por sesión escrita en otro
+# paso no acota el camino que entra por el paso 4.
+step4="$(sed -n '/^## Step 4,/,/^## Step 5,/p' "$MAP_WORK_SKILL")"
+if ! printf '%s\n' "$step4" | grep -qF "$ONE_PER_SESSION"; then
+  fail "[84] el paso 4 de $MAP_WORK_SKILL no dice $ONE_PER_SESSION, así que una sesión puede aterrizar varias decisiones cerradas"
+fi
+step9="$(sed -n '/^## Step 9,/,/^## Step 10,/p' "$MAP_WORK_SKILL")"
+if ! printf '%s\n' "$step9" | grep -qF "$FOUR_CONDITIONS"; then
+  fail "[84] el paso 9 de $MAP_WORK_SKILL no corre con cuatro condiciones, así que una resolución de hitl:pm o hitl:design aterriza en su misma sesión"
+fi
+landing="$(awk -v h="$LANDING_REPORT" '$0 == h {f=1; print; next} f && /^##/ {f=0} f' "$MAP_WORK_SKILL")"
+if ! printf '%s\n' "$landing" | grep -qF "$OTHER_UNLANDED"; then
+  fail "[84] el reporte del aterrizaje de una decisión cerrada en $MAP_WORK_SKILL no nombra las otras de unlanded"
+fi
+for literal in '`hitl:pm`' '`hitl:design`' "$COMMAND_LANDING_ONLY"; do
+  if ! grep -qF -- "$literal" "$COMMAND_FILE"; then
+    fail "[84] $COMMAND_FILE no nombra $literal en lo que dice del aterrizaje"
+  fi
+done
+
+# --- afirmación 85: el contrato nombra las entregas y el estado sin aterrizar, sin tokens nuevos ---
+
+for literal in "$DELIVERIES_KEY" "$UNLANDED_STATE"; do
+  if ! grep -qF -- "$literal" "$CONTRACT_FILE"; then
+    fail "[85] $CONTRACT_FILE no nombra $literal"
+  fi
+done
+# Las filas de la tabla de tokens son las que abren con un token entre backticks en la
+# primera celda; la tabla del veredicto abre con una condición y no cuenta.
+token_rows="$(sed -n '/^## The closed set/,/^## How a command/p' "$CONTRACT_FILE" | grep -cE '^\| `[a-z-]+` \|' || true)"
+if [ "$token_rows" != 6 ]; then
+  fail "[85] la tabla de tokens de $CONTRACT_FILE tiene $token_rows filas y tiene que tener seis: ni las entregas ni el estado sin aterrizar agregan un token"
+fi
+
 report
 
-echo "$CHECK_NAME: OK - $COMMAND_FILE nombra la prohibición de aterrizar en un corte con $DONE_STATUS, y el paso 3 de $COLLAPSE_SKILL lee $DELIVERIES_KEY en la tercera de sus negativas, con nueve pasos, y el paso 8 de $MAP_WORK_SKILL pasa $DELIVERY_FLAG y su paso 10 nombra la entrega que Diseño cierra a mano, y con hitl:design $PROTOTYPE_SKILL lleva a $PROPOSAL_FILE sin preguntar, con sus cuatro partes y una propuesta por defecto"
+echo "$CHECK_NAME: OK - $COMMAND_FILE nombra la prohibición de aterrizar en un corte con $DONE_STATUS, y el paso 3 de $COLLAPSE_SKILL lee $DELIVERIES_KEY en la tercera de sus negativas, con nueve pasos, y el paso 8 de $MAP_WORK_SKILL pasa $DELIVERY_FLAG y su paso 10 nombra la entrega que Diseño cierra a mano, y con hitl:design $PROTOTYPE_SKILL lleva a $PROPOSAL_FILE sin preguntar, con sus cuatro partes y una propuesta por defecto, y $MAP_WORK_SKILL aterriza una decisión cerrada de a una y nunca la de hitl:pm o hitl:design en su sesión, y $CONTRACT_FILE nombra las entregas y el estado sin aterrizar con seis tokens"
