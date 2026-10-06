@@ -49,7 +49,7 @@ mensaje, o al revés, deja el contrato y el script en desacuerdo.
 
 Los otros cuatro códigos que el adapter puede devolver no son fallas duras del
 preflight. El **8** (`NO_ES_DEL_MAPA`) es el de un `--project` que nombra un issue que no
-sirve para encontrar un mapa, y lo explica la sección siguiente. El **9**
+sirve para encontrar un mapa o un Project que no existe, y lo explica la sección siguiente. El **9**
 (`NO_IMPLEMENTADO`) es el de un subcomando sin cuerpo. Hoy los doce tienen cuerpo, así
 que ninguno lo emite: el código y la función `cmd_stub` que lo devuelve quedan
 definidos, sin ningún subcomando registrado contra ella. El
@@ -60,10 +60,18 @@ pudo decidir.
 ## Cómo se resuelve `--project`
 
 Toda operación que declara `--project`, salvo `map:create`, lo acepta en cinco formas.
-Tres son del Project y viajan tal cual a `project(id:)`, que las resuelve por su cuenta:
-el UUID, el slugId pelado y la URL del Project. Medido el 2026-10-05: la URL acepta la
-forma pelada y no la que termina en `/overview`. Las otras dos son de un ticket de
-decisión del mapa: su URL y su identificador, `CRM-3559`.
+Tres son del Project: el UUID, el slugId pelado y la URL del Project. Las otras dos son
+de un ticket de decisión del mapa: su URL y su identificador, `CRM-3559`.
+
+El UUID y el slugId viajan tal cual y sin round trip. La URL del Project se resuelve a su
+id con un POST de `PROJECT_ID_QUERY` antes de llamar al handler, porque las mutations que
+llevan `projectId` (`projectMilestoneCreate`, `issueBatchCreate`) necesitan el id y no
+aceptan la URL. Al POST viaja el slug sacado de la URL y no la URL entera: medido el
+2026-10-06, `project(id:)` acepta el slug y la URL pelada, y rechaza la que termina en
+`/overview` con `Entity not found: Project` (`INPUT_ERROR`), el mismo error de un Project
+que no existe. Mandando el slug, la URL con `/overview` también sirve. Un Project que no
+existe sale con `NO_ES_DEL_MAPA` después de ese POST y sin leer el mapa. Las respuestas de
+`project(id:)` que usa el harness son fixtures con la forma medida ese día.
 
 Con un ticket, `main` resuelve el Project antes de llamar al handler, con un POST de
 `ISSUE_PROJECT_QUERY`, y el handler recibe el id del Project de ese ticket como si se lo

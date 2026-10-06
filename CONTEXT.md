@@ -207,6 +207,11 @@ Lo que el adapter sabe hacer. Son doce, y los comandos se arman con ellas. El
 término canónico es el que aparece en el código. Tres no escriben: `preflight`,
 `frontier:query` y `map:read`.
 
+Toda operación que declara `--project`, salvo `map:create`, acepta el Project por su id,
+por su slug o por su URL, y también un ticket de decisión del mapa por su URL o por su
+identificador. La URL del Project y el ticket se resuelven al id del Project antes de
+operar, así que ninguna mutation recibe una URL donde espera un id.
+
 El `preflight` corre **una vez por conductor**, y conductor es un contexto de
 modelo que emite operaciones: la sesión es uno, cada subagente es uno, un
 subcomando no. Su salida es un blob opaco que reciben como `--ctx` las **siete**

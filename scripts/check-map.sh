@@ -1314,18 +1314,45 @@ def caso_32():
              "p-del-issue")
 
 
+URL_PROJECT = "https://linear.app/keiron/project/campanas-a06fa7500fde"
+PROJECT_RESUELTO = {"data": {"project": {"id": "p-de-la-url"}}}
+
+
 def caso_33():
-    """Lo que no es un issue viaja tal cual y sin round trip de más: la URL de un
-    Project, y un slug cuyo slugId termina solo en dígitos."""
-    for n, valor in (("33-url-de-project-sin-round-trip",
-                      "https://linear.app/keiron/project/campanas-a06fa7500fde"),
-                     ("33-slug-terminado-en-digitos", "campanas-123456789012")):
-        rc, out, err, tr = correr_main(n, ["map:read", "--project", valor],
-                                       [leido(overview())])
-        chequear(n, "rc", rc, 0)
-        chequear(n, "UNA llamada al transporte", tr.llamadas, 1)
-        chequear(n, "el valor viaja tal cual",
-                 (tr.variables[0] if tr.variables else {}).get("project"), valor)
+    """La URL de un Project se resuelve a su id con un POST antes de leer, y la
+    lectura viaja sobre el id devuelto. Un slug cuyo slugId termina solo en dígitos
+    viaja tal cual y sin round trip de más."""
+    n = "33-url-de-project-se-resuelve"
+    rc, out, err, tr = correr_main(n, ["map:read", "--project", URL_PROJECT],
+                                   [PROJECT_RESUELTO, leido(overview())])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "DOS llamadas al transporte", tr.llamadas, 2)
+    chequear(n, "la primera query es la del Project",
+             tr.queries[0] if tr.queries else "",
+             getattr(mod, "PROJECT_ID_QUERY", "falta PROJECT_ID_QUERY"))
+    chequear(n, "la variable es el slug",
+             (tr.variables[0] if tr.variables else {}).get("project"),
+             "campanas-a06fa7500fde")
+    chequear(n, "la lectura usa el id devuelto",
+             (tr.variables[1] if len(tr.variables) > 1 else {}).get("project"),
+             "p-de-la-url")
+
+    n = "33-url-de-project-con-overview-manda-el-mismo-slug"
+    rc, out, err, tr = correr_main(
+        n, ["map:read", "--project", URL_PROJECT + "/overview"],
+        [PROJECT_RESUELTO, leido(overview())])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "la variable es el slug sin /overview",
+             (tr.variables[0] if tr.variables else {}).get("project"),
+             "campanas-a06fa7500fde")
+
+    n, valor = "33-slug-terminado-en-digitos", "campanas-123456789012"
+    rc, out, err, tr = correr_main(n, ["map:read", "--project", valor],
+                                   [leido(overview())])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "UNA llamada al transporte", tr.llamadas, 1)
+    chequear(n, "el valor viaja tal cual",
+             (tr.variables[0] if tr.variables else {}).get("project"), valor)
 
 
 def caso_34():
@@ -1363,6 +1390,45 @@ def caso_35():
                                        [respuesta])
         chequear(n, "rc", rc, esperado)
         chequear(n, "UNA llamada al transporte", tr.llamadas, 1)
+
+
+def caso_47():
+    """Un Project que no existe sale con NO_ES_DEL_MAPA después de un solo POST y sin
+    leer el mapa; la credencial rechazada sigue saliendo con SIN_KEY."""
+    no_existe = {"errors": [{"message": "Entity not found: Project",
+                             "extensions": {"code": "INPUT_ERROR", "statusCode": 400}}],
+                 "data": None}
+    for n, respuesta, esperado in (
+            ("47-project-que-no-existe", no_existe, mod.NO_ES_DEL_MAPA),
+            ("47-project-nulo", {"data": {"project": None}}, mod.NO_ES_DEL_MAPA),
+            ("47-project-con-credencial-rechazada",
+             {"errors": [{"message": "Authentication required",
+                          "extensions": {"code": "AUTHENTICATION_ERROR"}}]},
+             mod.SIN_KEY)):
+        rc, out, err, tr = correr_main(n, ["map:read", "--project", URL_PROJECT],
+                                       [respuesta])
+        chequear(n, "rc", rc, esperado)
+        chequear(n, "stdout vacio", out, "")
+        chequear(n, "UNA llamada al transporte", tr.llamadas, 1)
+        if esperado == mod.NO_ES_DEL_MAPA:
+            chequear(n, "stderr explica el rechazo", "no existe" in err, True)
+
+
+def caso_48():
+    """milestone:create con la URL de un Project manda el id resuelto como projectId,
+    nunca la URL."""
+    n = "48-milestone-create-con-la-url-de-un-project"
+    creado = {"data": {"projectMilestoneCreate": {"success": True, "projectMilestone": {
+        "id": "m1", "name": "Corte", "sortOrder": 1.0}}}}
+    rc, out, err, tr = correr_main(
+        n, ["milestone:create", "--project", URL_PROJECT, "--name", "Corte",
+            "--description", "el primer corte", "--sort-order", "1"],
+        [PROJECT_RESUELTO, creado])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "DOS llamadas al transporte", tr.llamadas, 2)
+    chequear(n, "projectId es el id resuelto",
+             (tr.variables[1] if len(tr.variables) > 1 else {}).get("project"),
+             "p-de-la-url")
 
 
 def caso_36():
@@ -1597,6 +1663,7 @@ CASOS =[("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("66", caso_25), ("66", caso_26), ("66", caso_27), ("66", caso_28),
          ("66", caso_29), ("66", caso_30), ("73", caso_31), ("73", caso_32),
          ("73", caso_33), ("73", caso_34), ("73", caso_35), ("73", caso_36),
+         ("73", caso_47), ("73", caso_48),
          ("74", caso_37), ("74", caso_38), ("74", caso_39), ("74", caso_40),
          ("74", caso_41), ("74", caso_42), ("74", caso_43),
          ("75", caso_44), ("75", caso_45), ("75", caso_46)]
@@ -1650,7 +1717,7 @@ if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas66=ninguna'; then
 fi
 
 if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas73=ninguna'; then
-  fail "[73] --project no resuelve el Project de un ticket de decisión pasado por URL o identificador, o resuelve lo que no es un issue, o no rechaza el que no es del mapa"
+  fail "[73] --project no resuelve el Project de un ticket de decisión pasado por URL o identificador ni el id de un Project pasado por URL, o resuelve lo que no es un issue ni la URL de un Project, o no rechaza el que no es del mapa o el Project que no existe"
 fi
 
 if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas74=ninguna'; then
@@ -1681,4 +1748,4 @@ casos75="$(printf '%s\n' "$salida" | sed -n 's/^casos75=//p')"
 require_nonempty "$casos75" "[75] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 plural=""
 [ "$casos" = 1 ] || plural="s"
-echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, y $casos66 del reparto de la escritura del mapa con --defer-map, y $casos73 de --project con un ticket, y $casos74 de las correcciones del mapa desde una resolución, y $casos75 de las entregas de diseño abiertas en frontier:query, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
+echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, y $casos66 del reparto de la escritura del mapa con --defer-map, y $casos73 de --project con un ticket o un Project, y $casos74 de las correcciones del mapa desde una resolución, y $casos75 de las entregas de diseño abiertas en frontier:query, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"

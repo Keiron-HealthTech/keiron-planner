@@ -200,6 +200,11 @@ query($issue: String!) {
 }
 """
 
+# project(id:) acepta el slug y rechaza la URL que termina en /overview con el mismo
+# "Entity not found" de un Project que no existe, medido: el slug se saca de la URL
+# antes de mandarlo.
+PROJECT_ID_QUERY = "query($project: String!) { project(id: $project) { id } }"
+
 
 # No pide project { content } de vuelta: releer lo que se acaba de escribir es
 # verificación posterior a la escritura, y está prohibida. Y tampoco pide el estado
@@ -466,6 +471,13 @@ def resolver_datos(payload):
 # que un slug de Project que termine en dígitos nunca se lee como un issue.
 IDENTIFICADOR = re.compile(r"^[A-Z][A-Z0-9]*-[0-9]+$")
 URL_DE_ISSUE = re.compile(r"^https?://linear\.app/[^/]+/issue/([A-Z][A-Z0-9]*-[0-9]+)(/.*)?$")
+PROJECT_URL = re.compile(r"^https?://linear\.app/[^/]+/project/([^/?#]+)(/.*)?$")
+
+
+def project_slug_from(value):
+    """El slug si el valor es la URL de un Project, y None si es cualquier otra cosa."""
+    found = PROJECT_URL.match(value.strip())
+    return found.group(1) if found else None
 
 
 def identificador_de_issue(valor):
@@ -478,10 +490,10 @@ def identificador_de_issue(valor):
     return encontrado.group(1) if encontrado else None
 
 
-def resolver_project_del_issue(payload, identificador):
-    """Pura: de la respuesta de ISSUE_PROJECT_QUERY al id del Project. Un issue que no
-    existe, que no lleva el label del mapa o que no vive en un Project sale con
-    NO_ES_DEL_MAPA, porque no hay Project que usar en su lugar."""
+def _searched_node(payload, field, what, missing_remedy):
+    """Pura: el nodo que una búsqueda por id devolvió en data[field]. Un nodo que no
+    existe, porque Linear dice not found o porque vino nulo, sale con NO_ES_DEL_MAPA; la
+    credencial rechazada con SIN_KEY; cualquier otro error con SIN_API."""
     errores = payload.get("errors") or []
     no_existe = any(isinstance(e, dict) and "not found" in str(e.get("message")).lower()
                     for e in errores)
@@ -490,14 +502,23 @@ def resolver_project_del_issue(payload, identificador):
             die(SIN_KEY, "la API de Linear rechazó la credencial guardada",
                 "corre /planner-setup de nuevo con una key nueva")
         die(SIN_API,
-            "la API de Linear falló al buscar el issue %s: %s"
-            % (identificador, "; ".join(_errores_de(payload))),
+            "la API de Linear falló al buscar %s: %s"
+            % (what, "; ".join(_errores_de(payload))),
             "reintenta en un minuto; la credencial guardada no se toca")
-    issue = (payload.get("data") or {}).get("issue")
-    if not issue:
-        die(NO_ES_DEL_MAPA,
-            "el issue %s no existe o la credencial no lo ve" % identificador,
-            "pasa la URL del Project del mapa o la de uno de sus tickets de decisión")
+    node = (payload.get("data") or {}).get(field)
+    if not node:
+        die(NO_ES_DEL_MAPA, "%s no existe o la credencial no lo ve" % what,
+            missing_remedy)
+    return node
+
+
+def resolver_project_del_issue(payload, identificador):
+    """Pura: de la respuesta de ISSUE_PROJECT_QUERY al id del Project. Un issue que no
+    existe, que no lleva el label del mapa o que no vive en un Project sale con
+    NO_ES_DEL_MAPA, porque no hay Project que usar en su lugar."""
+    issue = _searched_node(
+        payload, "issue", "el issue %s" % identificador,
+        "pasa la URL del Project del mapa o la de uno de sus tickets de decisión")
     etiquetas = [e.get("name") for e in ((issue.get("labels") or {}).get("nodes") or [])]
     if LABEL_MAPA not in etiquetas:
         die(NO_ES_DEL_MAPA,
@@ -513,15 +534,29 @@ def resolver_project_del_issue(payload, identificador):
     return project
 
 
+def resolve_project_from_url(payload, value):
+    """Pura: de la respuesta de PROJECT_ID_QUERY al id del Project que nombra la URL.
+    Las mutations que llevan projectId necesitan el id y no aceptan la URL."""
+    project = _searched_node(
+        payload, "project", "el Project de %s" % value,
+        "pasa la URL de un Project que exista, o la de uno de sus tickets de decisión")
+    return project.get("id")
+
+
 def resolver_project(valor):
     """El --project de toda operación que lo declara, salvo map:create. Con la URL o el
-    identificador de un issue, un POST y el Project de ese issue; con cualquier otra
-    cosa, el valor tal cual y ningún round trip."""
+    identificador de un issue, un POST y el Project de ese issue; con la URL de un
+    Project, un POST y su id; con cualquier otra cosa, el valor tal cual y ningún round
+    trip."""
     identificador = identificador_de_issue(valor)
-    if identificador is None:
+    if identificador is not None:
+        payload = _post(ISSUE_PROJECT_QUERY, {"issue": identificador}, leer_key())
+        return resolver_project_del_issue(payload, identificador)
+    slug = project_slug_from(valor)
+    if slug is None:
         return valor
-    payload = _post(ISSUE_PROJECT_QUERY, {"issue": identificador}, leer_key())
-    return resolver_project_del_issue(payload, identificador)
+    payload = _post(PROJECT_ID_QUERY, {"project": slug}, leer_key())
+    return resolve_project_from_url(payload, valor)
 
 
 def es_frontera_del_mapa(linea):
