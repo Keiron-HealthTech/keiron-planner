@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 . scripts/_common.sh
 
-# Afirmaciones 49 y 6.
+# Afirmaciones 49, 6 y 83.
 
 if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
   bail "[49] esto no es un work tree de git; no hay árbol trackeado que caminar"
@@ -67,8 +67,48 @@ done <<EOF
 $ingleses
 EOF
 
+# --- afirmación 83: los .md de una skill hablan el idioma de su SKILL.md ---
+
+lang_of() {
+  awk 'NR==1 && $0 != "---" {exit} NR==1 {next} /^---$/ {exit} {print}' "$1" \
+    | grep -E '^lang: ' | head -1 || true
+}
+
+skills="$(printf '%s\n' "$archivos" | grep -E '^skills/[^/]+/SKILL\.md$' || true)"
+require_nonempty "$skills" "[83] ningún skills/<nombre>/SKILL.md trackeado; la afirmación pasaría sobre el conjunto vacío"
+
+hermanos=0
+while IFS= read -r s; do
+  if [ -z "$s" ]; then continue; fi
+  dir="${s%/SKILL.md}"
+  propio="$(lang_of "$s")"
+  # Un enlace que el SKILL.md da a un archivo de su directorio que no existe es una rama
+  # que el modelo abre y no encuentra; el enlace cuenta aunque el archivo no esté trackeado.
+  enlazados="$(grep -oE '\]\([A-Za-z0-9_-]+\.md\)' "$s" | sed 's/^](//; s/)$//' | sort -u || true)"
+  while IFS= read -r e; do
+    if [ -z "$e" ]; then continue; fi
+    if [ ! -f "$dir/$e" ]; then
+      fail "[83] $s enlaza $e y $dir/$e no existe"
+    fi
+  done <<EOS
+$enlazados
+EOS
+  while IFS= read -r h; do
+    if [ -z "$h" ] || [ "$h" = "$s" ]; then continue; fi
+    hermanos=$((hermanos + 1))
+    if [ "$(lang_of "$h")" != "$propio" ]; then
+      fail "[83] $h no declara el mismo $propio que $s"
+    fi
+  done <<EOS
+$(printf '%s\n' "$archivos" | grep -E "^$dir/[^/]+\.[mM][dD]$" || true)
+EOS
+done <<EOF
+$skills
+EOF
+
 report
 
 n="$(printf '%s\n' "$archivos" | grep -c . || true)"
 m="$(printf '%s\n' "$ingleses" | grep -c . || true)"
-echo "$CHECK_NAME: OK - $n archivos .md del árbol declaran lang:, y $m en inglés sin prosa en español"
+k="$(printf '%s\n' "$skills" | grep -c . || true)"
+echo "$CHECK_NAME: OK - $n archivos .md del árbol declaran lang:, y $m en inglés sin prosa en español, y los $hermanos .md hermanos de las $k skills existen donde su SKILL.md los enlaza y declaran su mismo lang:"

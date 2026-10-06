@@ -23,9 +23,9 @@ para que el adapter tenga su contrato a mano.
 | `map:write` | Un read-modify-write entero adentro de una sola invocación. |
 | `ticket:create` | Los tickets de decisión de una pasada, en una sola invocación, cada uno con un cuerpo que es la pregunta y nada más. |
 | `ticket:block` | La relación nativa de bloqueo, en una segunda pasada. |
-| `frontier:query` | Los tickets abiertos, sin bloqueantes abiertos y sin assignee. |
+| `frontier:query` | Los tickets abiertos, sin bloqueantes abiertos y sin assignee, y las entregas de diseño abiertas. |
 | `ticket:claim` | Tomar. El primer write de la sesión, y con `--release` la escritura inversa, que devuelve la toma. |
-| `ticket:resolve` | Las cinco escrituras de una resolución, en una sola invocación, y con `--defer-map` solo las cuatro primeras: la quinta no se manda y la línea que le tocaba sale por stdout. |
+| `ticket:resolve` | Las cinco escrituras de una resolución, en una sola invocación, y con `--defer-map` solo las cuatro primeras: la quinta no se manda y la línea que le tocaba sale por stdout. Con `--design-delivery`, la entrega de diseño nace en la primera. |
 | `ticket:rule-out` | Cierra un ticket sin resolverlo. La única destructiva. Acepta `--defer-map` con el mismo efecto. |
 | `milestone:create` | Un corte demoable del colapso. Nunca lleva fecha. |
 | `work:write` | Lo que produce un colapso o un aterrizaje, en una sola invocación. |
@@ -49,7 +49,7 @@ mensaje, o al revés, deja el contrato y el script en desacuerdo.
 
 Los otros cuatro códigos que el adapter puede devolver no son fallas duras del
 preflight. El **8** (`NO_ES_DEL_MAPA`) es el de un `--project` que nombra un issue que no
-sirve para encontrar un mapa, y lo explica la sección siguiente. El **9**
+sirve para encontrar un mapa o un Project que no existe, y lo explica la sección siguiente. El **9**
 (`NO_IMPLEMENTADO`) es el de un subcomando sin cuerpo. Hoy los doce tienen cuerpo, así
 que ninguno lo emite: el código y la función `cmd_stub` que lo devuelve quedan
 definidos, sin ningún subcomando registrado contra ella. El
@@ -60,10 +60,18 @@ pudo decidir.
 ## Cómo se resuelve `--project`
 
 Toda operación que declara `--project`, salvo `map:create`, lo acepta en cinco formas.
-Tres son del Project y viajan tal cual a `project(id:)`, que las resuelve por su cuenta:
-el UUID, el slugId pelado y la URL del Project. Medido el 2026-10-05: la URL acepta la
-forma pelada y no la que termina en `/overview`. Las otras dos son de un ticket de
-decisión del mapa: su URL y su identificador, `CRM-3559`.
+Tres son del Project: el UUID, el slugId pelado y la URL del Project. Las otras dos son
+de un ticket de decisión del mapa: su URL y su identificador, `CRM-3559`.
+
+El UUID y el slugId viajan tal cual y sin round trip. La URL del Project se resuelve a su
+id con un POST de `PROJECT_ID_QUERY` antes de llamar al handler, porque las mutations que
+llevan `projectId` (`projectMilestoneCreate`, `issueBatchCreate`) necesitan el id y no
+aceptan la URL. Al POST viaja el slug sacado de la URL y no la URL entera: medido el
+2026-10-06, `project(id:)` acepta el slug y la URL pelada, y rechaza la que termina en
+`/overview` con `Entity not found: Project` (`INPUT_ERROR`), el mismo error de un Project
+que no existe. Mandando el slug, la URL con `/overview` también sirve. Un Project que no
+existe sale con `NO_ES_DEL_MAPA` después de ese POST y sin leer el mapa. Las respuestas de
+`project(id:)` que usa el harness son fixtures con la forma medida ese día.
 
 Con un ticket, `main` resuelve el Project antes de llamar al handler, con un POST de
 `ISSUE_PROJECT_QUERY`, y el handler recibe el id del Project de ese ticket como si se lo
@@ -89,21 +97,23 @@ mapa, que es lo que la vuelve utilizable como ancla.
 
 ### `frontier:query`
 
-Siete claves de primer nivel, las siete siempre presentes:
+Ocho claves de primer nivel, las ocho siempre presentes:
 
     found        bool. false cuando el Project no resolvió. Con found en false los tres
-                 conteos son cero y las cuatro listas están vacías, que es la misma
+                 conteos son cero y las cinco listas están vacías, que es la misma
                  forma que tiene un mapa ya terminado: found es lo único que los separa.
-    truncated    lista de string. Subconjunto de issues, relations, inverseRelations y
-                 projectMilestones, en ese orden fijo. Vacía si ninguna conexión vino
-                 cortada. Cada nombre que aparece acá lleva además una línea a stderr, y
-                 el código de salida sigue siendo 0 en todos los casos. Con issues
-                 truncada, unlanded también queda como cota inferior; con relations
-                 truncada, una decisión con más de diez relaciones puede aparecer en
-                 unlanded aunque ya esté ligada a trabajo de ejecución; con
-                 projectMilestones truncada, milestones también queda como cota
-                 inferior además de counts.milestones, y el vecino que hace falta para
-                 insertar un corte en el medio puede no estar en la lista.
+    truncated    lista de string. Subconjunto de issues, relations, inverseRelations,
+                 projectMilestones y designDeliveries, en ese orden fijo. Vacía si
+                 ninguna conexión vino cortada. Cada nombre que aparece acá lleva
+                 además una línea a stderr, y el código de salida sigue siendo 0 en
+                 todos los casos. Con issues truncada, unlanded también queda como cota
+                 inferior; con relations truncada, una decisión con más de diez
+                 relaciones puede aparecer en unlanded aunque ya esté ligada a trabajo
+                 de ejecución; con projectMilestones truncada, milestones también queda
+                 como cota inferior además de counts.milestones, y el vecino que hace
+                 falta para insertar un corte en el medio puede no estar en la lista;
+                 con designDeliveries truncada, la lista de entregas abiertas es una
+                 cota inferior y una vacía no prueba que no quede ninguna.
     counts       objeto de tres claves enteras, open, takeable y milestones. open cuenta
                  los tickets cuyo state.id no es ninguno de los dos ids cerrados del
                  ctx. takeable cuenta los que además pasan las otras dos condiciones.
@@ -123,6 +133,13 @@ Siete claves de primer nivel, las siete siempre presentes:
                  cuando no hay ninguno o cuando el Project no tiene ningún milestone
                  todavía (sin milestone no hay umbral de nacimiento, así que nada puede
                  estar sin aterrizar).
+    designDeliveries
+                 lista de objeto. Las issues del Project con map:design-delivery cuyo
+                 state.id no es ninguno de los dos ids cerrados del ctx, createdAt
+                 ascendente. Cada una con identifier, title, url (string) y assignee
+                 (string o null). Vacía con found en false. No lleva map, así que
+                 ningún conteo la ve y el veredicto no cambia por ella: solo la lee el
+                 colapso, que se niega mientras quede una.
 
 No hay campo de veredicto, con ningún nombre. Ni `verdict`, ni `stuck`, ni
 `readyToCollapse`, ni un booleano equivalente: el veredicto se deriva de los tres
@@ -298,7 +315,7 @@ es la remediación correcta y no duplica nada.
 
 ### `ticket:resolve`
 
-Catorce flags, y `--ctx`, `--project`, `--issue` y `--gist` son los cuatro requeridos:
+Quince flags, y `--ctx`, `--project`, `--issue` y `--gist` son los cuatro requeridos:
 
     --ctx              el blob del preflight, opaco.
     --project          el Project cuyo overview lleva el mapa, en cualquiera de las
@@ -331,6 +348,11 @@ Catorce flags, y `--ctx`, `--project`, `--issue` y `--gist` son los cuatro reque
                        el Destino corregido entero, en una sola línea. Alguna línea de
                        --section "Qué corrige o empuja" tiene que nombrar el Destino.
     --expect-sections  el JSON de huellas que map:read emitió, para el aviso de deriva.
+    --design-delivery  TITULO CUERPO, no repetible. La entrega de diseño de una decisión
+                       de Diseño: la issue que nace en la escritura 1, adentro del mismo
+                       issueBatchCreate de los --new-ticket. El título es de una línea;
+                       el cuerpo puede tener varias y pasa por la misma validación que el
+                       cuerpo de work:write --issue. Solo sobre un ticket con hitl:design.
     --defer-map        booleano. Difiere la quinta escritura a otro conductor: las
                        cuatro primeras corren igual, la quinta no se manda, y la línea
                        que le tocaba sale por stdout en mapLine y mapArgs. Con el flag
@@ -345,6 +367,23 @@ sus ediciones sin escribir: un título que no existe o un encabezado que falta a
 con nada escrito. El ensayo corre también con `--defer-map`, porque leer el mapa no es
 escribirlo. La quinta escritura relee igual, así que un título borrado entre las dos
 lecturas aborta en la quinta, con la remediación de su fila.
+
+Con `--design-delivery` la resolución lee el ticket antes de la primera escritura, con
+`ISSUE_PROJECT_QUERY`, y sin `hitl:design` entre sus labels aborta con nada escrito. Esa
+lectura es la que hace que un `--issue` que no existe salga con `NO_ES_DEL_MAPA`, que es 8,
+en vez de fallar en el comentario. La entrega va en el mismo lote que los tickets nuevos,
+así que la resolución sigue en cinco escrituras: lleva `hitl:design` y
+`map:design-delivery`, no lleva `map`, ni Discovery, ni `estimate`, ni milestone, y la
+asigna al `viewer` del ctx. Sin `map`, ni la frontera ni el aterrizaje la ven. No se
+relaciona con la decisión: su cuerpo la enlaza. El título no puede repetir el de un
+`--new-ticket`, porque la entrega se separa de los tickets por título en la respuesta del
+lote. Con `hitl:design` o `map:design-delivery` en null en el ctx, o sin `viewer`, aborta
+antes de la red: esta operación no crea labels, y el remedio es `/map-new`.
+
+El comentario nombra la entrega: al final de `Tickets nuevos` el adapter agrega la línea
+`Entrega de diseño: [CRM-N](<url>)`, con lo que devolvió la escritura 1. La sección igual
+tiene que llegar con al menos un `--section` propio, porque las seis se validan antes de
+la red y esa validación no sabe de la entrega.
 
 No hay `--append-decision`, y su ausencia es la decisión: el enlace de la línea del
 mapa sale de `issue.url`, que la escritura 4 devuelve en su propio round trip. Así es
@@ -361,7 +400,7 @@ garantiza y ninguna combinación de flags reordena:
 
 | Nº | Mutation | Cuándo |
 | --- | --- | --- |
-| 1 | `issueBatchCreate` | solo si hay al menos un `--new-ticket` |
+| 1 | `issueBatchCreate` | solo si hay al menos un `--new-ticket` o un `--design-delivery` |
 | 2 | `issueRelationCreate` | solo si hay al menos un `--block` |
 | 3 | `commentCreate` | siempre |
 | 4 | `issueUpdate` | siempre, con `stateId` en el `done` del ctx |
@@ -384,10 +423,11 @@ distingue a cada uno es qué dice que aterrizó y cómo terminar a mano:
 | Falla en | Qué quedó escrito | Remediación que imprime |
 | --- | --- | --- |
 | antes de la red | nada | corregir la invocación; el transporte no se llamó ni una vez |
+| la lectura previa, con `--design-delivery` | nada | sacar `--design-delivery` si el ticket no lleva `hitl:design`; con un ticket que no existe, sale con `NO_ES_DEL_MAPA` y pide el identificador correcto |
 | el ensayo, con `--replace-out-of-scope` o `--amend-destination` | nada | corregir el título o el encabezado que el mensaje nombra, y volver a correr la misma invocación |
-| 1, `issueBatchCreate` | nada | volver a correr la misma invocación entera |
-| 2, `issueRelationCreate` | los tickets nuevos, y cuántos bloqueos entraron | `ticket:block` con los pares que faltan, y después esta misma invocación sin `--new-ticket` ni `--block` |
-| 3, `commentCreate` | los tickets y su cableado | esta misma invocación sin `--new-ticket` ni `--block` |
+| 1, `issueBatchCreate` | incierto: un rechazo y una respuesta perdida no se distinguen | mirar en Linear si los tickets nuevos existen; si no están, volver a correr la misma invocación entera. Un lote que confirma sin traer la entrega también aborta acá, antes del comentario |
+| 2, `issueRelationCreate` | los tickets nuevos y la entrega, y cuántos bloqueos entraron | `ticket:block` con los pares que faltan, y después esta misma invocación sin `--new-ticket`, `--block` ni `--design-delivery`; con entrega, sumando en `Tickets nuevos` un `--section` que la nombre |
+| 3, `commentCreate` | los tickets, la entrega y su cableado | esta misma invocación sin `--new-ticket`, `--block` ni `--design-delivery`; con entrega, sumando en `Tickets nuevos` un `--section` que la nombre |
 | 4, `issueUpdate` | los tickets, el cableado y **el comentario**; el estado en sí queda incierto, porque un timeout no distingue que el `issueUpdate` no haya llegado de que haya llegado y se perdió la respuesta | fijarse en Linear si el ticket ya cambió de estado antes de tocarlo a mano, y después correr `map:write`: repetir la invocación duplicaría el comentario. Nombra además los flags del mapa pendientes, de niebla y de corrección, para que lo ya validado contra el comentario no se pierda en silencio |
 | 5, `projectUpdate` | todo menos la línea del mapa | **la invocación exacta de `map:write` que falta**, impresa con su `--project`, la url real, el gist y los flags del mapa que correspondan |
 
@@ -403,10 +443,12 @@ ya tiene el project, la url que le devolvió el `issueUpdate` y el gist. Es tamb
 razón por la que la quinta no reintenta. El mensaje nunca sugiere repetir
 `ticket:resolve`, que recrearía los tickets nuevos y volvería a postear el comentario.
 
-stdout, una sola línea de JSON compacto, con nueve claves siempre presentes: `issue`,
+stdout, una sola línea de JSON compacto, con diez claves siempre presentes: `issue`,
 `url`, `comment` con el enlace del comentario recién escrito, `tickets` con los que se
-crearon, `blocks` con los pares que quedaron cableados, `mapWritten`, `mapLine`,
+crearon, `designDelivery` con la entrega (`identifier`, `id`, `title` y `url`) o `null`
+sin el flag, `blocks` con los pares que quedaron cableados, `mapWritten`, `mapLine`,
 `mapArgs` y `noop` con los títulos de `--remove-fog` que no matchearon ninguna viñeta.
+`tickets` nunca incluye la entrega.
 
 `mapWritten` dice si la quinta escritura ocurrió de verdad en esa corrida: `true` sin el
 flag, `false` con él. `mapLine` es la línea completa del mapa, con su marcador, la misma
@@ -437,7 +479,9 @@ los tiene de primera mano.
 
 ### `ticket:rule-out`
 
-La misma superficie que `ticket:resolve` salvo una fila, y esa fila es la operación:
+La misma superficie que `ticket:resolve` salvo cinco filas. No tiene `--gist`, ni los
+tres flags de corrección, ni `--design-delivery`: una decisión que cae fuera de alcance
+no deja nada que diseñar. Y tiene una fila propia, que es la operación:
 
     --out-of-scope   la viñeta entera de Fuera de alcance, con su título en negrita,
                      validada por _validar_vineta, la misma que valida las viñetas de
@@ -466,7 +510,7 @@ Es la **única operación destructiva del adapter**: cierra un ticket sin resolv
 comentario se escribe igual, con sus seis secciones, así que la decisión de sacarlo de
 alcance queda auditable en el ticket aunque el ticket quede cancelado.
 
-stdout, la misma forma que `ticket:resolve`, con las mismas nueve claves. Con
+stdout, la misma forma que `ticket:resolve` menos `designDelivery`, con nueve claves. Con
 `--defer-map`, `mapLine` es la viñeta entera con su marcador y `mapArgs` empieza con
 `--append-out-of-scope`: la línea de esta operación va a `## Fuera de alcance` también
 cuando el mapa lo escribe otro conductor.
@@ -534,11 +578,37 @@ funcionando igual después de que aterrizan. Toda `issueRelationCreate` que emit
 el ticket de decisión del lado `issueId`, al revés que `ticket:block`, para que la
 relación caiga en `relations` y no en `inverseRelations`.
 
+El cuerpo de un `--issue` puede tener varias líneas: la plantilla del cuerpo de
+ejecución tiene tres secciones. Cruza la CLI como un solo argumento con saltos reales, y
+en Bash eso es una cadena entre comillas simples que abarca varias líneas; una comilla
+simple adentro del cuerpo se escribe cerrando la comilla, `'\''` y volviéndola a abrir,
+la misma regla de `mapArgs`. El adapter normaliza `\r\n` y `\r` a `\n` antes de mandarlo
+en `description`, y aborta antes de la red si el cuerpo queda vacío o de espacios solos.
+El título y el corte del `--issue`, los dos operandos de `--relate` y el valor de
+`--no-landing` siguen siendo de una sola línea: un salto en cualquiera de ellos aborta
+antes de la red.
+
 No reintenta ninguna de las tres. `_post` traga la falla de transporte, así que
 ninguna rama puede distinguir "no llegó" de "llegó y se perdió la respuesta", y
 repetir la invocación entera solo es seguro cuando nada quedó escrito: con parte de la
 secuencia ya confirmada, la remediación que cada falla imprime dice exactamente qué
 repetir y qué no.
+
+### map:write: la línea de Decisiones
+
+La línea que escriben `--append-decision` y la quinta escritura de `ticket:resolve` es
+`- [CRM-3401](<https://linear.app/keiron/issue/CRM-3401>): gist`: el identificador
+enlazado a la url entre ángulos, los dos puntos fuera del enlace y el gist. Medido el
+2026-10-06: escrita como `- <url>: gist`, Linear la guardaba con el autolink tragándose
+los dos puntos dentro del href. Un enlace que trae `<` o `>` rompería los ángulos, así que
+aborta antes de la red.
+
+Hay una sola línea por decisión, y la clave que lo decide es el identificador del issue:
+Linear reescribe la línea al guardarla, y lo que se relee no es byte a byte lo escrito.
+Una línea del mismo ticket ya presente en cualquiera de las formas medidas, con ángulos,
+sin ángulos o con los dos puntos dentro del href, aborta en el primer intento y es no-op
+con aviso en el reintento. Las líneas escritas a mano que apuntan a GitHub no llevan
+URL de issue y conservan como clave la línea despojada de su marcador.
 
 ### map:write: reemplazar y corregir
 

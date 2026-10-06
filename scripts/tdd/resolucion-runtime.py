@@ -430,7 +430,7 @@ if tr.llamadas == 6:
              (tr.variables[3].get("input") or {}).get("stateId"), "s-done")
     contenido = tr.variables[5].get("content") or ""
     chequear(n, "el mapa gano la linea con la url que devolvio el issueUpdate",
-             ("- %s: %s" % (URL_CERRADO, EL_GIST[1])) in contenido, True)
+             ("- [CRM-1](<%s>): %s" % (URL_CERRADO, EL_GIST[1])) in contenido, True)
     chequear(n, "la decision previa sobrevive", DECISION_PREVIA in contenido, True)
     chequear(n, "el mapa perdio la vineta graduada",
              NIEBLA_TITULO in contenido, False)
@@ -456,6 +456,41 @@ chequear(n, "ningun issueRelationCreate",
          [q for q in tr.queries if "issueRelationCreate" in q], [])
 chequear(n, "ningun issueLabelCreate",
          [q for q in tr.queries if "issueLabelCreate" in q], [])
+
+TITULO_ENTREGA = "Diseño terminado: la vista de campañas"
+URL_ENTREGA = "https://linear.app/keiron/issue/CRM-12"
+LEIDO_CON_DISENO = {"data": {"issue": {
+    "identifier": "CRM-1", "project": {"id": "kp"},
+    "labels": {"nodes": [{"name": "map"}, {"name": "hitl:design"}]}}}}
+LOTE_CON_ENTREGA = {"data": {"issueBatchCreate": {"success": True, "issues": [
+    {"id": "i-12", "identifier": "CRM-12", "title": TITULO_ENTREGA,
+     "url": URL_ENTREGA}]}}}
+
+n = "resolve-con-entrega-de-diseno"
+rc, out, err, tr = correr(
+    n, RESOLVER + secciones() + EL_GIST +
+    ["--design-delivery", TITULO_ENTREGA, "Decisión: CRM-1\n\n## Para qué es la vista\nx"],
+    [LEIDO_CON_DISENO, LOTE_CON_ENTREGA, COMENTARIO, ESTADO, LEIDO, ESCRITO])
+chequear(n, "rc", rc, 0)
+chequear(n, "seis POSTs: la lectura y las cinco escrituras", tr.llamadas, 6)
+if tr.llamadas == 6:
+    chequear(n, "la primera es la lectura previa", tr.queries[0],
+             mod.ISSUE_PROJECT_QUERY)
+    chequear(n, "la entrega viaja en el issueBatchCreate",
+             "issueBatchCreate" in tr.queries[1], True)
+    entrada = (tr.variables[1].get("issues") or [{}])[0]
+    chequear(n, "la entrega no lleva map, asi que la frontera no la ve",
+             IDS["map"] in (entrada.get("labelIds") or []), False)
+    chequear(n, "la entrega lleva hitl:design y map:design-delivery",
+             entrada.get("labelIds"), [IDS["hitl:design"], IDS["map:design-delivery"]])
+    cuerpo = tr.variables[2].get("body") or ""
+    chequear(n, "el comentario nombra la entrega en Tickets nuevos",
+             ("Entrega de diseño: [CRM-12](<%s>)" % URL_ENTREGA)
+             in cuerpo.split("## Tickets nuevos")[-1].split("## Qué corrige")[0], True)
+    d = json.loads(out)
+    chequear(n, "designDelivery", (d.get("designDelivery") or {}).get("identifier"),
+             "CRM-12")
+    chequear(n, "tickets no la cuenta", d.get("tickets"), [])
 
 n = "resolve-label-nulo-muere-antes-de-la-red"
 rc, out, err, tr = correr(

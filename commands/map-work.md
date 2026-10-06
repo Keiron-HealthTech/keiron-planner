@@ -19,4 +19,9 @@ decision's execution work off a cut, ties it to work that already exists, or rec
 produced none. It never hangs work off a milestone already marked `status: done`: a finished
 cut is closed, and landing on it makes the map lie about what was demoed.
 
+A resolution of a ticket that carries `hitl:pm` or `hitl:design` does not land in the same
+session: a developer lands it later. `/map-work` on a closed ticket of `unlanded`
+runs only the landing, with no claim, no role check and no resolution, one decision per
+session.
+
 The session closes with one next recommended, and the skill is where that choice lives.

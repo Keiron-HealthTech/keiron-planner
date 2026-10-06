@@ -105,11 +105,15 @@ contract gives it, and none of them asks anything:
 - `listo para colapsar`: `next_recommended: map-collapse`
 - `colapsado`: `next_recommended: sdd-new`
 
+One exception, and only for a ticket named by the argument. When `$ARGUMENTS` names a ticket
+whose `identifier` is in `unlanded`, derive the verdict and keep it for step 10, but do not
+stop here: go to step 4.
+
 ## Step 4, pick the ticket
 
 With no `$ARGUMENTS` the command already asked and stopped, per the contract. With the URL or
 the identifier of a ticket, steps 1 to 3 already ran on the map that ticket belongs to, and
-the last paragraph of this step is the one that picks.
+the last two paragraphs of this step are the ones that pick.
 
 With the Project, look at `tickets` for the type label `map:research` before anything else.
 When at least one carries it, take EVERY one of them: they are the fan-out of this session.
@@ -132,6 +136,14 @@ one with a non-empty `blockers` is blocked, and a ticket in neither list is clos
 in neither list may only be missing from the page, so say that instead of calling it closed.
 Never substitute another ticket for the one that was named. Step 5 still runs on it.
 
+A ticket in neither list whose `identifier` is in `unlanded` is the one exception to that
+stop. It is a decision that closed without landing, and this session lands it and nothing else.
+Steps 5 to 8 do not run on it, so there is no role check, no claim and no resolution, and the
+line of `Decisiones hasta ahora` is not touched: go straight to step 9. It is
+one decision per session: with several entries in `unlanded`, land the one the argument named
+and leave the others to sessions of their own. A closed ticket that is not in `unlanded` still
+stops above, with no write.
+
 ## Step 5, the role check, before claiming
 
 It fires for two labels and no other: `hitl:pm` and `hitl:design`. A ticket with neither has
@@ -150,6 +162,8 @@ undispatched while the rest of the fan-out goes on untouched.
 The order is the whole point: claiming and then refusing leaves an orphan claim, and an orphan
 claim is exactly the thing nobody releases. The write that is not made is the write that does
 not fail.
+
+The landing path of step 4 skips this step, and steps 6 to 8 with it.
 
 ## Step 6, the claim
 
@@ -178,6 +192,11 @@ might or might not have claimed anything.
 The contract's ticket type to discipline table decides, and this file does not copy it. It
 has four rows, one per type label, and each carries the rule of its own that is not
 negotiable. Read it there and run what it names for the label this ticket carries.
+
+A `map:prototype` ticket that carries `hitl:design` runs the written-proposal branch of
+prototype, `${CLAUDE_PLUGIN_ROOT}/skills/prototype/PROPOSAL.md`, and no code branch:
+the label decides, so do not ask the person which branch they want. The proposal `Diseño`
+approves is what step 8 passes as the body of the design delivery.
 
 `map:task` names no discipline, and that is not an omission: it does instead of deciding, so
 there is nothing to conduct. Do the work and carry what it produced into step 8.
@@ -221,7 +240,7 @@ a line of the map. So show the whole thing and ask for confirmation ONCE, before
 anything. On the research branch the batch was the dispatch and step 7 already asked, which is
 the same single confirmation standing where the writes are.
 
-Show six things, and show them as they will read rather than as a summary:
+Show seven things, and show them as they will read rather than as a summary:
 
 1. the six sections of the resolution comment, already written out;
 2. the new tickets, each with the type label it will carry;
@@ -230,7 +249,8 @@ Show six things, and show them as they will read rather than as a summary:
    `Fuera de alcance`;
 5. the gist of the line that goes to the map, or the bullet that goes to `Fuera de alcance`;
 6. every correction to what the map already says: a `Fuera de alcance` bullet rewritten, or
-   the `Destino` amended, each shown as it reads now and as it will read.
+   the `Destino` amended, each shown as it reads now and as it will read;
+7. the design delivery, title and body, when the ticket carries `hitl:design`.
 
 The `Niebla graduada` section carries `ninguna` when this resolution graduated no patch, and
 names every graduated title when it did. Writing that negative by hand is not ceremony: the
@@ -244,7 +264,8 @@ After the confirmation, invoke once and do not ask again:
       --gist <gist> [--new-ticket <title> <body> <labels>] \
       [--block <blocker title> <blocked title>] [--append-fog <bullet>] \
       [--remove-fog <title>] [--graduate-out-of-scope <title> <bullet>] \
-      [--replace-out-of-scope <title> <bullet>] [--amend-destination <destination>]
+      [--replace-out-of-scope <title> <bullet>] [--amend-destination <destination>] \
+      [--design-delivery <title> <body>]
 
 A decision often moves more than one line of the map, and every one of those moves travels in
 this same invocation, never as a later edit of the overview by hand: a hand edit outside the
@@ -257,6 +278,17 @@ decision contradicts is amended with `--amend-destination`, which is rare and ha
 visible: some line of `Qué corrige o empuja` names the `Destino`, or the adapter refuses
 before the first write. A graduated title is named in `Niebla graduada`, exactly like one
 passed to `--remove-fog`.
+
+When the ticket carries `hitl:design`, `--design-delivery` always travels in this invocation,
+and on no other ticket: the adapter reads the ticket first and refuses the flag on one without
+`hitl:design`, before any write. The title is `Diseño terminado: <the view>`. The body is the
+proposal `Diseño` approved, written with the template of the delivery body in TEMPLATES, and it
+spans several lines: pass it as a single argument between single quotes, with `'\''` for a
+quote inside it. The delivery is born in the same first write as the new tickets, carries
+`hitl:design` and `map:design-delivery` and not `map`, and is assigned to you. `Tickets nuevos`
+still carries at least one line of its own, `ningún ticket de decisión nuevo` when there is
+none, because the adapter checks the six sections before the first write and only afterwards
+appends the line that names the delivery.
 
 or `linear.py ticket:rule-out`, the same shape with `--out-of-scope <bullet>` in place of
 `--gist`, when the discipline concludes the ticket ended up beyond the destination. Its line
@@ -369,21 +401,27 @@ Then go to step 10, which reports the pause and closes.
 ## Step 9, the landing
 
 The landing hangs the execution work of a decision taken after the collapse. It runs only
-when all three conditions hold at once:
+when all four conditions hold at once:
 
-1. the session is HITL: a person is on the other side and just approved a resolution;
-2. the ticket that step 8 resolved or ruled out is typed `map:grilling` or `map:prototype`,
-   never `map:research` and never `map:task`;
-3. `counts.milestones` in the `frontier:query` that step 2 read is above zero.
+1. the session is HITL: a person is on the other side and just approved a resolution, or
+   named, through step 4, a closed decision of `unlanded` to land;
+2. the ticket that step 8 resolved or ruled out, or the closed one step 4 took from
+   `unlanded`, is typed `map:grilling` or `map:prototype`, never `map:research` and never
+   `map:task`;
+3. `counts.milestones` in the `frontier:query` that step 2 read is above zero;
+4. when step 8 resolved it in this same session, the ticket carries neither `hitl:pm` nor
+   `hitl:design`: a decision those roles took is landed later by a developer, with
+   `/map-work` on the closed ticket.
 
-With any of the three false, this step does not run and the session goes straight to step 10.
+With any of the four false, this step does not run and the session goes straight to step 10.
 `map:task` is out by definition: it earns its place by unblocking a decision and never by
 delivering a piece of the destination, so a task has nothing to land. The research branch and
 the other-role branch of step 8 never get here.
 
 It runs after `ticket:resolve` or `ticket:rule-out` has written, never before and never in
-place of it. A session that dies halfway through the landing then leaves the decision
-resolved, the map up to date and no issue, which is exactly the state `/map-status` shows in
+place of it. On the landing path of step 4 that write happened in an earlier session. A
+session that dies halfway through the landing then leaves the decision resolved, the map up
+to date and no issue, which is exactly the state `/map-status` shows in
 its block of decisions that never landed. With the landing first, a death would leave
 execution issues that the map does not mention and that nobody reports.
 
@@ -463,13 +501,19 @@ delete the cut, because no operation of this plugin does that.
 
 ## Step 10, the report and the token
 
-The one home of the closing report and of the token, for the three paths. Which one applies
-depends on what step 8 did.
+The one home of the closing report and of the token, for the four paths. Which one applies
+depends on what step 8 did, or on step 4 when it took a closed decision to land.
 
 On the normal path, report what the resolution wrote: the comment, the new tickets, the
 state, and the line that reached the map. When step 9 ran, also say what it produced: which
 of the three outcomes was chosen, which cut received the work, which issues were born with
-their URL, or that the decision was marked as having no work. When the frontier that step 2
+their URL, or that the decision was marked as having no work. When step 8 passed
+`--design-delivery`, name the design delivery by the `identifier` and the `url` of
+`designDelivery`. `Diseño` closes it by hand in Linear, and no command closes it: say so, and
+say that its closing comment follows the template in TEMPLATES. When step 9 did not run
+because of its fourth condition and `counts.milestones` is above zero, add the line
+`decisión sin aterrizar, la aterriza un dev con /map-work <ticket>`, with the identifier of
+the resolved ticket in place of `<ticket>`. When the frontier that step 2
 read held more than the one ticket just resolved, close with `next_recommended: map-work`.
 
 ### Reporting a research fan-out
@@ -504,3 +548,18 @@ landed and close with one token, the same way the normal path does.
 Report which of the three writes landed and which did not, and that the claim from step 6 is
 still yours until the third one runs. Then close with `next_recommended: map-work`: the ticket
 that was just opened is born takeable.
+
+### Reporting a landing of a closed decision
+
+Report which of the three outcomes was chosen and what it produced: the cut that received the
+work, the issues born with their URL, the execution issue it was tied to, or that the decision
+was marked as having no work. Nothing was resolved in this session, so there is no comment, no
+state and no line of `Decisiones hasta ahora` to report.
+
+Then name the other entries of `unlanded` by `identifier`, each one a decision still waiting for
+a session of its own, or say that there are none.
+
+Close with the token the contract gives the verdict that step 3 derived and kept:
+`next_recommended: sdd-new` for `colapsado`, `next_recommended: map-work` for `en curso`, and
+for `trabado` the one of its two rows that applies, `next_recommended: release-claim` or
+`next_recommended: break-cycle`.

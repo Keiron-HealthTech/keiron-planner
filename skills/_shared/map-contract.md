@@ -67,7 +67,7 @@ the argument means beyond finding the map is the business of the command that wo
 | Label | What it invokes | The rule that is not negotiable |
 | --- | --- | --- |
 | `map:grilling` | grilling and domain-modeling | The agent never answers for the person. |
-| `map:prototype` | prototype | The agent builds variants and never chooses. |
+| `map:prototype` | prototype | The agent builds variants and never chooses. With `hitl:design` the label picks the written proposal instead of code, and the agent still never chooses. |
 | `map:research` | subagents in parallel, one per ticket | The only AFK type, and the only exception to one ticket per session. |
 | `map:task` | no discipline | It does instead of deciding, and it earns its place by unblocking a decision, never by delivering a piece of the destination. |
 
@@ -101,6 +101,17 @@ guarantee it.
 `counts.milestones` is read ONLY when `counts.open` is zero. With at least one open ticket the
 first two rows decide and the third count takes no part. The natural mistake is to branch on
 milestones first, and this line is here to prevent it.
+
+`designDeliveries` takes no part in the verdict either. A design delivery carries no `map`, so
+it is never a ticket of the frontier and no count sees it. Only `/map-collapse` reads that list,
+on `listo para colapsar`, and refuses while it is not empty. That refusal emits no token, so the
+table above stays as it is.
+
+`unlanded` takes no part in it either. A decision ticket closed after the collapse with no
+landing is `sin aterrizar`, an expected state and not a failure: a decision that `hitl:pm` or
+`hitl:design` took is never landed in the session that resolved it. It is closed, so no count
+sees it. A developer lands it later with `/map-work` on that ticket, and that session closes
+with the token of the verdict as it stands. The set of six tokens stays closed.
 
 The first row is the one place where a command that reads and a command that works part ways,
 and they part in the action rather than in the derivation: a read-only command emits the token

@@ -46,7 +46,10 @@ fuera del alcance.
 | Claim | Toma | El assignee del ticket. Es el primer write de la sesión, antes de cualquier trabajo. |
 | Resolution | Resolución | Comentario con la respuesta en **seis secciones fijas**, estado Done, y una línea en Decisiones hasta ahora. La tercera es Lo que se cayó, donde vive la premisa que el ticket derribó al resolverse. Va como comentario y nunca en el cuerpo del ticket, para que la pregunta quede inmutable. |
 | Collapse | Colapso | El paso del mapa a milestones e issues de ejecución. Un milestone es una decisión ya tomada, así que nace acá y nunca durante el mapeo. Es un evento único: corre con la frontera vacía, y una segunda corrida se niega. No se deshace: no hay descolapso. |
-| Landing | Aterrizaje | El paso donde una decisión tomada **después** del colapso consigue su trabajo de ejecución. No es un colapso incremental: es un paso de `/map-work`, corre solo en sesiones HITL de `map:grilling` o `map:prototype`, y tiene tres desenlaces. Issues nuevas, ligar a una issue de ejecución que ya existe, o nada, y el tercero se marca con el label `map:no-landing`. Nunca aterriza en un corte terminado. Lo decidió el ticket 12. |
+| Landing | Aterrizaje | El paso donde una decisión tomada **después** del colapso consigue su trabajo de ejecución. No es un colapso incremental: es un paso de `/map-work` para tickets `map:grilling` o `map:prototype`, y tiene tres desenlaces. Issues nuevas, ligar a una issue de ejecución que ya existe, o nada, y el tercero se marca con el label `map:no-landing`. Nunca aterriza en un corte terminado. Lo aprueba siempre un dev: corre en la misma sesión que resolvió cuando el ticket no lleva `hitl:pm` ni `hitl:design`, y si no, un dev lo hace después con `/map-work` sobre el ticket cerrado, sin claim y sin chequeo de rol. Lo decidieron el ticket 12 y CRM-3640. |
+| Unlanded decision | Decisión sin aterrizar | Un ticket `map:grilling` o `map:prototype` cerrado después del colapso, sin relación `related` hacia una issue de ejecución y sin `map:no-landing`. Es un estado esperado y no una falla: toda decisión de Diseño o PM sobre un mapa colapsado pasa por él. Es el `unlanded` de `frontier:query` y `/map-status` lo muestra. Se aterriza con `/map-work` nombrando el ticket, de a una por sesión. Lo decidió CRM-3640. |
+| Design delivery | Entrega de diseño | La issue «Diseño terminado: X» que nace al cerrar un ticket de decisión con `hitl:design`, en la misma primera escritura que los tickets nuevos, con `ticket:resolve --design-delivery`. Lleva `hitl:design` y `map:design-delivery`, no lleva `map` y la asigna el adapter a quien cerró la decisión. Su cuerpo es la propuesta que Diseño aprobó y enlaza la decisión. No entra en la frontera, ni en el veredicto, ni en el aterrizaje, y mientras esté abierta frena el colapso. La cierra Diseño a mano en Linear, con el link vivo de Claude Design; ningún comando la cierra. Lo decidió CRM-3629. |
+| Written proposal | Propuesta escrita | Lo que produce prototype con un ticket `hitl:design`, en lugar de código: una conversación con Diseño que termina en cuatro partes, para qué es la vista, qué debe tener, qué considerar (con las decisiones del mapa que la tocan) y qué queda abierto. Por defecto es una sola; son dos o tres enfoques si la decisión abarca varias vistas o Diseño lo pide, y la regla de dos variantes no aplica. La decide el label, sin preguntar. El diseño vive en Claude Design y el agente no arma variantes allí. La propuesta aprobada es el cuerpo de la entrega de diseño. Lo decidió CRM-3626. |
 
 ## Tipos de ticket
 
@@ -67,15 +70,17 @@ vivo: el agente nunca contesta por el humano.
 
 Un ticket sin ninguno de esos labels es AFK, y esa ausencia es la señal.
 
-### El label que no es un tipo de ticket
+### Los labels que no son un tipo de ticket
 
 | Label | Qué es |
 | --- | --- |
 | `map:no-landing` | El marcador que `work:write` aplica cuando un aterrizaje no produjo trabajo. No es un tipo de ticket y por eso no tiene modo: ningún ticket de decisión lo lleva. |
+| `map:design-delivery` | Entrega de diseño. Marca la issue «Diseño terminado: X» que nace al cerrar una decisión de Diseño. No lleva `map`, así que la frontera y el veredicto no la ven, y el colapso la busca explícitamente: una abierta lo impide. Nombra la clase de issue y no su estado, así que es cierto abierta o cerrada. Lo decidió CRM-3629. |
 
-Vive acá, y no en la tabla de arriba, porque el preflight lo resuelve como a los
-otros ocho y `ticket:create` lo crea cuando falta, igual que a los demás. Es la
-única razón por la que comparte casa con ellos.
+`map:no-landing` vive acá, y no en la tabla de arriba, porque el preflight lo
+resuelve como a los otros ocho y `ticket:create` lo crea cuando falta, igual que a
+los demás. Es la única razón por la que comparte casa con ellos.
+`map:design-delivery` vive acá porque tampoco es un tipo de ticket.
 
 ## Las disciplinas
 
@@ -86,7 +91,7 @@ del árbol, y ese archivo es su única casa.
 | --- | --- | --- |
 | Grilling | `skills/grilling/SKILL.md` | Entrevistar a la persona en rondas sobre un design tree, hasta que no queda ninguna pregunta formulable. |
 | Domain modeling | `skills/domain-modeling/SKILL.md` | Afilar el vocabulario del dominio mientras se decide, desafiando los términos y estresándolos con escenarios. |
-| Prototype | `skills/prototype/SKILL.md` | Construir código descartable que contesta una pregunta de diseño. |
+| Prototype | `skills/prototype/SKILL.md` | Construir código descartable que contesta una pregunta de diseño, o, con `hitl:design`, conversar hasta una propuesta escrita sin código. |
 
 Todas son model-invoked: se llega a ellas desde `/map-new` y desde `/map-work`. La
 única puerta user-invoked es `/grill`, y abre grilling y ninguna otra.
@@ -133,7 +138,7 @@ futura contradicción.
 | Comando | Que hace |
 | --- | --- |
 | `/map-new` | Traza el mapa: nombra el destino, mapea la frontera, adopta o crea el Project, escribe el mapa en su overview y crea los primeros tickets. Sobre un Project que ya arrancó nunca se niega: muestra lo que encontró y pide confirmación una vez. |
-| `/map-work` | Resuelve un ticket. Nunca más de uno por sesión, salvo research. Sobre un Project que ya tiene milestones agrega el aterrizaje, después de resolver. |
+| `/map-work` | Resuelve un ticket. Nunca más de uno por sesión, salvo research. Sobre un Project que ya tiene milestones agrega el aterrizaje, después de resolver, salvo que el ticket lleve `hitl:pm` o `hitl:design`. Sobre un ticket cerrado que figura en `unlanded` solo aterriza, sin toma y sin chequeo de rol. |
 | `/map-collapse` | Colapsa el mapa en milestones e issues de ejecucion. |
 | `/map-status` | Lee el mapa y la frontera. No escribe. |
 | `/grill` | Grilla una idea, un plan o una decisión, sin mapa de por medio. Carga grilling y para. No es una operación del mapa. |
@@ -204,6 +209,11 @@ Lo que el adapter sabe hacer. Son doce, y los comandos se arman con ellas. El
 término canónico es el que aparece en el código. Tres no escriben: `preflight`,
 `frontier:query` y `map:read`.
 
+Toda operación que declara `--project`, salvo `map:create`, acepta el Project por su id,
+por su slug o por su URL, y también un ticket de decisión del mapa por su URL o por su
+identificador. La URL del Project y el ticket se resuelven al id del Project antes de
+operar, así que ninguna mutation recibe una URL donde espera un id.
+
 El `preflight` corre **una vez por conductor**, y conductor es un contexto de
 modelo que emite operaciones: la sesión es uno, cada subagente es uno, un
 subcomando no. Su salida es un blob opaco que reciben como `--ctx` las **siete**
@@ -222,9 +232,9 @@ está permitido, y es el mecanismo.
 | `map:write` | Escribir el mapa | Un read-modify-write entero adentro de una sola invocación. Recibe la edición como argumentos semánticos, nunca markdown: relee justo antes de escribir para que la ventana sean milisegundos y no la sesión. |
 | `ticket:create` | Crear un ticket | Los tickets de decisión de una pasada, en una sola invocación, cada uno con un cuerpo que es la pregunta y nada más. El tipo, el modo, el bloqueo y la toma viven en campos nativos del tracker. Es además el **único** que crea los labels del plugin que falten, los nueve, aunque no los use todos. Nunca crea `Discovery`. |
 | `ticket:block` | Bloquear | La relación nativa de bloqueo. Se escribe en una segunda pasada, porque los tickets tienen que existir para poder referenciarse. |
-| `frontier:query` | Consultar la frontera | Los tickets abiertos, sin bloqueantes abiertos y sin assignee, y además la cantidad de milestones del Project, que es lo único que distingue un mapa listo para colapsar de uno ya colapsado. |
+| `frontier:query` | Consultar la frontera | Los tickets abiertos, sin bloqueantes abiertos y sin assignee, y además la cantidad de milestones del Project, que es lo único que distingue un mapa listo para colapsar de uno ya colapsado, y las entregas de diseño abiertas, que solo lee el colapso. |
 | `ticket:claim` | Tomar | El primer write de la sesión. No se libera sola: una toma huérfana, la de una sesión que murió, deja el ticket fuera de la frontera hasta que alguien la saque a mano. La devolución deliberada es otra cosa y tiene su propio flag, `--release`: una sesión viva que devuelve el ticket porque el trabajo necesita otro rol, con una persona mirando. Es la única vía del plugin que limpia un assignee. |
-| `ticket:resolve` | Resolver | Los tickets nuevos, su cableado, el comentario, el estado y el mapa, en ese orden. El mapa siempre último. Las cinco escrituras van adentro de una sola invocación: el orden lo garantiza el adapter, nunca el modelo. Diferir el mapa es otra cosa y tiene su propio flag, `--defer-map`: con él corren las cuatro primeras escrituras y la quinta no, y en vez de escribir el mapa la operación imprime la línea que le habría puesto y los argumentos con los que otro conductor la escribe. Lo usa un subagente que resuelve su ticket sin tocar el recurso compartido. Vale igual para `ticket:rule-out`. |
+| `ticket:resolve` | Resolver | Los tickets nuevos, su cableado, el comentario, el estado y el mapa, en ese orden. El mapa siempre último. Las cinco escrituras van adentro de una sola invocación: el orden lo garantiza el adapter, nunca el modelo. Diferir el mapa es otra cosa y tiene su propio flag, `--defer-map`: con él corren las cuatro primeras escrituras y la quinta no, y en vez de escribir el mapa la operación imprime la línea que le habría puesto y los argumentos con los que otro conductor la escribe. Lo usa un subagente que resuelve su ticket sin tocar el recurso compartido. Vale igual para `ticket:rule-out`. Con `--design-delivery`, la entrega de diseño nace en la primera escritura. |
 | `ticket:rule-out` | Sacar de alcance | La única operación destructiva: cierra un ticket sin resolverlo. Su línea va a Fuera de alcance, nunca a Decisiones. |
 | `milestone:create` | Crear un milestone | Un corte demoable del colapso. Nunca lleva fecha. |
 | `work:write` | Escribir el trabajo | Lo que produce un colapso o un aterrizaje, en una sola invocación: las issues de ejecución en una llamada atómica, las relaciones `related` hacia su ticket de decisión, y el label `map:no-landing` cuando no hubo trabajo. La lista de issues puede venir vacía. Ninguna issue lleva label `map` y su cuerpo es un imperativo, no una pregunta. |

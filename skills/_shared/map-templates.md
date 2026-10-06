@@ -6,16 +6,18 @@ lang: es
 
 El texto que el plugin produce y que una persona lee en Linear: el overview del
 Project, el cuerpo de una issue de ejecución, el comentario que resuelve un
-ticket, y las dos viñetas que el mapa acumula. Va en español porque su lector
+ticket, las dos viñetas que el mapa acumula, y la entrega de diseño con el
+comentario que la cierra. Va en español porque su lector
 final es una persona y no el modelo.
 
 Cada plantilla vive adentro de un bloque cercado. Los encabezados de nivel dos de
 este archivo son de este archivo; los que cuentan como plantilla son los que están
 adentro de la cerca. Sin esa separación los dos serían indistinguibles.
 
-Ninguna plantilla se escribe a mano contra Linear: las escribe el adapter. Lo que
-está acá es la forma que el adapter produce, para que el modelo sepa qué va en
-cada argumento y la persona sepa qué va a leer.
+Ninguna plantilla se escribe a mano contra Linear salvo una: las escribe el
+adapter. Lo que está acá es la forma que el adapter produce, para que el modelo
+sepa qué va en cada argumento y la persona sepa qué va a leer. La excepción es el
+comentario que cierra una entrega de diseño, que escribe Diseño a mano.
 
 ## El DD
 
@@ -87,14 +89,15 @@ descartó. Una alternativa descartada leída antes de la razón no se entiende.
 
 ## Decisiones hasta ahora (ejemplo)
 
-Una decisión ocupa una línea física y nada más: el enlace del ticket, dos puntos,
-y el gist. El gist tiene tope de 120 caracteres, y el detalle vive en el
+Una decisión ocupa una línea física y nada más: el identificador del ticket
+enlazado a su url entre ángulos, dos puntos fuera del enlace, y el gist. Hay una
+sola línea por ticket. El gist tiene tope de 120 caracteres, y el detalle vive en el
 comentario de resolución del ticket, que el enlace ya alcanza. El índice con el
 formato colapsable que esta forma reemplazó se comía dos tercios del documento con
 diez entradas.
 
 ```
-- https://linear.app/keiron/issue/CRM-3401: el tracker es Linear y el mapa vive en el overview del Project
+- [CRM-3401](<https://linear.app/keiron/issue/CRM-3401>): el tracker es Linear y el mapa vive en el overview del Project
 ```
 
 ## La niebla (ejemplo)
@@ -113,3 +116,47 @@ y es el título lo que se pasa para graduarla.
 
 Una entrada de `## Fuera de alcance` lleva la misma forma, con su título en
 negrita, y su título es también su clave única.
+
+## El cuerpo de una entrega de diseño
+
+La issue `Diseño terminado: <la vista>` que nace al cerrar un ticket de decisión
+con `hitl:design`, en la misma escritura que los tickets nuevos. Lleva
+`hitl:design` y `map:design-delivery`, no lleva `map` y la asigna el adapter a
+quien cerró la decisión. Su cuerpo es la propuesta escrita que Diseño aprobó en la
+rama de propuesta escrita de prototype, con sus cuatro partes, y abre con el
+enlace al ticket de decisión: la entrega no tiene relación con él, así que el
+enlace es lo único que las une.
+
+```
+Decisión: <enlace al ticket de decisión>
+
+## Para qué es la vista
+
+## Qué debe tener
+
+## Qué considerar
+
+## Qué queda abierto
+```
+
+## El comentario que cierra una entrega de diseño
+
+La única plantilla que no escribe el adapter: la escribe Diseño a mano en Linear al
+cerrar la entrega, y ningún comando la cierra. El diseño vive en Claude Design, así
+que el comentario lleva su link vivo y nunca una copia congelada.
+
+```
+## Quién eligió
+
+## El diseño
+
+El link vivo de Claude Design.
+
+## Por qué así
+
+## A quién se mostró
+
+## Alternativas
+
+Cuáles hubo y cuál ganó.
+```

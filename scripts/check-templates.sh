@@ -216,10 +216,53 @@ elif grep -qF "$STUB" "$MAP_NEW"; then
   fail "[68] $MAP_NEW todavía lleva el literal del stub del paso 6, y el paso no puede decir que no existe al lado del despacho que lo implementa"
 fi
 
+# --- afirmación 80: las dos plantillas de la entrega de diseño ----------------------
+
+ENTREGA="$(printf '%s\n' \
+  "Para qué es la vista" \
+  "Qué debe tener" \
+  "Qué considerar" \
+  "Qué queda abierto")"
+CIERRE="$(printf '%s\n' \
+  "Quién eligió" \
+  "El diseño" \
+  "Por qué así" \
+  "A quién se mostró" \
+  "Alternativas")"
+
+cuerpo_entrega="$(bloque "## El cuerpo de una entrega de diseño" || true)"
+require_nonempty "$cuerpo_entrega" "[80] el bloque del cuerpo de una entrega de diseño de $PLANTILLAS dio vacío; su encabezado se renombró o su cerca se movió"
+d="$(diferencia "$(printf '%s\n' "$cuerpo_entrega" | sed -n 's/^## //p')" "$ENTREGA")"
+if [ -n "$d" ]; then
+  fail "[80] las secciones del cuerpo de una entrega de diseño de $PLANTILLAS no son las cuatro de la propuesta escrita: $d"
+fi
+if [ "$(printf '%s\n' "$cuerpo_entrega" | grep -c . || true)" -gt 0 ] \
+   && ! printf '%s\n' "$cuerpo_entrega" | head -n 1 | grep -q '^Decisión: '; then
+  fail "[80] el cuerpo de una entrega de diseño de $PLANTILLAS no abre con la línea Decisión: que enlaza el ticket de decisión"
+fi
+
+cierre="$(bloque "## El comentario que cierra una entrega de diseño" || true)"
+require_nonempty "$cierre" "[80] el bloque del comentario que cierra una entrega de diseño de $PLANTILLAS dio vacío; su encabezado se renombró o su cerca se movió"
+d="$(diferencia "$(printf '%s\n' "$cierre" | sed -n 's/^## //p')" "$CIERRE")"
+if [ -n "$d" ]; then
+  fail "[80] las secciones del comentario que cierra una entrega de diseño de $PLANTILLAS no son las cinco de la plantilla: $d"
+fi
+# Seis campos en cinco secciones: el link vivo va adentro de El diseño, y la que ganó
+# adentro de Alternativas.
+if ! printf '%s\n' "$cierre" | grep -qF "Claude Design"; then
+  fail "[80] el comentario que cierra una entrega de diseño de $PLANTILLAS no pide el link vivo de Claude Design"
+fi
+if ! printf '%s\n' "$cierre" | grep -qF "cuál ganó"; then
+  fail "[80] el comentario que cierra una entrega de diseño de $PLANTILLAS no pide cuál de las alternativas ganó"
+fi
+if grep -qi "captura" "$PLANTILLAS"; then
+  fail "[80] $PLANTILLAS nombra una captura, y la fuente del diseño es el link vivo de Claude Design, nunca una copia congelada"
+fi
+
 report
 
 # Cardinales derivados y no escritos, igual que los de check-language y check-roster.
 n_anclas="$(printf '%s\n' "$anclas" | grep -c . || true)"
 n_resolucion="$(printf '%s\n' "$resolucion" | grep -c . || true)"
 n_comandos="$(printf '%s\n' "$comandos" | grep -c . || true)"
-echo "$CHECK_NAME: OK - $PLANTILLAS lleva las $n_anclas anclas del DD que escribe $ADAPTER, las secciones del cuerpo de ejecución y las $n_resolucion del comentario de resolución en su orden, una decisión por línea física y $n_titulos títulos de niebla distintos, ni las plantillas ni los $n_comandos archivos de commands/ llevan bloques colapsables, y el paso 6 de $MAP_NEW ya no lleva el literal del stub"
+echo "$CHECK_NAME: OK - $PLANTILLAS lleva las $n_anclas anclas del DD que escribe $ADAPTER, las secciones del cuerpo de ejecución y las $n_resolucion del comentario de resolución en su orden, una decisión por línea física, $n_titulos títulos de niebla distintos y las dos plantillas de la entrega de diseño sin ninguna captura, ni las plantillas ni los $n_comandos archivos de commands/ llevan bloques colapsables, y el paso 6 de $MAP_NEW ya no lleva el literal del stub"

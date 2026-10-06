@@ -310,7 +310,7 @@ else:
             and invocado(n.args[0].func) == "json.dumps"):
         fail("[36] el argumento del único print a stdout no es un json.dumps")
 
-# --- afirmación 37: las nueve claves y discovery separado ---------------------
+# --- afirmación 37: las diez claves y discovery separado ----------------------
 etiquetas = []
 for n in ARBOL.body:
     if isinstance(n, ast.Assign) and any(getattr(x, "id", None) == "LABELS"
@@ -1164,12 +1164,13 @@ else:
         fail("[38] la función que crea labels no compara nada contra None, así que no "
              "distingue el que falta del que ya está")
 
-# --- afirmación 54: lo que crea son los nueve de LABELS, map:no-landing incluido --
+# --- afirmación 54: lo que crea son los diez de LABELS, con los dos que no son tipo --
 
 # El cardinal NO se escribe acá y es a propósito: su casa es la celda Afirmación de la
 # fila 54, y la 37 ya ata LABELS a la tabla del glosario por igualdad de conjuntos, así
-# que un décimo elemento la pone roja. Lo que esta afirmación agrega es que la función
-# que crea recorra esa constante y no una copia propia, y que map:no-landing esté.
+# que un undécimo elemento la pone roja. Lo que esta afirmación agrega es que la función
+# que crea recorra esa constante y no una copia propia, y que los dos labels que no son
+# tipo estén.
 if len(_CREAN_LABEL) == 1:
     _RECORRIDAS = [n.iter.id for n in ast.walk(FUNCS[_CREAN_LABEL[0]])
                    if isinstance(n, ast.For) and isinstance(n.iter, ast.Name)]
@@ -1181,6 +1182,9 @@ elif len(_CREAN_LABEL) > 1:
 if "map:no-landing" not in etiquetas:
     fail("[54] map:no-landing no está en LABELS, así que ticket:create no lo crea "
          "cuando falta y un aterrizaje sin trabajo se queda sin su marcador")
+if "map:design-delivery" not in etiquetas:
+    fail("[54] map:design-delivery no está en LABELS, así que ticket:create no lo crea "
+         "cuando falta y la entrega de diseño nace sin su marcador")
 
 # --- afirmación 41: la cadena de cinco mutations de las dos resoluciones ----------
 
@@ -1418,7 +1422,7 @@ for _op64 in ("ticket:resolve", "ticket:rule-out"):
 # todo el archivo, portado a dos literales de string. Cada fila lleva el literal, la
 # función que tiene que ser su única casa, y las puntas que tienen que llamarla por
 # Name en vez de armar la cadena por su cuenta.
-CASAS_65 = [("- %s: %s", "_linea_de_decision",
+CASAS_65 = [("- [%s](<%s>): %s", "_linea_de_decision",
              ["_ediciones_de", "cmd_ticket_resolve"]),
             ("- %s", "_linea_de_vineta",
              ["_niebla_de", "_ediciones_de", "cmd_ticket_rule_out"])]
@@ -1744,7 +1748,28 @@ if _RESOLUTION_HITS:
     fail("[69] estas funciones alcanzables desde una resolución nombran "
          "COLLAPSE_ANCHOR: %s" % _RESOLUTION_HITS)
 
+# --- afirmación 78: una sola función valida el cuerpo de varias líneas ---------------
+
+# La mitad de runtime vive en check-map.sh; esta es la mitad que el harness no ve: que
+# las dos puntas que reciben un cuerpo de issue lo pasen por la misma función, y que
+# ninguna arme su propia normalización.
+_BODY_CALLERS = sorted(nm for nm in FUNCS
+                       if any(isinstance(n, ast.Call)
+                              and invocado(n.func) == "_validate_body"
+                              for n in ast.walk(FUNCS[nm])))
+require_nonempty(_BODY_CALLERS,
+                 "[78] ninguna función de %s llama a _validate_body por Name; la "
+                 "afirmación probaría sobre el conjunto vacío" % ADAPTER)
+if _BODY_CALLERS != ["_design_delivery_from", "_work_from"]:
+    fail("[78] _validate_body la llaman %s, y tienen que llamarla exactamente "
+         "_work_from y _design_delivery_from" % _BODY_CALLERS)
+if "_work_from" not in alcanzable(handler.get("work:write")):
+    fail("[78] _work_from no es alcanzable desde el handler de work:write")
+if "_design_delivery_from" not in alcanzable(handler.get("ticket:resolve")):
+    fail("[78] _design_delivery_from no es alcanzable desde el handler de "
+         "ticket:resolve")
+
 report()
-print("%s: OK - las treinta y cuatro afirmaciones de AST sobre %s cierran, bajo Python "
+print("%s: OK - las treinta y cinco afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))
