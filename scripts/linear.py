@@ -29,6 +29,7 @@ DISCOVERY = "Discovery"
 # nace al cerrar una decisión de Diseño. Ningún ticket de decisión lleva esos dos.
 TIPOS = LABELS[1:5]
 HITL = LABELS[5:8]
+HITL_DESIGN = HITL[1]
 DESIGN_DELIVERY = LABELS[9]
 
 # El nombre del label del mapa, no su id: el ctx que cierra /map-new todavía dice
@@ -826,9 +827,32 @@ def _destino_corregido(texto):
 
 
 def _cuerpo_de_secciones(args):
-    """El markdown del comentario de resolución, armado por el adapter y nunca por el
-    modelo. Valida antes de renderizar: acá se rompe todo lo que se pueda romper sin
-    haber tocado la red. La comparten las dos operaciones que cierran un ticket.
+    """El markdown del comentario de resolución sin entrega de diseño. La comparten las
+    dos operaciones que cierran un ticket."""
+    return _render_sections(_sections_from(args))
+
+
+def _delivery_line(issue):
+    """La línea que nombra la entrega de diseño en Tickets nuevos. Su identificador
+    existe recién después de la escritura 1, así que la agrega el adapter y nunca la
+    skill."""
+    return "Entrega de diseño: [%s](<%s>)" % (issue.get("identifier"), issue.get("url"))
+
+
+def _render_sections(sections, delivery=None):
+    """El markdown del comentario, armado por el adapter y nunca por el modelo, sobre
+    las secciones que _sections_from ya validó. Con la entrega, Tickets nuevos gana al
+    final la línea que la nombra."""
+    lines = dict((name, list(sections[name])) for name in SECCIONES)
+    if delivery is not None:
+        lines[SECCIONES[4]].append(_delivery_line(delivery))
+    return "\n\n".join("## %s\n\n%s" % (name, "\n".join(lines[name]))
+                       for name in SECCIONES)
+
+
+def _sections_from(args):
+    """Las líneas de cada sección del comentario de resolución, validadas: acá se rompe
+    todo lo que se pueda romper sin haber tocado la red.
 
     El orden ADENTRO de una sección es el de la línea de comandos. El orden ENTRE
     secciones lo pone SECCIONES y nunca el argv, así que dos invocaciones con las mismas
@@ -859,8 +883,7 @@ def _cuerpo_de_secciones(args):
             % ", ".join(faltantes),
             "pasá al menos un --section por cada una de las seis; cuando no hay nada "
             "que nombrar, la línea lo dice explícito, por ejemplo ninguna")
-    return "\n\n".join("## %s\n\n%s" % (nombre, "\n".join(lineas[nombre]))
-                       for nombre in SECCIONES)
+    return lineas
 
 
 def _validar_ticket(etiqueta, titulo, cuerpo, etiquetas):
@@ -1021,7 +1044,7 @@ def _resolucion_de(args):
     la función pura primero, después leer_key, y recién entonces la red."""
     ctx = _ctx_de(args)
     issue = _issue_de(args)
-    cuerpo = _cuerpo_de_secciones(args)
+    sections = _sections_from(args)
     _sin_saltos("--gist", args.gist)
     if not args.gist.strip():
         die(SIN_KEY, "--gist llegó vacío o con espacios solos: %r" % args.gist,
@@ -1035,11 +1058,71 @@ def _resolucion_de(args):
                   for t, v in args.replace_out_of_scope]
     destino = _destino_de_la_resolucion(args)
     tickets = [_validar_ticket("--new-ticket", t, c, e) for t, c, e in args.new_ticket]
-    return {"ctx": ctx, "issue": issue, "cuerpo": cuerpo, "gist": args.gist,
+    return {"ctx": ctx, "issue": issue, "sections": sections, "gist": args.gist,
             "niebla": niebla, "graduadas": graduadas, "fuera": fuera,
             "reemplazos": reemplazos, "destino": destino,
             "tickets": tickets, "pares": _cableado_de(args, tickets),
+            "delivery": _design_delivery_from(args, ctx, tickets),
             "esperadas": _esperadas_de(args)}
+
+
+def _design_delivery_from(args, ctx, tickets):
+    """Pura: la entrega de diseño validada, (título, cuerpo), o None sin el flag. Nada
+    de esto necesita la red, así que todo aborta antes del primer POST."""
+    if not args.design_delivery:
+        return None
+    title, body = args.design_delivery
+    _sin_saltos("--design-delivery", title)
+    if not title.strip():
+        die(SIN_KEY, "--design-delivery recibió un título vacío",
+            "el título de la entrega es Diseño terminado: y la vista")
+    body = _validate_body("--design-delivery", body)
+    labels = ctx.get("labels") or {}
+    missing = [name for name in (HITL_DESIGN, DESIGN_DELIVERY)
+               if labels.get(name) is None]
+    if missing:
+        die(SIN_KEY,
+            "estos labels que la entrega de diseño necesita vinieron en null en el "
+            "ctx: %s" % ", ".join(missing),
+            "corré /map-new en este workspace: es quien crea los labels del plugin "
+            "cuando faltan, y esta operación nunca los crea por su cuenta")
+    if ctx.get("viewer") is None:
+        die(SIN_KEY,
+            "el preflight no resolvió el viewer, así que la entrega de diseño no tiene "
+            "a quién asignarse",
+            "corré el preflight de nuevo: el ctx que tenés no dice quién sos")
+    # La entrega se separa de los tickets nuevos por título en la respuesta del lote.
+    if title in [t for t, _, _ in tickets]:
+        die(SIN_KEY,
+            "--design-delivery repite el título %s de un --new-ticket de esta misma "
+            "invocación" % title,
+            "dale a la entrega un título propio: Diseño terminado: y la vista")
+    return (title, body)
+
+
+def _split_delivery(issues, title):
+    """Pura: separa la entrega de los tickets nuevos en la respuesta del lote, por
+    título, porque Linear no promete el orden de issues. Devuelve (tickets, entrega),
+    con la entrega en None cuando no vino."""
+    tickets = [i for i in issues if title is None or i.get("title") != title]
+    found = [i for i in issues if title is not None and i.get("title") == title]
+    return tickets, (found[0] if found else None)
+
+
+def _require_hitl_design(payload, identifier):
+    """Pura: la lectura previa de una resolución con entrega. Un ticket que no existe
+    sale con NO_ES_DEL_MAPA; uno sin hitl:design aborta antes de toda escritura."""
+    node = _searched_node(payload, "issue", "el ticket %s" % identifier,
+                          "pasá el identificador del ticket que se está cerrando, tal "
+                          "como lo devolvió frontier:query")
+    names = [label.get("name") for label in
+             ((node.get("labels") or {}).get("nodes") or [])]
+    if HITL_DESIGN not in names:
+        die(SIN_KEY,
+            "--design-delivery crea la entrega de una decisión de Diseño, y el ticket "
+            "%s no lleva %s. Nada se escribió" % (identifier, HITL_DESIGN),
+            "sacá --design-delivery: la entrega nace solo al cerrar un ticket que "
+            "lleva %s" % HITL_DESIGN)
 
 
 def _graduaciones_de(args):
@@ -1746,12 +1829,15 @@ def _crear_labels_faltantes(ctx, key):
     return labels, creados
 
 
-def _crear_tickets(ctx, project, labels, tickets, key):
+def _crear_tickets(ctx, project, labels, tickets, key, delivery=None):
     """La escritura del lote de tickets de decisión, en una sola llamada atómica. Recibe
     el dict de labels YA resuelto y NO crea ninguno: la única casa que crea labels sigue
     siendo _crear_labels_faltantes, y quien la llama sigue siendo solo cmd_ticket_create.
     Cortar acá es lo que deja que las operaciones de resolución reusen esta escritura sin
-    convertirse en una segunda creadora de labels. Devuelve (ok, detalle, issues)."""
+    convertirse en una segunda creadora de labels. Devuelve (ok, detalle, issues).
+
+    delivery, cuando viene, es la entrega de diseño (título, cuerpo): una entrada más del
+    mismo lote, sin map, así que ni la frontera ni el aterrizaje la ven."""
     # Discovery se usa cuando está y se saltea en silencio cuando no. Nunca se crea.
     comunes = [labels[LABEL_MAPA]]
     if ctx.get("discovery") is not None:
@@ -1764,6 +1850,12 @@ def _crear_tickets(ctx, project, labels, tickets, key):
                          "title": titulo, "description": cuerpo,
                          "stateId": ctx["default"], "estimate": 0,
                          "labelIds": comunes + [labels[n] for n in nombres]})
+    if delivery is not None:
+        title, body = delivery
+        entradas.append({"teamId": ctx["team"], "projectId": project,
+                         "title": title, "description": body,
+                         "stateId": ctx["default"], "assigneeId": ctx["viewer"],
+                         "labelIds": [labels[HITL_DESIGN], labels[DESIGN_DELIVERY]]})
     return _resolver_tickets(_post(ISSUE_BATCH_CREATE, {"issues": entradas}, key))
 
 
@@ -2135,24 +2227,42 @@ def cmd_ticket_resolve(args):
             "corré /map-new en este workspace: es quien crea los labels del plugin "
             "cuando faltan, y esta operación nunca los crea por su cuenta")
     key = leer_key()
+    if plan["delivery"]:
+        _require_hitl_design(
+            _post(ISSUE_PROJECT_QUERY, {"issue": plan["issue"]}, key), plan["issue"])
     # Solo las ediciones que corrigen lo que ya está pueden apuntar a algo que no existe.
     # Sin ellas no hay ensayo y la resolución no gasta ningún round trip de más.
     if plan["reemplazos"] or plan["destino"] is not None:
         _ensayar_ediciones(args.project, _ediciones_de_la_resolucion(plan), key)
-    issues, escritos = [], []
-    if plan["tickets"]:
+    issues, escritos, delivery = [], [], None
+    if plan["tickets"] or plan["delivery"]:
         ok, detalle, issues = _crear_tickets(ctx, args.project, labels,
-                                             plan["tickets"], key)
+                                             plan["tickets"], key, plan["delivery"])
         if not ok:
             die(SIN_KEY,
                 "el issueBatchCreate no confirmó y NO SE SABE si los tickets nuevos "
-                "quedaron escritos: un rechazo y una respuesta perdida no se "
-                "distinguen: %s. El cableado, el comentario, el estado y el mapa no "
-                "se intentaron" % detalle,
+                "o la entrega de diseño quedaron escritos: un rechazo y una respuesta "
+                "perdida no se distinguen: %s. El cableado, el comentario, el estado "
+                "y el mapa no se intentaron" % detalle,
                 "mirá en Linear si los tickets nuevos de esta resolución existen "
                 "ANTES de volver a correr: si no están, repetí la misma invocación "
                 "entera; si están, no la repitas, porque repetirla tras un lote que "
                 "aterrizó duplica cada ticket y este adaptador no sabe borrarlos")
+        issues, delivery = _split_delivery(
+            issues, plan["delivery"][0] if plan["delivery"] else None)
+        if plan["delivery"] and delivery is None:
+            die(SIN_KEY,
+                "el issueBatchCreate confirmó y su respuesta no trae la entrega de "
+                "diseño %s: los tickets nuevos y la entrega pueden haber quedado "
+                "escritos. El cableado, el comentario, el estado y el mapa no se "
+                "intentaron" % plan["delivery"][0],
+                "mirá en Linear si los tickets nuevos y la entrega existen ANTES de "
+                "volver a correr: si están, corré esta misma invocación sin "
+                "--new-ticket, --block ni --design-delivery, con un --section en "
+                "Tickets nuevos que nombre la entrega")
+    # Desde acá la entrega ya existe: repetir la invocación con el flag la duplicaría.
+    named = (" y sumá en Tickets nuevos un --section que nombre la entrega %s, que ya "
+             "existe" % delivery.get("identifier")) if delivery else ""
     if plan["pares"]:
         # Los títulos se resuelven a ids recién acá, con lo que devolvió la escritura 1.
         por_titulo = dict((i.get("title"), i.get("id")) for i in issues)
@@ -2163,15 +2273,18 @@ def cmd_ticket_resolve(args):
                 "%s. Los tickets nuevos ya quedaron escritos, y de los bloqueos "
                 "entraron %s" % (detalle, len(escritos)),
                 "corré ticket:block solo con los pares que faltan, y después esta "
-                "misma invocación sin --new-ticket ni --block: el comentario, el "
-                "estado y el mapa todavía no se escribieron")
-    ok, detalle, comentario = _comentar(plan["issue"], plan["cuerpo"], key)
+                "misma invocación sin --new-ticket, --block ni --design-delivery%s: "
+                "el comentario, el estado y el mapa todavía no se escribieron"
+                % named)
+    ok, detalle, comentario = _comentar(
+        plan["issue"], _render_sections(plan["sections"], delivery), key)
     if not ok:
         die(SIN_KEY,
             "el comentario de resolución no se pudo escribir: %s. Los tickets nuevos y "
             "su cableado ya quedaron escritos" % detalle,
-            "volvé a correr esta misma invocación sin --new-ticket ni --block: el "
-            "estado y el mapa todavía no se escribieron")
+            "volvé a correr esta misma invocación sin --new-ticket, --block ni "
+            "--design-delivery%s: el estado y el mapa todavía no se escribieron"
+            % named)
     ok, detalle, issue = _cambiar_estado(plan["issue"], {"stateId": ctx["done"]}, key)
     if not ok:
         # _post traga la falla de transporte, así que un timeout acá no distingue "el
@@ -2205,6 +2318,10 @@ def cmd_ticket_resolve(args):
               "tickets": [{"identifier": i.get("identifier"), "id": i.get("id"),
                            "title": i.get("title"), "url": i.get("url")}
                           for i in issues],
+              "designDelivery": {"identifier": delivery.get("identifier"),
+                                 "id": delivery.get("id"),
+                                 "title": delivery.get("title"),
+                                 "url": delivery.get("url")} if delivery else None,
               "blocks": [{"blocker": b, "blocked": d} for b, d in escritos],
               "mapWritten": not args.defer_map, "mapLine": linea, "mapArgs": flags,
               "noop": []}
@@ -2652,6 +2769,9 @@ def construir_parser():
                                   default=[], metavar=("TITULO", "VINETA"))
     p_ticket_resolve.add_argument("--amend-destination", metavar="DESTINO")
     p_ticket_resolve.add_argument("--expect-sections")
+    # No repetible: una decisión de Diseño cierra con una sola entrega.
+    p_ticket_resolve.add_argument("--design-delivery", nargs=2,
+                                  metavar=("TITULO", "CUERPO"))
     # Directo del subparser y NUNCA adentro de un grupo mutuamente excluyente: ahí el
     # extractor de check-adapter.py no lo vería y la afirmación 64 probaría sobre el
     # conjunto vacío, que es el mismo motivo por el que --project y --name de

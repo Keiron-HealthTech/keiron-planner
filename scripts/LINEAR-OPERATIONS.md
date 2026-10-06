@@ -25,7 +25,7 @@ para que el adapter tenga su contrato a mano.
 | `ticket:block` | La relación nativa de bloqueo, en una segunda pasada. |
 | `frontier:query` | Los tickets abiertos, sin bloqueantes abiertos y sin assignee, y las entregas de diseño abiertas. |
 | `ticket:claim` | Tomar. El primer write de la sesión, y con `--release` la escritura inversa, que devuelve la toma. |
-| `ticket:resolve` | Las cinco escrituras de una resolución, en una sola invocación, y con `--defer-map` solo las cuatro primeras: la quinta no se manda y la línea que le tocaba sale por stdout. |
+| `ticket:resolve` | Las cinco escrituras de una resolución, en una sola invocación, y con `--defer-map` solo las cuatro primeras: la quinta no se manda y la línea que le tocaba sale por stdout. Con `--design-delivery`, la entrega de diseño nace en la primera. |
 | `ticket:rule-out` | Cierra un ticket sin resolverlo. La única destructiva. Acepta `--defer-map` con el mismo efecto. |
 | `milestone:create` | Un corte demoable del colapso. Nunca lleva fecha. |
 | `work:write` | Lo que produce un colapso o un aterrizaje, en una sola invocación. |
@@ -315,7 +315,7 @@ es la remediación correcta y no duplica nada.
 
 ### `ticket:resolve`
 
-Catorce flags, y `--ctx`, `--project`, `--issue` y `--gist` son los cuatro requeridos:
+Quince flags, y `--ctx`, `--project`, `--issue` y `--gist` son los cuatro requeridos:
 
     --ctx              el blob del preflight, opaco.
     --project          el Project cuyo overview lleva el mapa, en cualquiera de las
@@ -348,6 +348,11 @@ Catorce flags, y `--ctx`, `--project`, `--issue` y `--gist` son los cuatro reque
                        el Destino corregido entero, en una sola línea. Alguna línea de
                        --section "Qué corrige o empuja" tiene que nombrar el Destino.
     --expect-sections  el JSON de huellas que map:read emitió, para el aviso de deriva.
+    --design-delivery  TITULO CUERPO, no repetible. La entrega de diseño de una decisión
+                       de Diseño: la issue que nace en la escritura 1, adentro del mismo
+                       issueBatchCreate de los --new-ticket. El título es de una línea;
+                       el cuerpo puede tener varias y pasa por la misma validación que el
+                       cuerpo de work:write --issue. Solo sobre un ticket con hitl:design.
     --defer-map        booleano. Difiere la quinta escritura a otro conductor: las
                        cuatro primeras corren igual, la quinta no se manda, y la línea
                        que le tocaba sale por stdout en mapLine y mapArgs. Con el flag
@@ -362,6 +367,23 @@ sus ediciones sin escribir: un título que no existe o un encabezado que falta a
 con nada escrito. El ensayo corre también con `--defer-map`, porque leer el mapa no es
 escribirlo. La quinta escritura relee igual, así que un título borrado entre las dos
 lecturas aborta en la quinta, con la remediación de su fila.
+
+Con `--design-delivery` la resolución lee el ticket antes de la primera escritura, con
+`ISSUE_PROJECT_QUERY`, y sin `hitl:design` entre sus labels aborta con nada escrito. Esa
+lectura es la que hace que un `--issue` que no existe salga con `NO_ES_DEL_MAPA`, que es 8,
+en vez de fallar en el comentario. La entrega va en el mismo lote que los tickets nuevos,
+así que la resolución sigue en cinco escrituras: lleva `hitl:design` y
+`map:design-delivery`, no lleva `map`, ni Discovery, ni `estimate`, ni milestone, y la
+asigna al `viewer` del ctx. Sin `map`, ni la frontera ni el aterrizaje la ven. No se
+relaciona con la decisión: su cuerpo la enlaza. El título no puede repetir el de un
+`--new-ticket`, porque la entrega se separa de los tickets por título en la respuesta del
+lote. Con `hitl:design` o `map:design-delivery` en null en el ctx, o sin `viewer`, aborta
+antes de la red: esta operación no crea labels, y el remedio es `/map-new`.
+
+El comentario nombra la entrega: al final de `Tickets nuevos` el adapter agrega la línea
+`Entrega de diseño: [CRM-N](<url>)`, con lo que devolvió la escritura 1. La sección igual
+tiene que llegar con al menos un `--section` propio, porque las seis se validan antes de
+la red y esa validación no sabe de la entrega.
 
 No hay `--append-decision`, y su ausencia es la decisión: el enlace de la línea del
 mapa sale de `issue.url`, que la escritura 4 devuelve en su propio round trip. Así es
@@ -378,7 +400,7 @@ garantiza y ninguna combinación de flags reordena:
 
 | Nº | Mutation | Cuándo |
 | --- | --- | --- |
-| 1 | `issueBatchCreate` | solo si hay al menos un `--new-ticket` |
+| 1 | `issueBatchCreate` | solo si hay al menos un `--new-ticket` o un `--design-delivery` |
 | 2 | `issueRelationCreate` | solo si hay al menos un `--block` |
 | 3 | `commentCreate` | siempre |
 | 4 | `issueUpdate` | siempre, con `stateId` en el `done` del ctx |
@@ -401,10 +423,11 @@ distingue a cada uno es qué dice que aterrizó y cómo terminar a mano:
 | Falla en | Qué quedó escrito | Remediación que imprime |
 | --- | --- | --- |
 | antes de la red | nada | corregir la invocación; el transporte no se llamó ni una vez |
+| la lectura previa, con `--design-delivery` | nada | sacar `--design-delivery` si el ticket no lleva `hitl:design`; con un ticket que no existe, sale con `NO_ES_DEL_MAPA` y pide el identificador correcto |
 | el ensayo, con `--replace-out-of-scope` o `--amend-destination` | nada | corregir el título o el encabezado que el mensaje nombra, y volver a correr la misma invocación |
-| 1, `issueBatchCreate` | nada | volver a correr la misma invocación entera |
-| 2, `issueRelationCreate` | los tickets nuevos, y cuántos bloqueos entraron | `ticket:block` con los pares que faltan, y después esta misma invocación sin `--new-ticket` ni `--block` |
-| 3, `commentCreate` | los tickets y su cableado | esta misma invocación sin `--new-ticket` ni `--block` |
+| 1, `issueBatchCreate` | incierto: un rechazo y una respuesta perdida no se distinguen | mirar en Linear si los tickets nuevos existen; si no están, volver a correr la misma invocación entera. Un lote que confirma sin traer la entrega también aborta acá, antes del comentario |
+| 2, `issueRelationCreate` | los tickets nuevos y la entrega, y cuántos bloqueos entraron | `ticket:block` con los pares que faltan, y después esta misma invocación sin `--new-ticket`, `--block` ni `--design-delivery`; con entrega, sumando en `Tickets nuevos` un `--section` que la nombre |
+| 3, `commentCreate` | los tickets, la entrega y su cableado | esta misma invocación sin `--new-ticket`, `--block` ni `--design-delivery`; con entrega, sumando en `Tickets nuevos` un `--section` que la nombre |
 | 4, `issueUpdate` | los tickets, el cableado y **el comentario**; el estado en sí queda incierto, porque un timeout no distingue que el `issueUpdate` no haya llegado de que haya llegado y se perdió la respuesta | fijarse en Linear si el ticket ya cambió de estado antes de tocarlo a mano, y después correr `map:write`: repetir la invocación duplicaría el comentario. Nombra además los flags del mapa pendientes, de niebla y de corrección, para que lo ya validado contra el comentario no se pierda en silencio |
 | 5, `projectUpdate` | todo menos la línea del mapa | **la invocación exacta de `map:write` que falta**, impresa con su `--project`, la url real, el gist y los flags del mapa que correspondan |
 
@@ -420,10 +443,12 @@ ya tiene el project, la url que le devolvió el `issueUpdate` y el gist. Es tamb
 razón por la que la quinta no reintenta. El mensaje nunca sugiere repetir
 `ticket:resolve`, que recrearía los tickets nuevos y volvería a postear el comentario.
 
-stdout, una sola línea de JSON compacto, con nueve claves siempre presentes: `issue`,
+stdout, una sola línea de JSON compacto, con diez claves siempre presentes: `issue`,
 `url`, `comment` con el enlace del comentario recién escrito, `tickets` con los que se
-crearon, `blocks` con los pares que quedaron cableados, `mapWritten`, `mapLine`,
+crearon, `designDelivery` con la entrega (`identifier`, `id`, `title` y `url`) o `null`
+sin el flag, `blocks` con los pares que quedaron cableados, `mapWritten`, `mapLine`,
 `mapArgs` y `noop` con los títulos de `--remove-fog` que no matchearon ninguna viñeta.
+`tickets` nunca incluye la entrega.
 
 `mapWritten` dice si la quinta escritura ocurrió de verdad en esa corrida: `true` sin el
 flag, `false` con él. `mapLine` es la línea completa del mapa, con su marcador, la misma
@@ -454,7 +479,9 @@ los tiene de primera mano.
 
 ### `ticket:rule-out`
 
-La misma superficie que `ticket:resolve` salvo una fila, y esa fila es la operación:
+La misma superficie que `ticket:resolve` salvo cinco filas. No tiene `--gist`, ni los
+tres flags de corrección, ni `--design-delivery`: una decisión que cae fuera de alcance
+no deja nada que diseñar. Y tiene una fila propia, que es la operación:
 
     --out-of-scope   la viñeta entera de Fuera de alcance, con su título en negrita,
                      validada por _validar_vineta, la misma que valida las viñetas de
@@ -483,7 +510,7 @@ Es la **única operación destructiva del adapter**: cierra un ticket sin resolv
 comentario se escribe igual, con sus seis secciones, así que la decisión de sacarlo de
 alcance queda auditable en el ticket aunque el ticket quede cancelado.
 
-stdout, la misma forma que `ticket:resolve`, con las mismas nueve claves. Con
+stdout, la misma forma que `ticket:resolve` menos `designDelivery`, con nueve claves. Con
 `--defer-map`, `mapLine` es la viñeta entera con su marcador y `mapArgs` empieza con
 `--append-out-of-scope`: la línea de esta operación va a `## Fuera de alcance` también
 cuando el mapa lo escribe otro conductor.

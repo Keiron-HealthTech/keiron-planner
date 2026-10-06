@@ -1748,7 +1748,28 @@ if _RESOLUTION_HITS:
     fail("[69] estas funciones alcanzables desde una resolución nombran "
          "COLLAPSE_ANCHOR: %s" % _RESOLUTION_HITS)
 
+# --- afirmación 78: una sola función valida el cuerpo de varias líneas ---------------
+
+# La mitad de runtime vive en check-map.sh; esta es la mitad que el harness no ve: que
+# las dos puntas que reciben un cuerpo de issue lo pasen por la misma función, y que
+# ninguna arme su propia normalización.
+_BODY_CALLERS = sorted(nm for nm in FUNCS
+                       if any(isinstance(n, ast.Call)
+                              and invocado(n.func) == "_validate_body"
+                              for n in ast.walk(FUNCS[nm])))
+require_nonempty(_BODY_CALLERS,
+                 "[78] ninguna función de %s llama a _validate_body por Name; la "
+                 "afirmación probaría sobre el conjunto vacío" % ADAPTER)
+if _BODY_CALLERS != ["_design_delivery_from", "_work_from"]:
+    fail("[78] _validate_body la llaman %s, y tienen que llamarla exactamente "
+         "_work_from y _design_delivery_from" % _BODY_CALLERS)
+if "_work_from" not in alcanzable(handler.get("work:write")):
+    fail("[78] _work_from no es alcanzable desde el handler de work:write")
+if "_design_delivery_from" not in alcanzable(handler.get("ticket:resolve")):
+    fail("[78] _design_delivery_from no es alcanzable desde el handler de "
+         "ticket:resolve")
+
 report()
-print("%s: OK - las treinta y cuatro afirmaciones de AST sobre %s cierran, bajo Python "
+print("%s: OK - las treinta y cinco afirmaciones de AST sobre %s cierran, bajo Python "
       "%d.%d.%d" % (CHECK_NAME, ADAPTER,
                     sys.version_info[0], sys.version_info[1], sys.version_info[2]))

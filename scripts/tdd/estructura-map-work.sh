@@ -84,6 +84,8 @@ printf '%s\n' "$paso3" | grep -qF '`next_recommended: map-work`' && n "el paso 3
 # paso 10 daria verde sobre el paso equivocado.
 step8="$(awk '/^## Step 8,/{f=1} /^## Step 9,/{f=0} f' "$SKILL")"
 printf '%s\n' "$step8" | grep -qF 'ticket:resolve --ctx' || n "el paso 8 de $SKILL no invoca ticket:resolve"
+# Con hitl:design el paso 8 pasa la entrega, y el paso 10 la nombra en el reporte.
+printf '%s\n' "$step8" | grep -qF -- '--design-delivery' || n "el paso 8 de $SKILL no pasa --design-delivery a ticket:resolve"
 step9="$(awk '/^## Step 9,/{f=1} /^## Step 10,/{f=0} f' "$SKILL")"
 for op in "milestone:create" "work:write"; do
   printf '%s\n' "$step9" | grep -qF "$op" || n "el paso 9 de $SKILL no nombra $op, que es lo que el aterrizaje escribe"
@@ -101,6 +103,7 @@ for op in "milestone:create" "work:write"; do
   printf '%s\n' "$before_landing" | grep -qF "$op" && n "$SKILL nombra $op antes del paso 9, y solo el aterrizaje puede escribirlo"
   printf '%s\n' "$step10" | grep -qF "$op" && n "$SKILL nombra $op después del paso 9, y solo el aterrizaje puede escribirlo"
 done
+printf '%s\n' "$step10" | grep -qF 'design delivery' || n "el paso 10 de $SKILL no nombra la entrega de diseño en el reporte"
 printf '%s\n' "$step10" | grep -qF '`next_recommended: map-work`' || n "el paso 10 de $SKILL no cierra con ningun token"
 grep -qF "ticket:claim --ctx" "$SKILL" || n "$SKILL no invoca ticket:claim en su paso 6"
 grep -qF 'Pass no `--release` here' "$SKILL" || n "$SKILL no dice que el paso 6 va sin --release"

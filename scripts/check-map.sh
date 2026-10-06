@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 . scripts/_common.sh
 
-# Afirmaciones 60, 47, 61, 66, 73, 74, 75, 77 y 78.
+# Afirmaciones 60, 47, 61, 66, 73, 74, 75, 76, 77 y 78.
 
 adapter=scripts/linear.py
 
@@ -155,7 +155,7 @@ CREAR = ["map:create", "--ctx", CTX, "--destino", DESTINO]
 # Dos acumuladores y no uno: este harness lleva los desenlaces de dos afirmaciones, y
 # un [N] que no distinga cuál falló manda a leer el script equivocado. La afirmación en
 # curso la fija el bucle del final, así que ningún caso puede anotar en el balde ajeno.
-FALLAS = {"60": [], "47": [], "61": [], "66": [], "73": [], "74": [], "75": [], "77": [], "78": []}
+FALLAS = {"60": [], "47": [], "61": [], "66": [], "73": [], "74": [], "75": [], "76": [], "77": [], "78": []}
 AFIRMACION = ["60"]
 
 
@@ -1782,6 +1782,185 @@ def caso_55():
     chequear(n, "la linea nueva entra", LINEA_NUEVA in lineas, True)
 
 
+# --- la entrega de diseño de ticket:resolve ---------------------------------------
+
+TITULO_ENTREGA = "Diseño terminado: la vista de campañas"
+ENTREGA = ["--design-delivery", TITULO_ENTREGA, CUERPO_DE_TRES]
+URL_ENTREGA = "https://linear.app/keiron/issue/CRM-12"
+
+
+def ticket_leido(*nombres):
+    return {"data": {"issue": {"identifier": "CRM-5", "project": {"id": "p-1"},
+                               "labels": {"nodes": [{"name": x} for x in nombres]}}}}
+
+
+CON_DISENO = ticket_leido("map", "hitl:design")
+LOTE_CON_ENTREGA = {"data": {"issueBatchCreate": {"success": True, "issues": [
+    {"id": "i-12", "identifier": "CRM-12", "title": TITULO_ENTREGA,
+     "url": URL_ENTREGA}] + NUEVOS_OK["data"]["issueBatchCreate"]["issues"]}}}
+
+
+def ctx_con(**cambios):
+    labels = dict(LABELS_RESUELTOS)
+    base = {"viewer": "v1", "team": "t1", "done": "s1", "canceled": "s2",
+            "default": "s3", "discovery": "l-d", "labels": labels}
+    for clave, valor in cambios.items():
+        if clave in labels:
+            labels[clave] = valor
+        else:
+            base[clave] = valor
+    return json.dumps(base)
+
+
+def caso_56():
+    """La entrega nace adentro del issueBatchCreate de la escritura 1, con su forma, y
+    la resolución sigue en cinco mutations, después de una lectura previa."""
+    n = "56-la-entrega-nace-en-la-escritura-1"
+    rc, out, err, tr = correr(
+        n, RESOLVER + secciones() + GIST + NUEVOS + CABLE + ENTREGA,
+        [CON_DISENO, LOTE_CON_ENTREGA, RELACION_OK, COMENTADO, CERRADO,
+         leido(overview()), ESCRITO_OK])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "SIETE llamadas al transporte", tr.llamadas, 7)
+    esperado = [mod.ISSUE_PROJECT_QUERY, "issueBatchCreate", "issueRelationCreate",
+                "commentCreate", "issueUpdate", "project(id:", "projectUpdate"]
+    for i, aguja in enumerate(esperado):
+        chequear(n, "el POST %d lleva %s" % (i + 1, aguja.strip()[:20]),
+                 aguja in (tr.queries[i] if i < len(tr.queries) else ""), True)
+    if tr.llamadas != 7:
+        return
+    chequear(n, "la lectura previa va al ticket que se cierra",
+             tr.variables[0].get("issue"), "CRM-5")
+    chequear(n, "UNA sola relacion, la del par cableado",
+             len([q for q in tr.queries if "issueRelationCreate" in q]), 1)
+    lote = tr.variables[1].get("issues") or []
+    chequear(n, "el lote lleva los dos tickets y la entrega", len(lote), 3)
+    entregas = [e for e in lote if e.get("title") == TITULO_ENTREGA]
+    chequear(n, "una sola entrada es la entrega", len(entregas), 1)
+    e = entregas[0] if entregas else {}
+    chequear(n, "labelIds de la entrega", e.get("labelIds"),
+             ["l-hitl:design", "l-map:design-delivery"])
+    chequear(n, "assigneeId es el viewer", e.get("assigneeId"), "v1")
+    chequear(n, "description es el cuerpo normalizado", e.get("description"),
+             CUERPO_NORMALIZADO)
+    chequear(n, "stateId es el default", e.get("stateId"), "s3")
+    chequear(n, "projectId es el del mapa", e.get("projectId"), "p-1")
+    for ausente in ("estimate", "projectMilestoneId"):
+        chequear(n, "la entrega no lleva " + ausente, ausente in e, False)
+    tickets = [x for x in lote if x.get("title") != TITULO_ENTREGA]
+    chequear(n, "los tickets siguen llevando map",
+             [("l-map" in (x.get("labelIds") or [])) for x in tickets], [True, True])
+    chequear(n, "y ninguno lleva assigneeId",
+             [("assigneeId" in x) for x in tickets], [False, False])
+    cuerpo = tr.variables[3].get("body") or ""
+    tramo = cuerpo.split("## " + SEIS[4])[-1].split("## " + SEIS[5])[0]
+    chequear(n, "Tickets nuevos nombra la entrega",
+             "Entrega de diseño: [CRM-12](<%s>)" % URL_ENTREGA in tramo, True)
+    chequear(n, "y conserva la linea que paso la skill",
+             "linea de " + SEIS[4] in tramo, True)
+    d = json_de(n, out)
+    chequear(n, "stdout designDelivery", d.get("designDelivery"),
+             {"identifier": "CRM-12", "id": "i-12", "title": TITULO_ENTREGA,
+              "url": URL_ENTREGA})
+    chequear(n, "tickets no incluye la entrega",
+             [t.get("identifier") for t in d.get("tickets") or []], ["CRM-10", "CRM-11"])
+    chequear(n, "stdout lleva diez claves", len(d), 10)
+
+
+def caso_57():
+    """Un ticket sin hitl:design aborta después de la lectura y sin escribir nada; un
+    ticket que no existe sale con NO_ES_DEL_MAPA en esa misma lectura."""
+    n = "57-sin-hitl-design-aborta-tras-una-lectura"
+    rc, out, err, tr = correr(n, RESOLVER + secciones() + GIST + ENTREGA,
+                              [ticket_leido("map", "hitl:dev")])
+    chequear(n, "rc", rc, mod.SIN_KEY)
+    chequear(n, "stdout vacio", out, "")
+    chequear(n, "UNA sola llamada, la lectura", tr.llamadas, 1)
+    chequear(n, "y no es una mutation",
+             [q for q in tr.queries if "mutation" in q], [])
+    chequear(n, "stderr nombra hitl:design", "hitl:design" in err, True)
+    chequear(n, "y manda a sacar el flag", "--design-delivery" in err, True)
+
+    g = "57-ticket-inexistente"
+    rc, out, err, tr = correr(g, RESOLVER + secciones() + GIST + ENTREGA,
+                              [{"data": {"issue": None}}])
+    chequear(g, "rc", rc, mod.NO_ES_DEL_MAPA)
+    chequear(g, "UNA sola llamada", tr.llamadas, 1)
+
+
+def caso_58():
+    """Lo que se rompe sin red: labels nulos, viewer nulo y un título repetido."""
+    for etiqueta, ctx, extra, aguja in (
+            ("label-de-entrega-nulo", ctx_con(**{"map:design-delivery": None}), [],
+             "/map-new"),
+            ("hitl-design-nulo", ctx_con(**{"hitl:design": None}), [], "/map-new"),
+            ("viewer-nulo", ctx_con(viewer=None), [], "viewer"),
+            ("titulo-igual-a-un-new-ticket", CTX_TICKET,
+             ["--new-ticket", TITULO_ENTREGA, "su cuerpo", ""], TITULO_ENTREGA)):
+        n = "58-" + etiqueta
+        argv = (["ticket:resolve", "--ctx", ctx, "--project", "p-1", "--issue", "CRM-5"]
+                + secciones() + GIST + extra + ENTREGA)
+        rc, out, err, tr = correr(n, argv, [])
+        chequear(n, "rc", rc, mod.SIN_KEY)
+        chequear(n, "stdout vacio", out, "")
+        chequear(n, "stderr nombra " + aguja, aguja in err, True)
+        chequear(n, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+
+def caso_59():
+    """Sin el flag la escritura 1 no cambia, y el lote que confirma sin la entrega
+    aborta antes del comentario."""
+    n = "59-sin-el-flag-la-escritura-1-no-cambia"
+    rc, out, err, tr = correr(n, RESOLVER + secciones() + GIST + NUEVOS,
+                              [NUEVOS_OK, COMENTADO, CERRADO, leido(overview()),
+                               ESCRITO_OK])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "CINCO llamadas, sin lectura previa", tr.llamadas, 5)
+    chequear(n, "la primera es el issueBatchCreate",
+             "issueBatchCreate" in (tr.queries[0] if tr.queries else ""), True)
+    lote = (tr.variables[0] if tr.variables else {}).get("issues") or []
+    chequear(n, "el lote lleva solo los dos tickets", len(lote), 2)
+    chequear(n, "stdout designDelivery nulo",
+             json_de(n, out).get("designDelivery", "AUSENTE"), None)
+
+    g = "59-lote-sin-la-entrega"
+    rc, out, err, tr = correr(g, RESOLVER + secciones() + GIST + NUEVOS + ENTREGA,
+                              [CON_DISENO, NUEVOS_OK])
+    chequear(g, "rc", rc, mod.SIN_KEY)
+    chequear(g, "stdout vacio", out, "")
+    chequear(g, "DOS llamadas: ningun comentario", tr.llamadas, 2)
+    chequear(g, "stderr dice que pudo quedar escrita", "entrega" in err, True)
+
+    w = "59-work-write-sin-issues-no-crea"
+    rc, out, err, tr = correr(w, ["work:write", "--ctx", CTX_TICKET, "--project",
+                                  "kp-falso", "--no-landing", "CRM-1"],
+                              [{"data": {"issueAddLabel": {"success": True}}}])
+    chequear(w, "rc", rc, 0)
+    chequear(w, "ningun issueBatchCreate",
+             [q for q in tr.queries if "issueBatchCreate" in q], [])
+
+
+def caso_60():
+    """La entrega pasa el cuerpo por la misma validación que work:write: el de tres
+    secciones viaja normalizado, y un título con salto o un cuerpo vacío abortan con el
+    transporte en cero."""
+    n = "60-la-entrega-acepta-el-cuerpo-de-tres-secciones"
+    rc, out, err, tr = correr(n, RESOLVER + secciones() + GIST + ENTREGA,
+                              [CON_DISENO, LOTE_CON_ENTREGA, COMENTADO, CERRADO,
+                               leido(overview()), ESCRITO_OK])
+    chequear(n, "rc", rc, 0)
+    lote = (tr.variables[1] if len(tr.variables) > 1 else {}).get("issues") or [{}]
+    chequear(n, "description es el cuerpo normalizado", lote[0].get("description"),
+             CUERPO_NORMALIZADO)
+    for g, entrega_ in (("60-titulo-con-salto",
+                         ["--design-delivery", "Diseño\nterminado", CUERPO_DE_TRES]),
+                        ("60-cuerpo-de-espacios",
+                         ["--design-delivery", TITULO_ENTREGA, " \r\n "])):
+        rc, out, err, tr = correr(g, RESOLVER + secciones() + GIST + entrega_, [])
+        chequear(g, "rc", rc, mod.SIN_KEY)
+        chequear(g, "TRANSPORTE LLAMADO CERO VECES", tr.llamadas, 0)
+
+
 CASOS =[("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("60", caso_5), ("60", caso_6), ("60", caso_7), ("60", caso_8),
          ("60", caso_9), ("47", caso_10), ("47", caso_11), ("47", caso_12),
@@ -1795,13 +1974,14 @@ CASOS =[("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("74", caso_37), ("74", caso_38), ("74", caso_39), ("74", caso_40),
          ("74", caso_41), ("74", caso_42), ("74", caso_43),
          ("75", caso_44), ("75", caso_45), ("75", caso_46),
-         ("78", caso_49), ("78", caso_50), ("78", caso_51),
-         ("77", caso_52), ("77", caso_53), ("77", caso_54), ("77", caso_55)]
+         ("78", caso_49), ("78", caso_50), ("78", caso_51), ("78", caso_60),
+         ("77", caso_52), ("77", caso_53), ("77", caso_54), ("77", caso_55),
+         ("76", caso_56), ("76", caso_57), ("76", caso_58), ("76", caso_59)]
 for _afirmacion, _caso in CASOS:
     AFIRMACION[0] = _afirmacion
     _caso()
 
-for _afirmacion in ("60", "47", "61", "66", "73", "74", "75", "77", "78"):
+for _afirmacion in ("60", "47", "61", "66", "73", "74", "75", "76", "77", "78"):
     print("casos%s=%d" % (_afirmacion,
                           len([c for c in CASOS if c[0] == _afirmacion])))
     print("fallas%s=%s" % (_afirmacion, plano(FALLAS[_afirmacion])
@@ -1824,6 +2004,7 @@ if printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas60=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas73=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas74=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas75=ninguna' \
+   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas76=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas77=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas78=ninguna'; then
   :
@@ -1860,6 +2041,10 @@ if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas75=ninguna'; then
   fail "[75] frontier:query no emite designDeliveries en sus dos ramas, deja pasar una entrega cerrada, no manda LABELS[9] en la query o no nombra designDeliveries en truncated cuando esa conexión viene cortada"
 fi
 
+if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas76=ninguna'; then
+  fail "[76] ticket:resolve --design-delivery no crea la entrega adentro del issueBatchCreate de la escritura 1 con hitl:design, map:design-delivery y el viewer, sin map, Discovery, estimate ni milestone, no la nombra en Tickets nuevos y en designDelivery, o no aborta antes de escribir sin hitl:design, con un label o el viewer nulos o con un título repetido"
+fi
+
 if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas77=ninguna'; then
   fail "[77] la línea de Decisiones no es un enlace explícito - [ID](<url>): gist, un enlace con < o > no aborta antes de la red, o una línea del mismo ticket en una forma que Linear guarda no se reconoce como presente"
 fi
@@ -1886,10 +2071,12 @@ casos74="$(printf '%s\n' "$salida" | sed -n 's/^casos74=//p')"
 require_nonempty "$casos74" "[74] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 casos75="$(printf '%s\n' "$salida" | sed -n 's/^casos75=//p')"
 require_nonempty "$casos75" "[75] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
+casos76="$(printf '%s\n' "$salida" | sed -n 's/^casos76=//p')"
+require_nonempty "$casos76" "[76] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 casos77="$(printf '%s\n' "$salida" | sed -n 's/^casos77=//p')"
 require_nonempty "$casos77" "[77] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 casos78="$(printf '%s\n' "$salida" | sed -n 's/^casos78=//p')"
 require_nonempty "$casos78" "[78] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 plural=""
 [ "$casos" = 1 ] || plural="s"
-echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, y $casos66 del reparto de la escritura del mapa con --defer-map, y $casos73 de --project con un ticket o un Project, y $casos74 de las correcciones del mapa desde una resolución, y $casos75 de las entregas de diseño abiertas en frontier:query, y $casos77 de la línea de Decisiones como enlace explícito, y $casos78 del cuerpo de varias líneas de work:write, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
+echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, y $casos66 del reparto de la escritura del mapa con --defer-map, y $casos73 de --project con un ticket o un Project, y $casos74 de las correcciones del mapa desde una resolución, y $casos75 de las entregas de diseño abiertas en frontier:query, y $casos76 de la entrega de diseño de ticket:resolve, y $casos77 de la línea de Decisiones como enlace explícito, y $casos78 del cuerpo de varias líneas de work:write y de la entrega, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
