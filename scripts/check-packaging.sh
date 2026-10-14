@@ -274,7 +274,7 @@ printf 'no-es-una-key-real\n' > "$tricotomia/.config/keiron-planner/linear.key"
 
 cat > "$tricotomia/bin/curl" <<'CURL'
 #!/bin/sh
-cat > "$KP_CONFIG_VISTO"
+case " $* " in *" -K - "*|*" --config - "*) cat > "$KP_CONFIG_VISTO" ;; esac
 duro=""
 for a in "$@"; do
   case "$a" in
