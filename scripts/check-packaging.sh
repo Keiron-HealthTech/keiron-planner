@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 . scripts/_common.sh
 
-# Afirmaciones 14, 15, 17, 18, 20, 21, 56, 57 y 71.
+# Afirmaciones 14, 15, 17, 18, 20, 21, 56, 57, 71 y 86.
 
 # --- tercer tier: sin fuente y sin herramientas no hay nada que chequear ---
 
@@ -292,6 +292,18 @@ esac
 CURL
 chmod +x "$tricotomia/bin/curl"
 
+# Los mensajes del desenlace 2 dicen que el detalle está arriba, así que no alcanza con
+# que el diagnóstico de curl aparezca: tiene que venir antes. La salida que recibe junta
+# stdout y stderr en el orden en que se escribieron.
+assert_diag_above() { # salida marca contexto
+  local diag_line msg_line
+  diag_line="$(printf '%s\n' "$1" | grep -nF 'Could not resolve host' | head -1 | cut -d: -f1 || true)"
+  msg_line="$(printf '%s\n' "$1" | grep -nF "$2" | head -1 | cut -d: -f1 || true)"
+  if [ -z "$diag_line" ] || [ -z "$msg_line" ] || [ "$diag_line" -ge "$msg_line" ]; then
+    fail "[86] $3, el diagnóstico de curl no está arriba del mensaje \"$2\": diagnóstico en la línea ${diag_line:-ninguna}, mensaje en la línea ${msg_line:-ninguna}"
+  fi
+}
+
 # La marca es lo que discrimina, y no el código: rechazada y caída salen las dos 1, porque
 # die sale 1 siempre. Que un desenlace 2 nunca se reporte como key inválida es la cláusula
 # del contrato, y la única forma de verla es el texto que la persona lee.
@@ -309,6 +321,9 @@ for caso in "valida:0:Key válida en" "rechazada:1:no sirve" "caida:1:no de la c
   fi
   if ! printf '%s\n' "$dicho" | grep -qF "$marca"; then
     fail "[57] con la respuesta $modo, el mensaje de $instalador no dice \"$marca\": $(printf '%s\n' "$dicho" | tail -1)"
+  fi
+  if [ "$modo" = caida ]; then
+    assert_diag_above "$dicho" "$marca" "con la respuesta caida, en $instalador --verify"
   fi
 done
 
@@ -344,6 +359,23 @@ if ! printf '%s\n' "$dicho" | grep -qF 'No hay un python3 que funcione'; then
   fail "[57] sin un python3 que funcione, $instalador --verify culpa a la credencial: $(printf '%s\n' "$dicho" | tail -1)"
 fi
 
+# Quinto caso: la ruta de install con una key guardada y la red caída. Corre sin terminal
+# porque el sondeo de la key guardada va antes de la guarda de TTY: si vuelve abajo, o si
+# el desenlace 2 se junta otra vez con el rechazo, el flujo cae en esa guarda y la marca
+# falta. No puede colgarse: la guarda corta antes del primer read, y /dev/null le da EOF a
+# cualquiera que lea antes.
+rc=0
+dicho="$(KP_CASO=caida KP_CONFIG_VISTO="$tricotomia/install-config" \
+  PATH="$tricotomia/bin:$PATH" HOME="$tricotomia" \
+  XDG_CONFIG_HOME="$tricotomia/.config" dash "$instalador" < /dev/null 2>&1)" || rc=$?
+if [ "$rc" -ne 1 ]; then
+  fail "[57] con una key guardada y la red caída, $instalador sin argumentos salió $rc y tiene que salir 1"
+fi
+if ! printf '%s\n' "$dicho" | grep -qF 'No pude verificar la key guardada'; then
+  fail "[57] con una key guardada y la red caída, $instalador sin argumentos no dice \"No pude verificar la key guardada\": $(printf '%s\n' "$dicho" | tail -1)"
+fi
+assert_diag_above "$dicho" 'No pude verificar la key guardada' "con una key guardada y la red caída, en $instalador sin argumentos"
+
 # --- afirmación 71: sin TTY, el instalador da un comando que se puede pegar ---
 
 # /planner-setup corre siempre dentro de Claude Code, que nunca le da TTY al script. Un
@@ -369,4 +401,4 @@ fi
 
 report
 
-echo "$CHECK_NAME: OK - manifiesto válido con author, dependencies en un string pelado, el README trae el snippet de instalación y nombra /planner-setup, nada trackeado matchea *.key, y el instalador chequea el intérprete, guarda la key en su ruta sin imprimirla, corre bajo dash sin diagnóstico, y su validación manda la credencial en una línea de config, distingue los tres desenlaces, no culpa a la credencial de una herramienta que falta, y sin TTY da la ruta absoluta del script para pegar en una terminal"
+echo "$CHECK_NAME: OK - manifiesto válido con author, dependencies en un string pelado, el README trae el snippet de instalación y nombra /planner-setup, nada trackeado matchea *.key, y el instalador chequea el intérprete, guarda la key en su ruta sin imprimirla, corre bajo dash sin diagnóstico, y su validación manda la credencial en una línea de config, distingue los tres desenlaces, no culpa a la credencial de una herramienta que falta, con una key guardada y la red caída corta sin pedir otra, deja el diagnóstico de curl arriba del mensaje de red en verify y en install, y sin TTY da la ruta absoluta del script para pegar en una terminal"
