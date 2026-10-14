@@ -37,7 +37,7 @@ hogar="$(mktemp -d "${TMPDIR:-/tmp}/kp-map-hogar.XXXXXX")" || bail "[60] no se p
 # es la diferencia entre este script y check-py39.sh.
 
 salida="$(HOME="$hogar" XDG_CONFIG_HOME="$hogar/config" KP_ADAPTER="$adapter" "$py39" - <<'PY' 2>&1 || true
-import contextlib, difflib, importlib.util, io, json, os, socket, sys, urllib.error
+import contextlib, difflib, importlib.util, io, json, os, re, socket, sys, urllib.error
 
 sys.dont_write_bytecode = True
 
@@ -473,6 +473,13 @@ def caso_7():
     chequear(n, "la query NO contiene projectUpdate", "projectUpdate" in q, False)
     chequear(n, "la query no pide el estado interno del editor",
              "content" + "State" in q, False)
+    # ProjectCreateInput no tiene teamId y exige teamIds: [String!]!, medido por
+    # introspección el 2026-10-14. Con teamId Linear rechaza cada intento.
+    chequear(n, "el input lleva teamIds como lista",
+             re.search(r"teamIds:\s*\[\s*\$team\s*\]", q) is not None, True)
+    chequear(n, "el input NO lleva teamId", re.search(r"\bteamId\s*:", q) is None, True)
+    chequear(n, "el equipo del ctx viaja en la variable",
+             (tr.variables[0] if tr.variables else {}).get("team"), "t1")
     d = json_de(n, out)
     chequear(n, "created", d.get("created"), True)
     chequear(n, "project", d.get("project"), "p-nuevo")
@@ -499,6 +506,40 @@ def caso_7():
                  "no se creó" in err or "no se creo" in err, False)
         chequear(a, "no le echa la culpa a la credencial",
                  "credencial" in err or "/planner-setup" in err, False)
+
+    # Un error de validación de GraphQL rechaza la petición antes de ejecutarla, así que
+    # ahí sí se sabe que no nació ningún Project. Es la forma medida el 2026-10-14: HTTP
+    # 400, sin data, y cada error con extensions.code GRAPHQL_VALIDATION_FAILED.
+    v = n + "-VALIDACION-sabe-que-no-se-creo"
+    validacion = {"errors": [{
+        "message": "Field \"teamId\" is not defined by type \"ProjectCreateInput\".",
+        "extensions": {"http": {"status": 400, "headers": {}},
+                       "code": "GRAPHQL_VALIDATION_FAILED",
+                       "type": "graphql error", "userError": True}}]}
+    rc, out, err, tr = correr(v, CREAR + ["--name", "Un proyecto"],
+                              [validacion, CREADO_OK])
+    chequear(v, "rc no cero", rc != 0, True)
+    chequear(v, "UNA sola llamada", tr.llamadas, 1)
+    chequear(v, "stdout vacio", out, "")
+    chequear(v, "NO dice que NO SE SABE", "NO SE SABE" in err, False)
+    chequear(v, "dice que no se creo ningun Project", "no se creó ningún Project" in err,
+             True)
+    chequear(v, "trae el mensaje de Linear", "ProjectCreateInput" in err, True)
+    chequear(v, "no le echa la culpa a la credencial",
+             "credencial" in err or "/planner-setup" in err, False)
+
+    # Basta un error que no sea de validación para volver a la duda: si Linear llegó a
+    # ejecutar algo, el Project pudo haber nacido.
+    m = n + "-VALIDACION-mezclada-sigue-sin-saberse"
+    mezclada = {"errors": validacion["errors"] + [{"message": "se cayo"}]}
+    rc, out, err, tr = correr(m, CREAR + ["--name", "Un proyecto"], [mezclada])
+    chequear(m, "rc no cero", rc != 0, True)
+    chequear(m, "el mensaje dice que NO SE SABE", "NO SE SABE" in err, True)
+    d = {"data": {"projectCreate": None}}
+    d["errors"] = validacion["errors"]
+    c = n + "-VALIDACION-con-data-sigue-sin-saberse"
+    rc, out, err, tr = correr(c, CREAR + ["--name", "Un proyecto"], [d])
+    chequear(c, "el mensaje dice que NO SE SABE", "NO SE SABE" in err, True)
 
 
 def caso_8():

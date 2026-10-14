@@ -80,6 +80,10 @@ NO_IMPLEMENTADO = 9
 RECHAZOS_DE_CREDENCIAL = ("AUTHENTICATION_ERROR", "FORBIDDEN")
 STATUS_DE_CREDENCIAL = (401, 403)
 
+# Lo que Linear manda cuando la query no pasa la validación del schema, medido el
+# 2026-10-14: HTTP 400, sin data. La petición no llegó a ejecutarse.
+VALIDATION_FAILED = "GRAPHQL_VALIDATION_FAILED"
+
 # El tope de intentos del read-modify-write, y NO un código de salida: va en su propio
 # bloque para que nadie lo lea como uno más. Es el único literal del contador en todo
 # el archivo, y el handler que reintenta lo referencia por nombre en el iter de su For.
@@ -227,7 +231,7 @@ mutation($project: String!, $content: String!) {
 # POST es lo que hace que crear cueste uno solo, y también lo que vuelve ambigua su falla.
 PROJECT_CREATE = """
 mutation($team: String!, $name: String!, $content: String!) {
-  projectCreate(input: { teamId: $team, name: $name, content: $content }) {
+  projectCreate(input: { teamIds: [$team], name: $name, content: $content }) {
     success
     project { id url }
   }
@@ -1554,6 +1558,19 @@ def _resolver_creacion(payload):
     return (True, "", datos.get("project") or {})
 
 
+def _rejected_before_execution(payload):
+    """True si GraphQL rechazó la petición al validarla, antes de ejecutar nada: sin data
+    y con todos los errores GRAPHQL_VALIDATION_FAILED. Es la única falla de projectCreate
+    que garantiza que el Project no nació. Basta un error de otra clase, o la clave data
+    presente, para que la ejecución haya podido empezar."""
+    errors = payload.get("errors") or []
+    if "data" in payload or not errors:
+        return False
+    return all(isinstance(e, dict)
+               and (e.get("extensions") or {}).get("code") == VALIDATION_FAILED
+               for e in errors)
+
+
 def _sort_order_from(args):
     """El --sort-order ya validado: float y distinto de cero. Cero es el único valor
     que Linear reinterpreta -lo manda al final de la lista en vez de respetarlo
@@ -2019,6 +2036,13 @@ def cmd_map_create(args):
                          {"team": equipo, "name": args.name,
                           "content": "\n".join(esqueleto(destino, []))}, key)
         ok, detalle, proyecto = _resolver_creacion(creacion)
+        if not ok and _rejected_before_execution(creacion):
+            die(SIN_KEY,
+                "Linear rechazó el projectCreate de %s al validarlo, antes de ejecutarlo, "
+                "así que no se creó ningún Project: %s" % (args.name, detalle),
+                "la mutation no coincide con el schema de Linear y reintentar va a fallar "
+                "igual: reportalo como bug del plugin y, mientras tanto, creá el Project "
+                "a mano en Linear y seguí con map:create --project sobre él")
         if not ok:
             die(SIN_KEY,
                 "el projectCreate de %s no confirmó y NO SE SABE si el Project quedó "
