@@ -135,6 +135,22 @@ cmd_install() {
   need_curl
   need_python3
 
+  # La key guardada se sondea antes de la guarda de TTY, y un desenlace 2 corta acá sin
+  # preguntar nada: tomado por key inválida, el flujo pide una nueva y la persona acuña una
+  # credencial de más para reemplazar una que servía. Abajo de la guarda ese corte no se
+  # puede ejercitar sin terminal. El stderr de validate no se silencia porque el mensaje
+  # dice que el detalle está arriba.
+  _saved_rc=1
+  if [ -f "$KEY_FILE" ]; then
+    _saved_rc=0
+    _who=$(validate "$(cat "$KEY_FILE")") || _saved_rc=$?
+    if [ "$_saved_rc" = 2 ]; then
+      die "No pude verificar la key guardada en $KEY_FILE. El problema es del script o de la red, no de la credencial. El detalle está arriba.
+
+No cambié nada: la key guardada sigue ahí. Vuelve a intentarlo cuando la red responda."
+    fi
+  fi
+
   # Sin terminal no hay forma de apagar el eco, y una key tipeada con eco queda en el
   # scrollback y en cualquier transcript que esté grabando. La guarda va antes de la
   # primera pregunta y no antes de la última: sin TTY, un read choca con EOF y bajo
@@ -158,7 +174,7 @@ Después, de vuelta en Claude Code, /planner-setup --verify confirma que quedó 
 No guardé nada."
   fi
 
-  if [ -f "$KEY_FILE" ] && _who=$(validate "$(cat "$KEY_FILE")" 2>/dev/null); then
+  if [ "$_saved_rc" = 0 ]; then
     printf 'Ya hay una key válida en %s\n  %s\n\n' "$KEY_FILE" "$_who"
     printf '¿Quieres reemplazarla? [s/N] '
     read -r _ans
