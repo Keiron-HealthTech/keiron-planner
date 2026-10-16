@@ -155,7 +155,7 @@ CREAR = ["map:create", "--ctx", CTX, "--destino", DESTINO]
 # Dos acumuladores y no uno: este harness lleva los desenlaces de dos afirmaciones, y
 # un [N] que no distinga cuál falló manda a leer el script equivocado. La afirmación en
 # curso la fija el bucle del final, así que ningún caso puede anotar en el balde ajeno.
-FALLAS = {"60": [], "47": [], "61": [], "66": [], "73": [], "74": [], "75": [], "76": [], "77": [], "78": []}
+FALLAS = {"60": [], "47": [], "61": [], "66": [], "73": [], "74": [], "75": [], "76": [], "77": [], "78": [], "87": []}
 AFIRMACION = ["60"]
 
 
@@ -1696,6 +1696,67 @@ def caso_46():
     chequear(n, "stderr avisa del corte", "designDeliveries" in err, True)
 
 
+# --- la paginación de issues en frontier:query -----------------------------------
+
+def ticket_abierto(identifier, created):
+    return {"identifier": identifier, "title": "¿" + identifier + "?",
+            "url": "https://linear.app/keiron/issue/" + identifier,
+            "createdAt": created, "completedAt": None,
+            "state": {"id": "s3", "name": "Todo"}, "assignee": None,
+            "labels": {"nodes": [{"name": "map"}, {"name": "map:grilling"}]},
+            "relations": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+            "inverseRelations": {"pageInfo": {"hasNextPage": False}, "nodes": []}}
+
+
+def pagina(nodos, siguiente, cursor):
+    return {"data": {"project": {
+        "issues": {"pageInfo": {"hasNextPage": siguiente, "endCursor": cursor},
+                   "nodes": nodos},
+        "designDeliveries": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+        "projectMilestones": {"pageInfo": {"hasNextPage": False}, "nodes": []}}}}
+
+
+def caso_61():
+    """Dos páginas de issues: la segunda se pide con el endCursor de la primera, los
+    tickets de las dos llegan a la frontera y truncated no nombra issues."""
+    n = "61-frontier-query-pagina-issues"
+    rc, out, err, tr = correr(n, FRONTERA, [
+        pagina([ticket_abierto("CRM-2", "2026-10-02T00:00:00.000Z")], True, "c1"),
+        pagina([ticket_abierto("CRM-1", "2026-10-01T00:00:00.000Z")], False, "c2")])
+    chequear(n, "rc", rc, 0)
+    chequear(n, "DOS llamadas al transporte", tr.llamadas, 2)
+    chequear(n, "la primera página va sin cursor",
+             (tr.variables[0] if tr.variables else {}).get("after"), None)
+    chequear(n, "la segunda página va con el endCursor de la primera",
+             (tr.variables[1] if len(tr.variables) > 1 else {}).get("after"), "c1")
+    salida = json_de(n, out)
+    chequear(n, "counts", salida.get("counts"),
+             {"open": 2, "takeable": 2, "milestones": 0})
+    chequear(n, "los tickets de las dos páginas, en createdAt ascendente",
+             [t.get("identifier") for t in salida.get("tickets") or []],
+             ["CRM-1", "CRM-2"])
+    chequear(n, "truncated", salida.get("truncated"), [])
+    chequear(n, "stderr no avisa de issues", "issues vino truncada" in err, False)
+
+
+def caso_62():
+    """Con el tope de páginas alcanzado y Linear diciendo que hay más, la frontera
+    sigue siendo una cota inferior: truncated nombra issues y no hay una llamada de
+    más."""
+    n = "62-frontier-query-con-el-tope-de-paginas"
+    tope = getattr(mod, "MAX_PAGINAS_FRONTERA", 3)
+    secuencia = [pagina([ticket_abierto("CRM-%d" % (i + 1),
+                                        "2026-10-%02dT00:00:00.000Z" % (i + 1))],
+                        True, "c%d" % (i + 1)) for i in range(tope)]
+    rc, out, err, tr = correr(n, FRONTERA, secuencia)
+    chequear(n, "rc", rc, 0)
+    chequear(n, "tantas llamadas como el tope", tr.llamadas, tope)
+    salida = json_de(n, out)
+    chequear(n, "truncated", salida.get("truncated"), ["issues"])
+    chequear(n, "counts.open cuenta las páginas leídas",
+             (salida.get("counts") or {}).get("open"), tope)
+
+
 # --- el cuerpo de varias líneas de work:write ------------------------------------
 
 TRABAJO = ["work:write", "--ctx", CTX, "--project", "kp-falso"]
@@ -2017,12 +2078,13 @@ CASOS =[("60", caso_1), ("60", caso_2), ("60", caso_3), ("60", caso_4),
          ("75", caso_44), ("75", caso_45), ("75", caso_46),
          ("78", caso_49), ("78", caso_50), ("78", caso_51), ("78", caso_60),
          ("77", caso_52), ("77", caso_53), ("77", caso_54), ("77", caso_55),
-         ("76", caso_56), ("76", caso_57), ("76", caso_58), ("76", caso_59)]
+         ("76", caso_56), ("76", caso_57), ("76", caso_58), ("76", caso_59),
+         ("87", caso_61), ("87", caso_62)]
 for _afirmacion, _caso in CASOS:
     AFIRMACION[0] = _afirmacion
     _caso()
 
-for _afirmacion in ("60", "47", "61", "66", "73", "74", "75", "76", "77", "78"):
+for _afirmacion in ("60", "47", "61", "66", "73", "74", "75", "76", "77", "78", "87"):
     print("casos%s=%d" % (_afirmacion,
                           len([c for c in CASOS if c[0] == _afirmacion])))
     print("fallas%s=%s" % (_afirmacion, plano(FALLAS[_afirmacion])
@@ -2045,6 +2107,7 @@ if printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas60=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas73=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas74=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas75=ninguna' \
+   && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas87=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas76=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas77=ninguna' \
    && printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas78=ninguna'; then
@@ -2094,6 +2157,10 @@ if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas78=ninguna'; then
   fail "[78] work:write --issue no acepta un cuerpo de varias líneas, no lo manda en description con los saltos normalizados, o no aborta antes de la red con un cuerpo vacío o un título con salto"
 fi
 
+if ! printf '%s\n' "$salida" | /usr/bin/grep -q 'fallas87=ninguna'; then
+  fail "[87] frontier:query no pide la página siguiente de issues con el endCursor de la anterior, no junta los tickets de todas las páginas, o no nombra issues en truncated cuando llega al tope de páginas y Linear dice que hay más"
+fi
+
 report
 
 # Los cardinales salen de la corrida y no de una palabra escrita a mano: un conteo
@@ -2118,6 +2185,8 @@ casos77="$(printf '%s\n' "$salida" | sed -n 's/^casos77=//p')"
 require_nonempty "$casos77" "[77] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 casos78="$(printf '%s\n' "$salida" | sed -n 's/^casos78=//p')"
 require_nonempty "$casos78" "[78] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
+casos87="$(printf '%s\n' "$salida" | sed -n 's/^casos87=//p')"
+require_nonempty "$casos87" "[87] la corrida no emitió su cardinal de casos, así que el protocolo entre el intérprete y bash se movió"
 plural=""
 [ "$casos" = 1 ] || plural="s"
-echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, y $casos66 del reparto de la escritura del mapa con --defer-map, y $casos73 de --project con un ticket o un Project, y $casos74 de las correcciones del mapa desde una resolución, y $casos75 de las entregas de diseño abiertas en frontier:query, y $casos76 de la entrega de diseño de ticket:resolve, y $casos77 de la línea de Decisiones como enlace explícito, y $casos78 del cuerpo de varias líneas de work:write y de la entrega, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
+echo "$CHECK_NAME: OK - $adapter distingue $casos desenlace$plural de runtime de las operaciones que escriben el mapa y de ticket:block, y $casos47 de ticket:create, y $casos61 de las tres operaciones que cierran un ticket, y $casos66 del reparto de la escritura del mapa con --defer-map, y $casos73 de --project con un ticket o un Project, y $casos74 de las correcciones del mapa desde una resolución, y $casos75 de las entregas de diseño abiertas en frontier:query, y $casos76 de la entrega de diseño de ticket:resolve, y $casos77 de la línea de Decisiones como enlace explícito, y $casos78 del cuerpo de varias líneas de work:write y de la entrega, y $casos87 de la paginación de issues en frontier:query, con el transporte mockeado, sin red y sin credencial real, bajo Python $("$py39" -c 'import sys;print("%d.%d.%d" % sys.version_info[:3])')"
