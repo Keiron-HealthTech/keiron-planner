@@ -143,11 +143,15 @@ query($team: String!, $labels: [String!]!) {
 # una decisión ya ligada a trabajo de ejecución, y no pedirla dejaría el payload
 # incapaz de distinguirla de una que nunca aterrizó. designDeliveries no pide
 # relaciones: la entrega no lleva map, así que nunca es frontera ni bloquea a nadie.
+# issues es la única conexión que se pagina: un mapa junta más de cincuenta decisiones
+# en pocas semanas, y sin paginar la frontera queda como cota inferior para siempre y
+# el colapso se niega. Cada página repite la misma query con after, así que la
+# complejidad que se midió sigue siendo la de una página.
 FRONTIER_QUERY = """
-query($project: String!, $label: String!, $delivery: String!) {
+query($project: String!, $label: String!, $delivery: String!, $after: String) {
   project(id: $project) {
-    issues(first: 50, filter: { labels: { some: { name: { eq: $label } } } }) {
-      pageInfo { hasNextPage }
+    issues(first: 50, after: $after, filter: { labels: { some: { name: { eq: $label } } } }) {
+      pageInfo { hasNextPage endCursor }
       nodes {
         identifier
         title
@@ -2114,14 +2118,48 @@ def cmd_ticket_block(args):
         separators=(",", ":")))
 
 
+# El tope existe para que un hasNextPage que nunca baja no cuelgue la operación, y no
+# salió de ninguna medición: con 50 por página son mil decisiones. Al llegar a él con
+# más páginas por leer, truncated sigue nombrando issues, que es la verdad.
+MAX_PAGINAS_FRONTERA = 20
+
+
+def _issues_de_todas_las_paginas(proyecto, variables, key):
+    """Junta los nodos de issues de todas las páginas sobre la primera respuesta. El
+    pageInfo que queda es el de la última página leída, así que truncadas() solo nombra
+    issues cuando el tope cortó con páginas por leer. designDeliveries y
+    projectMilestones quedan los de la primera página."""
+    conexion = proyecto.get("issues") or {}
+    nodos = list(conexion.get("nodes") or [])
+    info = conexion.get("pageInfo") or {}
+    paginas = 1
+    while (info.get("hasNextPage") and info.get("endCursor")
+           and paginas < MAX_PAGINAS_FRONTERA):
+        siguiente = resolver_datos(
+            _post(FRONTIER_QUERY, dict(variables, after=info["endCursor"]), key))
+        if siguiente is None:
+            # El Project dejó de resolver a mitad de la lectura: lo leído queda como
+            # cota inferior y truncated lo dice.
+            break
+        conexion = siguiente.get("issues") or {}
+        nodos.extend(conexion.get("nodes") or [])
+        info = conexion.get("pageInfo") or {}
+        paginas += 1
+    proyecto["issues"] = {"pageInfo": {"hasNextPage": bool(info.get("hasNextPage"))},
+                          "nodes": nodos}
+    return proyecto
+
+
 def cmd_frontier_query(args):
     ctx = json.loads(args.ctx)
     cerrados = {ctx["done"], ctx["canceled"]}
     key = leer_key()
-    payload = _post(FRONTIER_QUERY,
-                    {"project": args.project, "label": LABEL_MAPA,
-                     "delivery": DESIGN_DELIVERY}, key)
+    variables = {"project": args.project, "label": LABEL_MAPA,
+                 "delivery": DESIGN_DELIVERY, "after": None}
+    payload = _post(FRONTIER_QUERY, variables, key)
     proyecto = resolver_datos(payload)
+    if proyecto is not None:
+        proyecto = _issues_de_todas_las_paginas(proyecto, variables, key)
     if proyecto is None:
         # found es lo único que separa un --project que no resolvió de un mapa ya
         # colapsado: los dos llevan los conteos en cero y las cinco listas vacías.

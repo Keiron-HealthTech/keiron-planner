@@ -106,7 +106,11 @@ Ocho claves de primer nivel, las ocho siempre presentes:
                  projectMilestones y designDeliveries, en ese orden fijo. Vacía si
                  ninguna conexión vino cortada. Cada nombre que aparece acá lleva
                  además una línea a stderr, y el código de salida sigue siendo 0 en
-                 todos los casos. Con issues truncada, unlanded también queda como cota
+                 todos los casos. issues es la única conexión que se pagina: la
+                 operación sigue el endCursor de página en página, hasta veinte
+                 páginas de cincuenta, así que issues solo aparece acá cuando ese tope
+                 cortó con más páginas por leer, o cuando el Project dejó de resolver
+                 a mitad de la lectura. Con issues truncada, unlanded también queda como cota
                  inferior; con relations truncada, una decisión con más de diez
                  relaciones puede aparecer en unlanded aunque ya esté ligada a trabajo
                  de ejecución; con projectMilestones truncada, milestones también queda
